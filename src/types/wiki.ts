@@ -42,3 +42,51 @@ export interface SchemaConfig {
   topics: SchemaTopic[];
   excludedGlobs: string[];
 }
+
+export interface TrackerOpenRow {
+  id: string;
+  status: '🟡' | '⚪' | '🔴';
+  goal: string;
+  doneWhen: string;
+  owner: string;
+  nextVerification: string;
+  evidence: string;
+}
+
+export interface TrackerProposalRow {
+  proposal: string;
+  by: string;
+  date: string;
+  why: string;
+}
+
+export interface TrackerDoneRow {
+  id: string;
+  status: '🟢' | '⚫';
+  goal: string;
+  closed: string;
+  criteriaMet: string;
+  evidence: string;
+}
+
+export interface TrackerData {
+  open: TrackerOpenRow[];
+  proposals: TrackerProposalRow[];
+  done: TrackerDoneRow[];
+}
+
+export interface BatonRow {
+  order: string;
+  task: string;
+  startFiles: string;
+  doneWhen: string;
+  verificationCommand: string;
+  notes: string;
+}
+
+export interface HandoffData {
+  stateBullets: Record<string, string>;
+  baton: BatonRow[];
+  noOpenWork: boolean;
+  blockers: Array<Record<string, string>>;
+}
