@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
@@ -42,6 +42,17 @@ pub fn with_recent(list: &[RecentProject], entry: RecentProject) -> Vec<RecentPr
     out
 }
 
+fn repo_canonical(path: &Path) -> Result<PathBuf, String> {
+    dunce::canonicalize(path).map_err(|e| e.to_string())
+}
+
+static RECENTS_LOCK: Mutex<()> = Mutex::new(());
+
+fn with_recents_lock<T>(_app: &AppHandle, f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    let _guard = RECENTS_LOCK.lock().map_err(|e| e.to_string())?;
+    f()
+}
+
 fn read_recents(app: &AppHandle) -> Result<Vec<RecentProject>, String> {
     let store = app.store(RECENTS_FILE).map_err(|e| e.to_string())?;
     Ok(store
@@ -71,8 +82,7 @@ const NOT_OPENED: &str = "Project not opened";
 /// the user picked through `open_project`).
 pub fn is_opened(list: &[RecentProject], repo: &Path) -> bool {
     list.iter().any(|r| {
-        Path::new(&r.path)
-            .canonicalize()
+        repo_canonical(Path::new(&r.path))
             .map(|p| p == repo)
             .unwrap_or(false)
     })
@@ -81,9 +91,7 @@ pub fn is_opened(list: &[RecentProject], repo: &Path) -> bool {
 /// Gate for every command that takes a `repo`: canonicalize it, then require
 /// it to be an opened project and still a git repo.
 fn opened_repo(app: &AppHandle, repo: &str) -> Result<PathBuf, String> {
-    let canonical = Path::new(repo)
-        .canonicalize()
-        .map_err(|_| NOT_OPENED.to_string())?;
+    let canonical = repo_canonical(Path::new(repo)).map_err(|_| NOT_OPENED.to_string())?;
     if !is_opened(&read_recents(app)?, &canonical) || !is_git_repo(&canonical) {
         return Err(NOT_OPENED.to_string());
     }
@@ -133,7 +141,11 @@ fn start_watch(app: &AppHandle, repo: &Path) -> Result<(), String> {
         );
     })?;
     let slot = app.state::<Mutex<Option<WatchHandle>>>();
-    *slot.lock().map_err(|e| e.to_string())? = Some(handle);
+    let mut guard = match slot.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    *guard = Some(handle);
     Ok(())
 }
 
@@ -155,48 +167,53 @@ fn resource(app: &AppHandle, rel: &str) -> Result<PathBuf, String> {
     Err(format!("Resource not found: resources/{rel}"))
 }
 
+static PYTHON_BIN: OnceLock<Option<&'static str>> = OnceLock::new();
+
 /// First working `python3`, then `python` (Windows); both must report Python 3.
 fn find_python() -> Option<&'static str> {
-    ["python3", "python"].into_iter().find(|bin| {
-        Command::new(bin)
-            .arg("--version")
-            .output()
-            .map(|o| {
-                let text = format!(
-                    "{}{}",
-                    String::from_utf8_lossy(&o.stdout),
-                    String::from_utf8_lossy(&o.stderr)
-                );
-                o.status.success() && text.contains("Python 3")
-            })
-            .unwrap_or(false)
+    *PYTHON_BIN.get_or_init(|| {
+        ["python3", "python"].into_iter().find(|bin| {
+            Command::new(bin)
+                .arg("--version")
+                .output()
+                .map(|o| {
+                    let text = format!(
+                        "{}{}",
+                        String::from_utf8_lossy(&o.stdout),
+                        String::from_utf8_lossy(&o.stderr)
+                    );
+                    o.status.success() && text.contains("Python 3")
+                })
+                .unwrap_or(false)
+        })
     })
 }
 
 #[tauri::command]
 pub async fn open_project(app: AppHandle, path: String) -> Result<WikiSnapshot, String> {
     blocking(move || {
-        let repo = Path::new(&path)
-            .canonicalize()
-            .map_err(|e| format!("Cannot open {path}: {e}"))?;
+        let repo = repo_canonical(Path::new(&path)).map_err(|e| format!("Cannot open {path}: {e}"))?;
         if !repo.is_dir() {
             return Err(format!("Not a directory: {path}"));
         }
         if !is_git_repo(&repo) {
             return Err("Not a git repository".to_string());
         }
-        let name = repo
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| path.clone());
-        let entry = RecentProject {
-            path: repo.to_string_lossy().into_owned(),
-            name,
-        };
-        let list = with_recent(&read_recents(&app)?, entry);
-        write_recents(&app, &list)?;
-        start_watch(&app, &repo)?;
-        snapshot_for(&repo)
+        let snap = snapshot_for(&repo)?;
+        with_recents_lock(&app, || {
+            let name = repo
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.clone());
+            let entry = RecentProject {
+                path: repo.to_string_lossy().into_owned(),
+                name,
+            };
+            let list = with_recent(&read_recents(&app)?, entry);
+            write_recents(&app, &list)?;
+            start_watch(&app, &repo)
+        })?;
+        Ok(snap)
     })
     .await
 }
@@ -204,16 +221,18 @@ pub async fn open_project(app: AppHandle, path: String) -> Result<WikiSnapshot, 
 #[tauri::command]
 pub async fn list_recent(app: AppHandle) -> Result<Vec<RecentProject>, String> {
     blocking(move || {
-        let list = read_recents(&app)?;
-        let kept: Vec<RecentProject> = list
-            .iter()
-            .filter(|r| Path::new(&r.path).is_dir())
-            .cloned()
-            .collect();
-        if kept.len() != list.len() {
-            write_recents(&app, &kept)?;
-        }
-        Ok(kept)
+        with_recents_lock(&app, || {
+            let list = read_recents(&app)?;
+            let kept: Vec<RecentProject> = list
+                .iter()
+                .filter(|r| Path::new(&r.path).is_dir())
+                .cloned()
+                .collect();
+            if kept.len() != list.len() {
+                write_recents(&app, &kept)?;
+            }
+            Ok(kept)
+        })
     })
     .await
 }
@@ -221,9 +240,15 @@ pub async fn list_recent(app: AppHandle) -> Result<Vec<RecentProject>, String> {
 #[tauri::command]
 pub async fn remove_recent(app: AppHandle, path: String) -> Result<(), String> {
     blocking(move || {
-        let mut list = read_recents(&app)?;
-        list.retain(|r| r.path != path);
-        write_recents(&app, &list)
+        with_recents_lock(&app, || {
+            let mut list = read_recents(&app)?;
+            let before = list.len();
+            list.retain(|r| r.path != path);
+            if list.len() != before {
+                write_recents(&app, &list)?;
+            }
+            Ok(())
+        })
     })
     .await
 }
