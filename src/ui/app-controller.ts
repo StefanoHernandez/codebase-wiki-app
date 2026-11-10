@@ -89,7 +89,7 @@ export class AppController {
 
   // Filter state
   private filterOptions: GraphFilterOptions = {
-    includeCodeSources: true,
+    includeCodeSources: false,
     onlyDriftOrErrors: false,
     searchQuery: '',
     localGraphHops: undefined,
@@ -306,14 +306,15 @@ export class AppController {
       }
 
       const budgetLimit = this.schemaConfig?.budgets.coreReadBytes || 60000;
-      const pct = Math.min(100, Math.round((coreBytes / budgetLimit) * 100));
+      const rawPct = Math.round((coreBytes / budgetLimit) * 100);
+      const barWidth = Math.min(100, rawPct);
       const kbUsed = (coreBytes / 1024).toFixed(1);
       const kbLimit = (budgetLimit / 1024).toFixed(1);
 
-      budgetBarFill.style.width = `${pct}%`;
+      budgetBarFill.style.width = `${barWidth}%`;
       budgetBarFill.className =
-        pct > 100 ? 'progress-fill over-budget' : 'progress-fill under-budget';
-      budgetText.textContent = `${kbUsed} KB / ${kbLimit} KB (${pct}%)`;
+        coreBytes > budgetLimit ? 'progress-fill over-budget' : 'progress-fill under-budget';
+      budgetText.textContent = `${kbUsed} KB / ${kbLimit} KB (${rawPct}%)`;
     }
 
     // Core Map Pages list
@@ -353,9 +354,14 @@ export class AppController {
     const decisionsList = document.getElementById('decisions-list');
     if (decisionsList) {
       decisionsList.innerHTML = '';
-      const decisionPages = this.snapshot.pages.filter(
-        (p) => p.wiki_rel_path.startsWith('project/decisions/') || p.wiki_rel_path.startsWith('decisions/')
-      );
+      const schemaPrefix = (this.schemaConfig?.coreMap['decisions'] || 'project/decisions/').replace(/\/?$/, '/');
+      const isDecisionPage = (p: WikiPageEntry) =>
+        p.wiki_rel_path.startsWith(schemaPrefix) ||
+        p.wiki_rel_path.startsWith('project/decisions/') ||
+        p.wiki_rel_path.startsWith('decisions/') ||
+        p.wiki_rel_path.startsWith('adr/');
+
+      const decisionPages = this.snapshot.pages.filter(isDecisionPage);
 
       for (const dp of decisionPages) {
         const fm = parseFrontmatter(dp.content);
@@ -862,9 +868,14 @@ export class AppController {
     if (!grid) return;
     grid.innerHTML = '';
 
-    const decisions = this.snapshot.pages.filter(
-      (p) => p.wiki_rel_path.startsWith('project/decisions/') || p.wiki_rel_path.startsWith('decisions/')
-    );
+    const schemaPrefix = (this.schemaConfig?.coreMap['decisions'] || 'project/decisions/').replace(/\/?$/, '/');
+    const isDecisionPage = (p: WikiPageEntry) =>
+      p.wiki_rel_path.startsWith(schemaPrefix) ||
+      p.wiki_rel_path.startsWith('project/decisions/') ||
+      p.wiki_rel_path.startsWith('decisions/') ||
+      p.wiki_rel_path.startsWith('adr/');
+
+    const decisions = this.snapshot.pages.filter(isDecisionPage);
 
     for (const d of decisions) {
       const fm = parseFrontmatter(d.content);
@@ -1263,6 +1274,32 @@ export class AppController {
       if (this.folderCurrentPath) {
         this.openRepoPath(this.folderCurrentPath);
       }
+    });
+
+    // Maximize graph toggle
+    const maxGraphBtn = document.getElementById('btn-maximize-graph');
+    const workbenchTab = document.getElementById('tab-workbench');
+    if (maxGraphBtn && workbenchTab) {
+      maxGraphBtn.addEventListener('click', () => {
+        const isMax = workbenchTab.classList.toggle('graph-maximized');
+        maxGraphBtn.textContent = isMax ? '🗗 Collapse Graph' : '⛶ Expand Graph';
+        this.graphCanvas?.resizeCanvas();
+        this.graphCanvas?.fitToView();
+      });
+    }
+
+    // Editor mode buttons
+    const editorBody = document.querySelector('.editor-body');
+    document.querySelectorAll('.editor-mode-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const mode = btn.getAttribute('data-mode');
+        document.querySelectorAll('.editor-mode-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        if (editorBody) {
+          editorBody.classList.remove('mode-preview', 'mode-edit', 'mode-split');
+          editorBody.classList.add(`mode-${mode}`);
+        }
+      });
     });
 
     // Tabs

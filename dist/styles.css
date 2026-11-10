@@ -417,8 +417,19 @@ html, body {
   display: flex;
 }
 
+#tab-workbench.graph-maximized #editor-container {
+  display: none !important;
+}
+
+#tab-workbench.graph-maximized #graph-container {
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  border-right: none;
+}
+
 #graph-container {
-  flex: 1;
+  flex: 1.6;
+  min-width: 0;
   position: relative;
   background-color: #0f1015;
   border-right: 1px solid var(--border-color);
@@ -490,7 +501,8 @@ html, body {
 
 /* Editor Container */
 #editor-container {
-  width: 48%;
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background-color: var(--bg-primary);
@@ -521,6 +533,37 @@ html, body {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.editor-mode-group {
+  display: flex;
+  align-items: center;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-right: 4px;
+}
+
+.editor-mode-btn {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--text-muted);
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.editor-mode-btn:hover {
+  color: var(--text-primary);
+}
+
+.editor-mode-btn.active {
+  background-color: var(--bg-tertiary);
+  color: #fff;
+  font-weight: 600;
 }
 
 /* Frontmatter Inspector */
@@ -587,6 +630,33 @@ html, body {
   display: flex;
   flex: 1;
   overflow: hidden;
+}
+
+.editor-body.mode-preview #editor-textarea {
+  display: none;
+}
+.editor-body.mode-preview #editor-preview {
+  flex: 1;
+  width: 100%;
+}
+
+.editor-body.mode-edit #editor-preview {
+  display: none;
+}
+.editor-body.mode-edit #editor-textarea {
+  flex: 1;
+  width: 100%;
+  border-right: none;
+}
+
+.editor-body.mode-split #editor-textarea {
+  flex: 1;
+  display: block;
+  border-right: 1px solid var(--border-color);
+}
+.editor-body.mode-split #editor-preview {
+  flex: 1;
+  display: block;
 }
 
 #editor-textarea {

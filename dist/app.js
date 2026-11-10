@@ -2045,9 +2045,7 @@ class GraphCanvas {
       existingPositions.set(n.id, { x: n.x, y: n.y, vx: n.vx, vy: n.vy });
     }
 
-    const rect = this.canvas.getBoundingClientRect();
-    const width = rect.width || 600;
-    const height = rect.height || 400;
+    const isNewLayout = existingPositions.size === 0;
 
     this.nodes = rawNodes.map((n, idx) => {
       const existing = existingPositions.get(n.id);
@@ -2077,8 +2075,9 @@ class GraphCanvas {
         };
       }
 
-      const angle = (idx / Math.max(1, rawNodes.length)) * 2 * Math.PI;
-      const dist = 50 + Math.random() * Math.min(width, height) * 0.35;
+      // Golden-angle spiral initialization for new nodes
+      const angle = idx * 2.39996;
+      const dist = 28 * Math.sqrt(idx + 1);
       return {
         ...n,
         x: Math.cos(angle) * dist,
@@ -2107,7 +2106,18 @@ class GraphCanvas {
       }
     }
 
-    this.alpha = 1.0;
+    if (isNewLayout && this.nodes.length > 0) {
+      // Synchronous pre-warm pass (100 ticks decaying alpha)
+      for (let tick = 0; tick < 100; tick++) {
+        this.alpha = 1.0 - (tick / 100) * 0.75;
+        this.stepSimulation();
+      }
+      this.alpha = 0.25;
+      this.fitToView();
+    } else {
+      this.alpha = 1.0;
+    }
+
     this.startSimulation();
   }
 
@@ -2116,14 +2126,46 @@ class GraphCanvas {
     this.requestRender();
   }
 
-         resetView()       {
+         fitToView()       {
     const rect = this.canvas.getBoundingClientRect();
     const width = rect.width || 600;
     const height = rect.height || 400;
-    this.zoom = 1.0;
-    this.panX = width / 2;
-    this.panY = height / 2;
+
+    if (this.nodes.length === 0) {
+      this.zoom = 1.0;
+      this.panX = width / 2;
+      this.panY = height / 2;
+      this.requestRender();
+      return;
+    }
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    for (const n of this.nodes) {
+      if (n.x - n.radius < minX) minX = n.x - n.radius;
+      if (n.x + n.radius > maxX) maxX = n.x + n.radius;
+      if (n.y - n.radius < minY) minY = n.y - n.radius;
+      if (n.y + n.radius > maxY) maxY = n.y + n.radius;
+    }
+
+    const boxWidth = Math.max(20, (maxX - minX) + 80);
+    const boxHeight = Math.max(20, (maxY - minY) + 80);
+
+    const scaleX = (width - 80) / boxWidth;
+    const scaleY = (height - 80) / boxHeight;
+
+    this.zoom = Math.max(0.25, Math.min(1.5, Math.min(scaleX, scaleY)));
+    this.panX = width / 2 - ((minX + maxX) / 2) * this.zoom;
+    this.panY = height / 2 - ((minY + maxY) / 2) * this.zoom;
+
     this.requestRender();
+  }
+
+         resetView()       {
+    this.fitToView();
   }
 
          zoomIn()       {
@@ -2172,10 +2214,9 @@ class GraphCanvas {
   }
 
           stepSimulation()       {
-    const repulsionStrength = 750;
-    const springStrength = 0.045;
-    const idealSpringLength = 65;
-    const centerStrength = 0.015;
+    const repulsionStrength = 2600;
+    const springStrength = 0.035;
+    const centerStrength = 0.0035;
     const damping = 0.82;
 
     // Node repulsion (n-body)
@@ -2211,6 +2252,7 @@ class GraphCanvas {
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const idealSpringLength = e.kind === 'source-link' ? 95 : 140;
       const displacement = dist - idealSpringLength;
       const force = displacement * springStrength * this.alpha;
       const fx = (dx / dist) * force;
@@ -2237,6 +2279,31 @@ class GraphCanvas {
 
         n.x += n.vx;
         n.y += n.vy;
+      }
+    }
+
+    // Hard collision resolution pass to eliminate node overlap
+    for (let i = 0; i < this.nodes.length; i++) {
+      const a = this.nodes[i];
+      for (let j = i + 1; j < this.nodes.length; j++) {
+        const b = this.nodes[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const minDist = a.radius + b.radius + 16;
+        if (dist < minDist && dist > 0.001) {
+          const overlap = (minDist - dist) * 0.5;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          if (!a.pinned && a !== this.draggedNode) {
+            a.x -= nx * overlap;
+            a.y -= ny * overlap;
+          }
+          if (!b.pinned && b !== this.draggedNode) {
+            b.x += nx * overlap;
+            b.y += ny * overlap;
+          }
+        }
       }
     }
   }
@@ -2355,27 +2422,253 @@ class GraphCanvas {
       this.ctx.lineWidth = 1.0 / this.zoom;
       this.ctx.stroke();
 
-      // Text Label
-      const showLabel =
-        this.zoom > 0.65 ||
-        isHovered ||
-        isSelected ||
-        n.category === 'core' ||
-        n.degree >= 3;
+      this.ctx.restore();
+    }
 
-      if (showLabel) {
-        const fontSize = Math.max(10, Math.min(13, 11 / Math.sqrt(this.zoom)));
-        this.ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-        this.ctx.fillStyle = isHovered || isSelected ? '#ffffff' : '#cbd5e1';
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'top';
-        this.ctx.fillText(n.label, n.x, n.y + n.radius + 3);
+    // 3. Draw Labels with Strict Collision Culling (Zero Overlap!)
+    const labelCandidates = [...this.nodes].sort((a, b) => {
+      if (a === this.hoveredNode) return -1;
+      if (b === this.hoveredNode) return 1;
+      if (a.id === this.selectedNodeId) return -1;
+      if (b.id === this.selectedNodeId) return 1;
+      const aIsHoverNeighbor = hoverId ? hoverNeighborIds.has(a.id) : false;
+      const bIsHoverNeighbor = hoverId ? hoverNeighborIds.has(b.id) : false;
+      if (aIsHoverNeighbor && !bIsHoverNeighbor) return -1;
+      if (!aIsHoverNeighbor && bIsHoverNeighbor) return 1;
+      const aIsImportant = a.category === 'core' || a.category === 'agent' || a.category === 'tracker';
+      const bIsImportant = b.category === 'core' || b.category === 'agent' || b.category === 'tracker';
+      if (aIsImportant && !bIsImportant) return -1;
+      if (!aIsImportant && bIsImportant) return 1;
+      return b.degree - a.degree;
+    });
+
+    const placedLabelBoxes                                                            = [];
+
+    for (const n of labelCandidates) {
+      const isSelected = n.id === this.selectedNodeId;
+      const isHovered = n === this.hoveredNode;
+      const isNeighbor = hoverId ? hoverNeighborIds.has(n.id) : false;
+
+      let allowLabel = false;
+      if (hoverId) {
+        allowLabel = isHovered || isNeighbor || isSelected;
+      } else {
+        allowLabel =
+          isSelected ||
+          n.category === 'core' ||
+          n.category === 'agent' ||
+          n.category === 'tracker' ||
+          n.category === 'decision' ||
+          n.degree >= 2 ||
+          this.zoom >= 1.35;
+      }
+
+      if (!allowLabel) continue;
+
+      const shortLabel = this.getShortLabel(n);
+      const fontSize = Math.max(10, Math.min(13, 11 / Math.sqrt(this.zoom)));
+      this.ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+
+      const textWidthWorld = this.ctx.measureText(shortLabel).width;
+      const screenX = n.x * this.zoom + this.panX;
+      const screenY = (n.y + n.radius + 3) * this.zoom + this.panY;
+      const textWidthScreen = textWidthWorld * this.zoom;
+      const textHeightScreen = (fontSize + 3) * this.zoom;
+
+      const box = {
+        x1: screenX - textWidthScreen / 2 - 4,
+        y1: screenY - 2,
+        x2: screenX + textWidthScreen / 2 + 4,
+        y2: screenY + textHeightScreen + 2,
+      };
+
+      if (!isHovered) {
+        let collides = false;
+        for (const existing of placedLabelBoxes) {
+          if (
+            box.x1 < existing.x2 &&
+            box.x2 > existing.x1 &&
+            box.y1 < existing.y2 &&
+            box.y2 > existing.y1
+          ) {
+            collides = true;
+            break;
+          }
+        }
+        if (collides) continue;
+      }
+
+      placedLabelBoxes.push(box);
+
+      // Draw dark pill behind text in world space
+      this.ctx.save();
+      const padX = 4 / this.zoom;
+      const padY = 2 / this.zoom;
+      const textWorldY = n.y + n.radius + 3;
+      const hWorld = (fontSize + 2) / this.zoom;
+
+      this.ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+      this.ctx.beginPath();
+      if (typeof this.ctx.roundRect === 'function') {
+        this.ctx.roundRect(
+          n.x - textWidthWorld / 2 - padX,
+          textWorldY - padY,
+          textWidthWorld + padX * 2,
+          hWorld + padY,
+          3 / this.zoom
+        );
+      } else {
+        this.ctx.rect(
+          n.x - textWidthWorld / 2 - padX,
+          textWorldY - padY,
+          textWidthWorld + padX * 2,
+          hWorld + padY
+        );
+      }
+      this.ctx.fill();
+
+      this.ctx.fillStyle = isHovered || isSelected ? '#ffffff' : '#cbd5e1';
+      this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'top';
+      this.ctx.fillText(shortLabel, n.x, textWorldY);
+      this.ctx.restore();
+    }
+
+    this.ctx.restore(); // Transform view restored back to screen coordinates
+
+    // 4. Draw Hover Tooltip Card in screen space
+    if (this.hoveredNode) {
+      const n = this.hoveredNode;
+      const tooltipX = 14;
+      const tooltipY = 48;
+      const cardWidth = Math.min(290, width - 28);
+      const cardHeight = 84;
+
+      this.ctx.save();
+      this.ctx.fillStyle = 'rgba(26, 27, 35, 0.94)';
+      this.ctx.strokeStyle = 'rgba(99, 102, 241, 0.45)';
+      this.ctx.lineWidth = 1;
+
+      if (typeof this.ctx.roundRect === 'function') {
+        this.ctx.beginPath();
+        this.ctx.roundRect(tooltipX, tooltipY, cardWidth, cardHeight, 6);
+        this.ctx.fill();
+        this.ctx.stroke();
+      } else {
+        this.ctx.fillRect(tooltipX, tooltipY, cardWidth, cardHeight);
+        this.ctx.strokeRect(tooltipX, tooltipY, cardWidth, cardHeight);
+      }
+
+      const title = n.title || n.label;
+      const pathText = n.path;
+      const roleText = n.role ? `${n.category} (${n.role})` : n.category;
+      const degreeText = `${n.degree} link${n.degree === 1 ? '' : 's'}`;
+
+      this.ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.textAlign = 'left';
+      this.ctx.textBaseline = 'top';
+      this.ctx.fillText(title.length > 34 ? title.slice(0, 33) + '…' : title, tooltipX + 10, tooltipY + 8);
+
+      this.ctx.font = '11px ui-monospace, monospace';
+      this.ctx.fillStyle = '#94a3b8';
+      this.ctx.fillText(pathText.length > 36 ? pathText.slice(0, 35) + '…' : pathText, tooltipX + 10, tooltipY + 26);
+
+      this.ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      this.ctx.fillStyle = '#cbd5e1';
+      this.ctx.fillText(`${roleText} • ${degreeText}`, tooltipX + 10, tooltipY + 44);
+
+      if (n.hasDrift || n.hasLintError) {
+        let badgeX = tooltipX + 10;
+        if (n.hasDrift) {
+          this.ctx.fillStyle = '#f97316';
+          this.ctx.fillText('🟠 Drift', badgeX, tooltipY + 62);
+          badgeX += 60;
+        }
+        if (n.hasLintError) {
+          this.ctx.fillStyle = '#ef4444';
+          this.ctx.fillText('🔴 Lint Finding', badgeX, tooltipY + 62);
+        }
+      } else {
+        this.ctx.fillStyle = '#10b981';
+        this.ctx.fillText('🟢 Synchronized', tooltipX + 10, tooltipY + 62);
       }
 
       this.ctx.restore();
     }
 
+    // 5. Draw Color Legend in screen space (bottom-left)
+    const legendX = 14;
+    const legendHeight = 24;
+    const legendY = height - legendHeight - 12;
+
+    this.ctx.save();
+    this.ctx.fillStyle = 'rgba(26, 27, 35, 0.88)';
+    this.ctx.strokeStyle = 'rgba(46, 49, 66, 0.8)';
+    this.ctx.lineWidth = 1;
+
+    const legendItems = [
+      { label: 'Core', color: '#3b82f6', ring: false },
+      { label: 'Topic', color: '#38bdf8', ring: false },
+      { label: 'Decision', color: '#fbbf24', ring: false },
+      { label: 'Tracker', color: '#10b981', ring: false },
+      { label: 'Agent', color: '#6366f1', ring: false },
+      { label: 'Source', color: '#64748b', ring: false },
+      { label: 'Drift', color: '#f97316', ring: true },
+      { label: 'Lint', color: '#ef4444', ring: true },
+    ];
+
+    let totalLegendWidth = 12;
+    this.ctx.font = '10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    for (const item of legendItems) {
+      totalLegendWidth += 12 + this.ctx.measureText(item.label).width + 8;
+    }
+
+    if (typeof this.ctx.roundRect === 'function') {
+      this.ctx.beginPath();
+      this.ctx.roundRect(legendX, legendY, totalLegendWidth, legendHeight, 5);
+      this.ctx.fill();
+      this.ctx.stroke();
+    } else {
+      this.ctx.fillRect(legendX, legendY, totalLegendWidth, legendHeight);
+      this.ctx.strokeRect(legendX, legendY, totalLegendWidth, legendHeight);
+    }
+
+    let itemX = legendX + 8;
+    const itemCenterY = legendY + legendHeight / 2;
+
+    for (const item of legendItems) {
+      this.ctx.beginPath();
+      this.ctx.arc(itemX + 4, itemCenterY, 3.5, 0, 2 * Math.PI);
+      if (item.ring) {
+        this.ctx.strokeStyle = item.color;
+        this.ctx.lineWidth = 2;
+        this.ctx.stroke();
+      } else {
+        this.ctx.fillStyle = item.color;
+        this.ctx.fill();
+      }
+
+      this.ctx.fillStyle = '#94a3b8';
+      this.ctx.textAlign = 'left';
+      this.ctx.textBaseline = 'middle';
+      this.ctx.fillText(item.label, itemX + 11, itemCenterY);
+      itemX += 12 + this.ctx.measureText(item.label).width + 8;
+    }
+
     this.ctx.restore();
+  }
+
+          getShortLabel(n         )         {
+    let text = n.label || '';
+    if (text.includes('/')) {
+      text = text.split('/').filter(Boolean).pop() || text;
+    }
+    const isHighlighted = n === this.hoveredNode || n.id === this.selectedNodeId;
+    if (!isHighlighted && text.length > 24) {
+      text = text.slice(0, 23) + '…';
+    }
+    return text;
   }
 
           getNodeColor(n         )         {
@@ -2633,7 +2926,7 @@ class AppController {
 
   // Filter state
           filterOptions                     = {
-    includeCodeSources: true,
+    includeCodeSources: false,
     onlyDriftOrErrors: false,
     searchQuery: '',
     localGraphHops: undefined,
@@ -2850,14 +3143,15 @@ class AppController {
       }
 
       const budgetLimit = this.schemaConfig?.budgets.coreReadBytes || 60000;
-      const pct = Math.min(100, Math.round((coreBytes / budgetLimit) * 100));
+      const rawPct = Math.round((coreBytes / budgetLimit) * 100);
+      const barWidth = Math.min(100, rawPct);
       const kbUsed = (coreBytes / 1024).toFixed(1);
       const kbLimit = (budgetLimit / 1024).toFixed(1);
 
-      budgetBarFill.style.width = `${pct}%`;
+      budgetBarFill.style.width = `${barWidth}%`;
       budgetBarFill.className =
-        pct > 100 ? 'progress-fill over-budget' : 'progress-fill under-budget';
-      budgetText.textContent = `${kbUsed} KB / ${kbLimit} KB (${pct}%)`;
+        coreBytes > budgetLimit ? 'progress-fill over-budget' : 'progress-fill under-budget';
+      budgetText.textContent = `${kbUsed} KB / ${kbLimit} KB (${rawPct}%)`;
     }
 
     // Core Map Pages list
@@ -2897,9 +3191,14 @@ class AppController {
     const decisionsList = document.getElementById('decisions-list');
     if (decisionsList) {
       decisionsList.innerHTML = '';
-      const decisionPages = this.snapshot.pages.filter(
-        (p) => p.wiki_rel_path.startsWith('project/decisions/') || p.wiki_rel_path.startsWith('decisions/')
-      );
+      const schemaPrefix = (this.schemaConfig?.coreMap['decisions'] || 'project/decisions/').replace(/\/?$/, '/');
+      const isDecisionPage = (p               ) =>
+        p.wiki_rel_path.startsWith(schemaPrefix) ||
+        p.wiki_rel_path.startsWith('project/decisions/') ||
+        p.wiki_rel_path.startsWith('decisions/') ||
+        p.wiki_rel_path.startsWith('adr/');
+
+      const decisionPages = this.snapshot.pages.filter(isDecisionPage);
 
       for (const dp of decisionPages) {
         const fm = parseFrontmatter(dp.content);
@@ -3406,9 +3705,14 @@ class AppController {
     if (!grid) return;
     grid.innerHTML = '';
 
-    const decisions = this.snapshot.pages.filter(
-      (p) => p.wiki_rel_path.startsWith('project/decisions/') || p.wiki_rel_path.startsWith('decisions/')
-    );
+    const schemaPrefix = (this.schemaConfig?.coreMap['decisions'] || 'project/decisions/').replace(/\/?$/, '/');
+    const isDecisionPage = (p               ) =>
+      p.wiki_rel_path.startsWith(schemaPrefix) ||
+      p.wiki_rel_path.startsWith('project/decisions/') ||
+      p.wiki_rel_path.startsWith('decisions/') ||
+      p.wiki_rel_path.startsWith('adr/');
+
+    const decisions = this.snapshot.pages.filter(isDecisionPage);
 
     for (const d of decisions) {
       const fm = parseFrontmatter(d.content);
@@ -3807,6 +4111,32 @@ class AppController {
       if (this.folderCurrentPath) {
         this.openRepoPath(this.folderCurrentPath);
       }
+    });
+
+    // Maximize graph toggle
+    const maxGraphBtn = document.getElementById('btn-maximize-graph');
+    const workbenchTab = document.getElementById('tab-workbench');
+    if (maxGraphBtn && workbenchTab) {
+      maxGraphBtn.addEventListener('click', () => {
+        const isMax = workbenchTab.classList.toggle('graph-maximized');
+        maxGraphBtn.textContent = isMax ? '🗗 Collapse Graph' : '⛶ Expand Graph';
+        this.graphCanvas?.resizeCanvas();
+        this.graphCanvas?.fitToView();
+      });
+    }
+
+    // Editor mode buttons
+    const editorBody = document.querySelector('.editor-body');
+    document.querySelectorAll('.editor-mode-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const mode = btn.getAttribute('data-mode');
+        document.querySelectorAll('.editor-mode-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        if (editorBody) {
+          editorBody.classList.remove('mode-preview', 'mode-edit', 'mode-split');
+          editorBody.classList.add(`mode-${mode}`);
+        }
+      });
     });
 
     // Tabs

@@ -311,6 +311,8 @@ source_commit: ${currentSha}
     assert.ok(htmlBody.includes('id="graph-canvas"'));
     assert.ok(htmlBody.includes('id="repo-browse-btn"'));
     assert.ok(htmlBody.includes('id="folder-browser-modal"'));
+    assert.ok(htmlBody.includes('id="btn-maximize-graph"'));
+    assert.ok(htmlBody.includes('editor-mode-group'));
 
     // 5b. GET /app.js
     const jsRes = await fetch(`${baseUrl}/app.js`);

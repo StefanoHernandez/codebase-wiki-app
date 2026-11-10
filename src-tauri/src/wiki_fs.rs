@@ -271,10 +271,9 @@ pub fn collect_repo_files_recursive(
         let path = entry.path();
         if let Some(file_name) = path.file_name() {
             let name_str = file_name.to_string_lossy();
-            if name_str == ".git"
+            if name_str.starts_with('.')
                 || name_str == "node_modules"
                 || name_str == "target"
-                || name_str == ".private-terms"
             {
                 continue;
             }
