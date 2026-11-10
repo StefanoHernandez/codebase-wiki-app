@@ -1,0 +1,175 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { parseFrontmatter, updateFrontmatterFields, extractMarkdownLinks } from '../src/lib/frontmatter.ts';
+import { parseSchemaMarkdown, DEFAULT_CORE_MAP } from '../src/lib/schema-parser.ts';
+
+test('parseFrontmatter handles UTF-8 BOM, CRLF, scalar fields, and indented sources list', () => {
+  const raw = '\uFEFF---\r\ntype: Module\r\ntitle: "Auth Service"\r\ngenerated: { by: codex/gpt-5, at: 2026-11-10T09:00:00Z }\r\nsources:\r\n  - src/auth.ts\r\n  - "src/session.ts"\r\nsource_commit: a1b2c3d\r\nconfidence: high\r\n---\r\n\r\n# Auth Service\r\nBody text.';
+  const parsed = parseFrontmatter(raw);
+  assert.equal(parsed.hasFrontmatter, true);
+  assert.equal(parsed.fields.type, 'Module');
+  assert.equal(parsed.fields.title, 'Auth Service');
+  assert.deepEqual(parsed.sources, ['src/auth.ts', 'src/session.ts']);
+  assert.equal(parsed.fields.source_commit, 'a1b2c3d');
+  assert.equal(parsed.fields.confidence, 'high');
+  assert.match(parsed.body, /# Auth Service/);
+});
+
+test('parseFrontmatter handles missing or unterminated frontmatter', () => {
+  const noFrontmatter = '# Just a Title\nSome content without frontmatter';
+  const parsed1 = parseFrontmatter(noFrontmatter);
+  assert.equal(parsed1.hasFrontmatter, false);
+  assert.deepEqual(parsed1.fields, {});
+  assert.deepEqual(parsed1.sources, []);
+  assert.equal(parsed1.body, noFrontmatter);
+
+  const unterminated = '---\ntype: Note\ntitle: Unterminated\n# Not closed';
+  const parsed2 = parseFrontmatter(unterminated);
+  assert.equal(parsed2.hasFrontmatter, false);
+  assert.deepEqual(parsed2.fields, {});
+  assert.deepEqual(parsed2.sources, []);
+  assert.equal(parsed2.body, unterminated);
+});
+
+test('updateFrontmatterFields updates scalar fields and preserves sources and body', () => {
+  const raw = '---\ntype: Decision\ntitle: 0001 - Stack\nstatus: proposed\nsources:\n  - README.md\nsource_commit: 1234567\nconfidence: high\n---\n\n# 0001 - Stack\n';
+  const updated = updateFrontmatterFields(raw, { status: 'accepted', source_commit: '89abcdef' });
+  const reparsed = parseFrontmatter(updated);
+  assert.equal(reparsed.fields.status, 'accepted');
+  assert.equal(reparsed.fields.source_commit, '89abcdef');
+  assert.deepEqual(reparsed.sources, ['README.md']);
+  assert.match(reparsed.body, /# 0001 - Stack/);
+});
+
+test('updateFrontmatterFields can update sources or create frontmatter if missing', () => {
+  const raw = '---\ntitle: Note\n---\n\nContent';
+  const updated = updateFrontmatterFields(raw, { confidence: 'medium' }, ['src/index.ts', 'src/utils.ts']);
+  const reparsed = parseFrontmatter(updated);
+  assert.equal(reparsed.fields.title, 'Note');
+  assert.equal(reparsed.fields.confidence, 'medium');
+  assert.deepEqual(reparsed.sources, ['src/index.ts', 'src/utils.ts']);
+  assert.match(reparsed.body, /Content/);
+
+  const rawNoFm = '# Heading\nParagraph';
+  const added = updateFrontmatterFields(rawNoFm, { title: 'Heading', confidence: 'low' }, ['src/a.ts']);
+  const reparsedAdded = parseFrontmatter(added);
+  assert.equal(reparsedAdded.hasFrontmatter, true);
+  assert.equal(reparsedAdded.fields.title, 'Heading');
+  assert.equal(reparsedAdded.fields.confidence, 'low');
+  assert.deepEqual(reparsedAdded.sources, ['src/a.ts']);
+  assert.match(reparsedAdded.body, /# Heading\nParagraph/);
+});
+
+test('extractMarkdownLinks ignores fenced code blocks, inline code, and external URLs', () => {
+  const md = [
+    'See [Tracker](project/work-tracker.md#open) and [Arch](./architecture.md "Title").',
+    'Ignore `[inline](ignored.md)` and [ext](https://example.com/a.md).',
+    '```markdown',
+    '[fenced](should-ignore.md)',
+    '```',
+    '~~~',
+    '[fenced-tilde](should-ignore-tilde.md)',
+    '~~~',
+    '[ref]: agent/handoff.md'
+  ].join('\n');
+  const links = extractMarkdownLinks(md);
+  assert.deepEqual(links, ['project/work-tracker.md', './architecture.md', 'agent/handoff.md']);
+});
+
+test('parseSchemaMarkdown parses Project profile, Core map, Budgets, Topics, and Excluded paths', () => {
+  const schemaMd = `---
+type: Schema
+title: Wiki Schema
+confidence: high
+---
+# Wiki Schema
+
+## Project profile
+| Setting | Value |
+| --- | --- |
+| Language | Italian |
+| Project division | releases |
+| Sensitive data | yes |
+| Agent entry file | AGENTS.md |
+
+## Core map
+| Role | Path |
+| --- | --- |
+| index | \`index.md\` |
+| log | \`log.md\` |
+| log-archive | \`log/\` |
+| tracker | \`project/work-tracker.md\` |
+| decisions | \`project/decisions/\` |
+| risks | \`project/risks.md\` |
+| context | \`agent/context.md\` |
+| handoff | \`agent/handoff.md\` |
+| troubleshooting | \`troubleshooting.md\` |
+| glossary | \`glossary.md\` |
+
+## Budgets
+| Budget | Default |
+| --- | --- |
+| Single page | 25 KB |
+| Core read at a new context | 70 KB |
+| log | 35 KB |
+
+## Topics
+| Topic | Path | What belongs there |
+| --- | --- | --- |
+| architecture | \`architecture.md\` | system boundaries |
+
+## Excluded paths
+- \`reports/**\`
+`;
+  const config = parseSchemaMarkdown(schemaMd);
+  assert.equal(config.language, 'Italian');
+  assert.equal(config.projectDivision, 'releases');
+  assert.equal(config.sensitiveData, true);
+  assert.equal(config.agentEntryFile, 'AGENTS.md');
+  assert.equal(config.coreMap.tracker, 'project/work-tracker.md');
+  assert.equal(config.coreMap.decisions, 'project/decisions/');
+  assert.equal(config.budgets.singlePageBytes, 25 * 1024);
+  assert.equal(config.budgets.coreReadBytes, 70 * 1024);
+  assert.equal(config.budgets.logBytes, 35 * 1024);
+  assert.equal(config.topics.length, 1);
+  assert.equal(config.topics[0].name, 'architecture');
+  assert.equal(config.topics[0].path, 'architecture.md');
+  assert.deepEqual(config.excludedGlobs, ['reports/**']);
+});
+
+test('parseSchemaMarkdown applies default fallback values when sections are missing', () => {
+  const minimalSchema = `# Empty Schema`;
+  const config = parseSchemaMarkdown(minimalSchema);
+  assert.equal(config.language, 'English');
+  assert.equal(config.projectDivision, 'none');
+  assert.equal(config.sensitiveData, false);
+  assert.equal(config.agentEntryFile, 'none');
+  assert.deepEqual(config.coreMap, DEFAULT_CORE_MAP);
+  assert.equal(config.budgets.singlePageBytes, 20 * 1024);
+  assert.equal(config.budgets.coreReadBytes, 60 * 1024);
+  assert.equal(config.budgets.logBytes, 30 * 1024);
+  assert.deepEqual(config.topics, []);
+  assert.deepEqual(config.excludedGlobs, []);
+});
+
+test('parseSchemaMarkdown parses actual resources/default-schema.md file', () => {
+  const filePath = path.resolve(import.meta.dirname, '../resources/default-schema.md');
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const config = parseSchemaMarkdown(content);
+  assert.equal(config.language, 'English');
+  assert.equal(config.projectDivision, 'none');
+  assert.equal(config.sensitiveData, false);
+  assert.equal(config.agentEntryFile, 'none');
+  assert.equal(config.coreMap.index, 'index.md');
+  assert.equal(config.coreMap.log, 'log.md');
+  assert.equal(config.coreMap.tracker, 'project/work-tracker.md');
+  assert.equal(config.coreMap.decisions, 'project/decisions/');
+  assert.equal(config.budgets.singlePageBytes, 20 * 1024);
+  assert.equal(config.budgets.coreReadBytes, 60 * 1024);
+  assert.equal(config.budgets.logBytes, 30 * 1024);
+  assert.equal(config.topics.length, 1);
+  assert.equal(config.topics[0].name, 'architecture');
+  assert.equal(config.topics[0].path, 'architecture.md');
+});

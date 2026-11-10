@@ -1,0 +1,19 @@
+{
+  "name": "codebase-wiki-app",
+  "version": "0.1.0",
+  "description": "Cross-platform desktop application for Codebase Wiki LLM",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.ts tests/**/*.test.ts"
+  },
+  "keywords": [
+    "codebase-wiki",
+    "tauri",
+    "desktop",
+    "llm",
+    "documentation"
+  ],
+  "author": "",
+  "license": "MIT"
+}
