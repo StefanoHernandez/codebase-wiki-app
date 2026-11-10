@@ -12,9 +12,9 @@ pub struct WatchHandle {
 }
 
 /// Recursively watches `repo`, debounced to ~300 ms, and calls `on_change` with
-/// the sorted repo-relative (`/`-separated) paths that changed. Paths with a
-/// `.git`, `target` or `node_modules` component are ignored; a batch made only
-/// of ignored paths produces no call.
+/// the sorted repo-relative (`/`-separated) paths that changed. Paths whose
+/// first component is `.git`, `target` or `node_modules` are ignored; a batch made
+/// only of ignored paths produces no call.
 pub fn watch_repo(
     repo: &Path,
     on_change: impl Fn(Vec<String>) + Send + 'static,
@@ -24,7 +24,13 @@ pub fn watch_repo(
         .map_err(|e| format!("Cannot watch {}: {}", repo.display(), e))?;
     let base = root.clone();
     let mut debouncer = new_debouncer(Duration::from_millis(300), move |res: DebounceEventResult| {
-        let Ok(events) = res else { return };
+        let events = match res {
+            Ok(events) => events,
+            Err(e) => {
+                eprintln!("wiki watcher error: {e}");
+                return;
+            }
+        };
         let mut paths: Vec<String> = events
             .iter()
             .filter_map(|e| relative_path(&base, &e.path))
@@ -45,11 +51,13 @@ pub fn watch_repo(
 
 fn relative_path(root: &Path, path: &Path) -> Option<String> {
     let rel = path.strip_prefix(root).ok()?;
-    if rel.as_os_str().is_empty()
-        || rel
-            .components()
-            .any(|c| IGNORED_DIRS.iter().any(|d| c.as_os_str() == *d))
-    {
+    if rel.as_os_str().is_empty() {
+        return None;
+    }
+    let first_ignored = rel.components().next().is_some_and(|c| {
+        IGNORED_DIRS.iter().any(|d| c.as_os_str() == *d)
+    });
+    if first_ignored {
         return None;
     }
     Some(rel.to_string_lossy().replace('\\', "/"))
@@ -60,31 +68,82 @@ mod tests {
     use super::*;
     use std::fs;
     use std::sync::mpsc;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
+
+    fn temp_watch_dir() -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix("wiki_watch_")
+            .tempdir()
+            .expect("tempdir")
+    }
 
     #[test]
     fn test_watch_repo_reports_relative_paths_and_ignores_git() {
-        let dir = std::env::temp_dir().join(format!("wiki_watch_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
+        let tmp = temp_watch_dir();
+        let dir = tmp.path();
         fs::create_dir_all(dir.join(".git")).unwrap();
         fs::create_dir_all(dir.join("sub")).unwrap();
 
         let (tx, rx) = mpsc::channel();
-        let handle = watch_repo(&dir, move |paths| tx.send(paths).unwrap()).unwrap();
-        std::thread::sleep(Duration::from_millis(200));
+        let handle = watch_repo(dir, move |paths| tx.send(paths).unwrap()).unwrap();
+        std::thread::sleep(Duration::from_millis(500));
+        while rx.try_recv().is_ok() {}
 
         fs::write(dir.join(".git/index"), "x").unwrap();
         assert!(
-            rx.recv_timeout(Duration::from_millis(1500)).is_err(),
+            rx.recv_timeout(Duration::from_millis(800)).is_err(),
             "a write inside .git/ must not trigger the callback"
         );
+        while rx.try_recv().is_ok() {}
 
         fs::write(dir.join("sub/page.md"), "hello").unwrap();
-        let paths = rx.recv_timeout(Duration::from_secs(3)).expect("no change reported");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let paths = loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match rx.recv_timeout(left.min(Duration::from_millis(200))) {
+                Ok(p) => break p,
+                Err(mpsc::RecvTimeoutError::Timeout) if Instant::now() >= deadline => {
+                    panic!("no change reported within 5s");
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => panic!("watcher channel closed"),
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            }
+        };
         assert!(paths.contains(&"sub/page.md".to_string()), "got {:?}", paths);
         assert!(paths.iter().all(|p| !p.starts_with(".git")));
 
         drop(handle);
-        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_watch_repo_does_not_ignore_nested_git_dir_name() {
+        let tmp = temp_watch_dir();
+        let dir = tmp.path();
+        fs::create_dir_all(dir.join("sub/.git")).unwrap();
+
+        let (tx, rx) = mpsc::channel();
+        let handle = watch_repo(dir, move |paths| tx.send(paths).unwrap()).unwrap();
+        std::thread::sleep(Duration::from_millis(500));
+
+        fs::write(dir.join("sub/.git/config"), "x").unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let paths = loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match rx.recv_timeout(left.min(Duration::from_millis(200))) {
+                Ok(p) => break p,
+                Err(mpsc::RecvTimeoutError::Timeout) if Instant::now() >= deadline => {
+                    panic!("nested .git path should be reported");
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => panic!("watcher channel closed"),
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            }
+        };
+        assert!(
+            paths.iter().any(|p| p.contains("sub/.git")),
+            "expected nested .git change, got {:?}",
+            paths
+        );
+
+        drop(handle);
     }
 }
