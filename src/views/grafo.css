@@ -1,0 +1,52 @@
+.grafo-view {
+  position: relative;
+  flex: 1;
+  min-height: min(72vh, calc(100vh - 140px));
+  display: flex;
+  flex-direction: column;
+  background: var(--ground);
+  /* Category node fills — read via getComputedStyle */
+  --graph-cat-core: #5f6a66;
+  --graph-cat-decision: #3d5a80;
+  --graph-cat-tracker: #6b5b7a;
+  --graph-cat-agent: #4a6fa5;
+  --graph-cat-topic: #4a7c59;
+  --graph-cat-source: #7a6f5c;
+}
+
+.grafo-stage {
+  flex: 1;
+  min-height: 320px;
+  position: relative;
+}
+
+.grafo-toolbar {
+  max-width: calc(100% - 32px);
+}
+.grafo-toolbar .input {
+  width: 160px;
+  min-height: 30px;
+  font-size: var(--text-sm);
+}
+.grafo-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.grafo-toggle input {
+  accent-color: var(--ink);
+}
+
+.grafo-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  pointer-events: none;
+}
