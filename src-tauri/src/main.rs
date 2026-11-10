@@ -87,6 +87,150 @@ struct AgentPromptRequest {
     host: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ListDirsRequest {
+    path: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DirEntry {
+    name: String,
+    path: String,
+    is_git_repo: bool,
+    has_wiki: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ListDirsResponse {
+    current_path: String,
+    parent_path: Option<String>,
+    home_path: String,
+    is_git_repo: bool,
+    has_wiki: bool,
+    entries: Vec<DirEntry>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PickFolderResponse {
+    cancelled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selected_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snapshot: Option<WikiSnapshot>,
+}
+
+fn get_home_dir() -> PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        if !home.is_empty() {
+            return PathBuf::from(home);
+        }
+    }
+    if let Ok(profile) = std::env::var("USERPROFILE") {
+        if !profile.is_empty() {
+            return PathBuf::from(profile);
+        }
+    }
+    PathBuf::from("/")
+}
+
+fn pick_folder_native(initial_dir: &Path) -> Option<PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        let filename_arg = format!("{}/", initial_dir.to_string_lossy().trim_end_matches('/'));
+        let zenity_res = Command::new("zenity")
+            .arg("--file-selection")
+            .arg("--directory")
+            .arg("--title=Select Git Repository")
+            .arg(format!("--filename={}", filename_arg))
+            .output();
+
+        if let Ok(output) = zenity_res {
+            if output.status.success() {
+                let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !s.is_empty() {
+                    let p = PathBuf::from(s);
+                    if p.is_dir() {
+                        return Some(p);
+                    }
+                }
+            }
+        }
+
+        // Fallback to kdialog
+        let kdialog_res = Command::new("kdialog")
+            .arg("--getexistingdirectory")
+            .arg(initial_dir)
+            .output();
+
+        if let Ok(output) = kdialog_res {
+            if output.status.success() {
+                let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !s.is_empty() {
+                    let p = PathBuf::from(s);
+                    if p.is_dir() {
+                        return Some(p);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let script = "POSIX path of (choose folder with prompt \"Select Git Repository\")";
+        let res = Command::new("osascript")
+            .arg("-e")
+            .arg(script)
+            .output();
+        if let Ok(output) = res {
+            if output.status.success() {
+                let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !s.is_empty() {
+                    let p = PathBuf::from(s);
+                    if p.is_dir() {
+                        return Some(p);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let ps_cmd = "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; if ($f.ShowDialog() -eq 'OK') { $f.SelectedPath }";
+        let res = Command::new("powershell")
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg(ps_cmd)
+            .output();
+        if let Ok(output) = res {
+            if output.status.success() {
+                let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !s.is_empty() {
+                    let p = PathBuf::from(s);
+                    if p.is_dir() {
+                        return Some(p);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        let _ = initial_dir;
+        None
+    }
+}
+
 fn resolve_resources_dir() -> PathBuf {
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
@@ -621,6 +765,115 @@ fn handle_client(
 
         let snapshot = build_current_snapshot(&new_path, &resources_dir);
         send_json(&mut stream, "200 OK", &snapshot);
+        return;
+    }
+
+    if req.method == "POST" && req.path == "/api/list-dirs" {
+        let body: ListDirsRequest = if req.body.is_empty() {
+            ListDirsRequest { path: None }
+        } else {
+            serde_json::from_slice(&req.body).unwrap_or(ListDirsRequest { path: None })
+        };
+
+        let home_dir = get_home_dir();
+        let target_dir = match body.path {
+            Some(ref p) if !p.trim().is_empty() => {
+                let pb = PathBuf::from(p.trim());
+                if pb.is_dir() {
+                    pb
+                } else if repo_path.is_dir() {
+                    repo_path.clone()
+                } else {
+                    home_dir.clone()
+                }
+            }
+            _ => {
+                if repo_path.is_dir() {
+                    repo_path.clone()
+                } else {
+                    home_dir.clone()
+                }
+            }
+        };
+
+        let current_path = target_dir.canonicalize().unwrap_or(target_dir);
+        let parent_path = current_path
+            .parent()
+            .and_then(|p| p.canonicalize().ok().or_else(|| Some(p.to_path_buf())))
+            .map(|p| p.to_string_lossy().into_owned());
+
+        let is_git_repo = current_path.join(".git").exists();
+        let has_wiki = resolve_wiki_root(&current_path).is_initialized;
+
+        let mut entries = Vec::new();
+        if let Ok(dir_entries) = fs::read_dir(&current_path) {
+            for entry in dir_entries.flatten() {
+                let file_name = entry.file_name();
+                let name_str = file_name.to_string_lossy();
+                if name_str.starts_with('.') {
+                    continue;
+                }
+                let p = entry.path();
+                if p.is_dir() {
+                    let can_p = p.canonicalize().unwrap_or(p);
+                    let sub_git = can_p.join(".git").exists();
+                    let sub_wiki = resolve_wiki_root(&can_p).is_initialized;
+                    entries.push(DirEntry {
+                        name: name_str.into_owned(),
+                        path: can_p.to_string_lossy().into_owned(),
+                        is_git_repo: sub_git,
+                        has_wiki: sub_wiki,
+                    });
+                }
+            }
+        }
+        entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+        let resp = ListDirsResponse {
+            current_path: current_path.to_string_lossy().into_owned(),
+            parent_path,
+            home_path: home_dir.canonicalize().unwrap_or(home_dir).to_string_lossy().into_owned(),
+            is_git_repo,
+            has_wiki,
+            entries,
+        };
+
+        send_json(&mut stream, "200 OK", &resp);
+        return;
+    }
+
+    if req.method == "POST" && req.path == "/api/pick-folder" {
+        let picked = pick_folder_native(&repo_path);
+        match picked {
+            Some(path) => {
+                let can_path = path.canonicalize().unwrap_or(path);
+                {
+                    let mut st = app_state.lock().unwrap();
+                    st.repo_path = can_path.clone();
+                }
+                let snapshot = build_current_snapshot(&can_path, &resources_dir);
+                send_json(
+                    &mut stream,
+                    "200 OK",
+                    &PickFolderResponse {
+                        cancelled: false,
+                        selected_path: Some(can_path.to_string_lossy().into_owned()),
+                        snapshot: Some(snapshot),
+                    },
+                );
+            }
+            None => {
+                send_json(
+                    &mut stream,
+                    "200 OK",
+                    &PickFolderResponse {
+                        cancelled: true,
+                        selected_path: None,
+                        snapshot: None,
+                    },
+                );
+            }
+        }
         return;
     }
 

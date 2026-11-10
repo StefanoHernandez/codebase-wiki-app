@@ -17,6 +17,7 @@
         </div>
         <div class="repo-bar">
           <input type="text" id="repo-path-input" placeholder="/path/to/git-repo" />
+          <button id="repo-browse-btn" type="button" title="Browse folders">📁 Browse...</button>
           <button id="repo-open-btn">Open</button>
         </div>
       </div>
@@ -458,6 +459,34 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn modal-close">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Folder Browser Modal -->
+    <div id="folder-browser-modal" class="modal">
+      <div class="modal-content folder-browser-modal-content">
+        <div class="modal-header">
+          <h3>Select Repository Folder</h3>
+          <button type="button" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="folder-toolbar">
+            <button type="button" id="folder-up-btn" class="btn btn-sm">⬆️ Parent (..)</button>
+            <button type="button" id="folder-home-btn" class="btn btn-sm">🏠 Home</button>
+            <button type="button" id="folder-native-btn" class="btn btn-sm">🖥️ System Dialog...</button>
+          </div>
+          <div class="folder-current-bar">
+            <div id="folder-current-path" class="folder-current-path" title="Current Directory"></div>
+            <div id="folder-current-badges" class="folder-current-badges"></div>
+          </div>
+          <div class="folder-list-container">
+            <ul id="folder-entries-list" class="folder-entries-list"></ul>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn modal-close">Cancel</button>
+          <button type="button" id="folder-select-current-btn" class="btn btn-primary">Open Current Folder</button>
         </div>
       </div>
     </div>

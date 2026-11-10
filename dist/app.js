@@ -2584,10 +2584,37 @@ class GraphCanvas {
                            
  
 
+                           
+               
+               
+                     
+                   
+ 
+
+                                   
+                      
+                             
+                   
+                     
+                   
+                      
+ 
+
+                                     
+                     
+                        
+                          
+ 
+
 class AppController {
           snapshot                      = null;
           graphCanvas                     = null;
           schemaConfig                      = null;
+
+  // Folder browser state
+          folderCurrentPath         = '';
+          folderParentPath                = null;
+          folderHomePath         = '';
 
   // View state
           activeTab                                                           = 'workbench';
@@ -3534,6 +3561,155 @@ class AppController {
     document.querySelectorAll('.modal').forEach((m) => m.classList.remove('open'));
   }
 
+         async openRepoPath(repoPath        )                {
+    try {
+      const res = await fetch('/api/open-repo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repoPath }),
+      });
+      if (res.ok) {
+        this.snapshot = await res.json();
+        this.closeAllModals();
+        this.renderAll();
+        this.showToast('Repository opened');
+      } else {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        alert(`Failed to open repo: ${err.error || res.statusText}`);
+      }
+    } catch (err) {
+      alert(`Failed to open repo: ${err}`);
+    }
+  }
+
+         async browseDirectory(targetPath         )                {
+    try {
+      const res = await fetch('/api/list-dirs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(targetPath ? { path: targetPath } : {}),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        alert(`Failed to browse directory: ${err.error || res.statusText}`);
+        return;
+      }
+
+      const data                   = await res.json();
+      this.folderCurrentPath = data.currentPath;
+      this.folderParentPath = data.parentPath || null;
+      this.folderHomePath = data.homePath;
+
+      this.renderFolderBrowser(data);
+    } catch (err) {
+      alert(`Failed to browse directory: ${err}`);
+    }
+  }
+
+          renderFolderBrowser(data                  )       {
+    const currentPathEl = document.getElementById('folder-current-path');
+    if (currentPathEl) {
+      currentPathEl.textContent = data.currentPath;
+      currentPathEl.title = data.currentPath;
+    }
+
+    const currentBadgesEl = document.getElementById('folder-current-badges');
+    if (currentBadgesEl) {
+      currentBadgesEl.innerHTML = '';
+      if (data.isGitRepo) {
+        const gitBadge = document.createElement('span');
+        gitBadge.className = 'pill pill-git';
+        gitBadge.textContent = 'Git';
+        currentBadgesEl.appendChild(gitBadge);
+      }
+      if (data.hasWiki) {
+        const wikiBadge = document.createElement('span');
+        wikiBadge.className = 'pill pill-clean';
+        wikiBadge.textContent = 'Wiki';
+        currentBadgesEl.appendChild(wikiBadge);
+      }
+    }
+
+    const upBtn = document.getElementById('folder-up-btn')                            ;
+    if (upBtn) {
+      upBtn.disabled = !data.parentPath || data.parentPath === data.currentPath;
+    }
+
+    const listEl = document.getElementById('folder-entries-list');
+    if (listEl) {
+      listEl.innerHTML = '';
+      if (data.entries.length === 0) {
+        const emptyLi = document.createElement('li');
+        emptyLi.className = 'folder-empty';
+        emptyLi.textContent = 'No subdirectories found';
+        listEl.appendChild(emptyLi);
+      } else {
+        for (const entry of data.entries) {
+          const li = document.createElement('li');
+          li.className = 'folder-entry-item';
+
+          const mainDiv = document.createElement('div');
+          mainDiv.className = 'folder-entry-main';
+
+          const icon = document.createElement('span');
+          icon.className = 'folder-entry-icon';
+          icon.textContent = '📁';
+
+          const name = document.createElement('span');
+          name.className = 'folder-entry-name';
+          name.textContent = entry.name;
+          name.title = entry.name;
+
+          mainDiv.appendChild(icon);
+          mainDiv.appendChild(name);
+
+          if (entry.isGitRepo || entry.hasWiki) {
+            const badgesDiv = document.createElement('div');
+            badgesDiv.className = 'folder-entry-badges';
+            if (entry.isGitRepo) {
+              const b = document.createElement('span');
+              b.className = 'pill pill-git';
+              b.textContent = 'Git';
+              badgesDiv.appendChild(b);
+            }
+            if (entry.hasWiki) {
+              const b = document.createElement('span');
+              b.className = 'pill pill-clean';
+              b.textContent = 'Wiki';
+              badgesDiv.appendChild(b);
+            }
+            mainDiv.appendChild(badgesDiv);
+          }
+
+          const actionsDiv = document.createElement('div');
+          actionsDiv.className = 'folder-entry-actions';
+
+          const selectBtn = document.createElement('button');
+          selectBtn.type = 'button';
+          selectBtn.className = 'btn btn-sm btn-primary';
+          selectBtn.textContent = 'Select';
+          selectBtn.title = `Open ${entry.name} as active repository`;
+          selectBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.openRepoPath(entry.path);
+          });
+          actionsDiv.appendChild(selectBtn);
+
+          li.appendChild(mainDiv);
+          li.appendChild(actionsDiv);
+
+          // Clicking item row navigates into that directory
+          li.addEventListener('click', () => {
+            this.browseDirectory(entry.path);
+          });
+
+          listEl.appendChild(li);
+        }
+      }
+    }
+  }
+
           setupEventListeners()       {
     // Open repo
     const openRepoBtn = document.getElementById('repo-open-btn');
@@ -3542,22 +3718,63 @@ class AppController {
       openRepoBtn.addEventListener('click', async () => {
         const repoPath = repoInput.value.trim();
         if (!repoPath) return;
-        try {
-          const res = await fetch('/api/open-repo', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ repoPath }),
-          });
-          if (res.ok) {
-            this.snapshot = await res.json();
-            this.renderAll();
-            this.showToast('Repository opened');
+        await this.openRepoPath(repoPath);
+      });
+      repoInput.addEventListener('keydown', (e               ) => {
+        if (e.key === 'Enter') {
+          const repoPath = repoInput.value.trim();
+          if (repoPath) {
+            this.openRepoPath(repoPath);
           }
-        } catch (err) {
-          alert(`Failed to open repo: ${err}`);
         }
       });
     }
+
+    // Browse repository folders
+    const browseBtn = document.getElementById('repo-browse-btn');
+    if (browseBtn) {
+      browseBtn.addEventListener('click', () => {
+        document.getElementById('folder-browser-modal')?.classList.add('open');
+        const startPath = this.snapshot?.repo_path;
+        this.browseDirectory(startPath);
+      });
+    }
+
+    // Folder browser toolbar navigation
+    document.getElementById('folder-up-btn')?.addEventListener('click', () => {
+      if (this.folderParentPath) {
+        this.browseDirectory(this.folderParentPath);
+      }
+    });
+
+    document.getElementById('folder-home-btn')?.addEventListener('click', () => {
+      if (this.folderHomePath) {
+        this.browseDirectory(this.folderHomePath);
+      }
+    });
+
+    document.getElementById('folder-native-btn')?.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/pick-folder', { method: 'POST' });
+        if (res.ok) {
+          const data                     = await res.json();
+          if (!data.cancelled && data.snapshot) {
+            this.snapshot = data.snapshot;
+            this.closeAllModals();
+            this.renderAll();
+            this.showToast('Repository opened');
+          }
+        }
+      } catch (err) {
+        alert(`Native dialog error: ${err}`);
+      }
+    });
+
+    document.getElementById('folder-select-current-btn')?.addEventListener('click', () => {
+      if (this.folderCurrentPath) {
+        this.openRepoPath(this.folderCurrentPath);
+      }
+    });
 
     // Tabs
     document.querySelectorAll('.tab-btn').forEach((btn) => {

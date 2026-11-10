@@ -288,6 +288,8 @@ source_commit: ${currentSha}
     const htmlBody = await htmlRes.text();
     assert.ok(htmlBody.includes('Codebase Wiki App'));
     assert.ok(htmlBody.includes('id="graph-canvas"'));
+    assert.ok(htmlBody.includes('id="repo-browse-btn"'));
+    assert.ok(htmlBody.includes('id="folder-browser-modal"'));
 
     // 5b. GET /app.js
     const jsRes = await fetch(`${baseUrl}/app.js`);
@@ -327,5 +329,55 @@ source_commit: ${currentSha}
     assert.strictEqual(promptRes.status, 200);
     const promptData = await promptRes.json();
     assert.ok(promptData.prompt && promptData.prompt.length > 0);
+  });
+
+  // Step 7: POST /api/list-dirs and POST /api/pick-folder
+  await t.test('7. POST /api/list-dirs lists directories with git/wiki badges and pick-folder responds cleanly', async () => {
+    // 7a. Test /api/list-dirs with empty body (defaults to current repo_path)
+    const listRes1 = await fetch(`${baseUrl}/api/list-dirs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.strictEqual(listRes1.status, 200);
+    const listData1 = await listRes1.json();
+
+    const canonicalTemp = fs.realpathSync(tempDir);
+    assert.strictEqual(listData1.currentPath, canonicalTemp);
+    assert.strictEqual(listData1.isGitRepo, true);
+    assert.strictEqual(listData1.hasWiki, true);
+    assert.ok(Array.isArray(listData1.entries));
+    // Verify hidden directory .git is excluded
+    assert.ok(!listData1.entries.some((e: any) => e.name.startsWith('.')));
+    // Verify src directory is present with no git/wiki
+    const srcEntry = listData1.entries.find((e: any) => e.name === 'src');
+    assert.ok(srcEntry);
+    assert.strictEqual(srcEntry.isGitRepo, false);
+    assert.strictEqual(srcEntry.hasWiki, false);
+
+    // 7b. Create sub-repo with .git and check isGitRepo detection
+    const subRepoDir = path.join(tempDir, 'sub-repo');
+    fs.mkdirSync(path.join(subRepoDir, '.git'), { recursive: true });
+
+    const listRes2 = await fetch(`${baseUrl}/api/list-dirs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: tempDir }),
+    });
+    assert.strictEqual(listRes2.status, 200);
+    const listData2 = await listRes2.json();
+    const subRepoEntry = listData2.entries.find((e: any) => e.name === 'sub-repo');
+    assert.ok(subRepoEntry);
+    assert.strictEqual(subRepoEntry.isGitRepo, true);
+    assert.strictEqual(subRepoEntry.hasWiki, false);
+
+    // 7c. Test /api/pick-folder in headless mode
+    const pickRes = await fetch(`${baseUrl}/api/pick-folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    assert.strictEqual(pickRes.status, 200);
+    const pickData = await pickRes.json();
+    assert.strictEqual(typeof pickData.cancelled, 'boolean');
   });
 });
