@@ -1,0 +1,92 @@
+/* Salute view: side panel and budget bars (tokens from global styles). */
+
+.salute-side {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 25;
+  width: min(480px, calc(100vw - 48px));
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--rule);
+  box-shadow: var(--shadow-overlay);
+  animation: overlay-in 140ms ease-out;
+}
+.salute-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--rule);
+}
+.salute-side-title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.salute-side-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 20px 28px;
+}
+
+.salute-bar {
+  height: 8px;
+  border-radius: var(--radius-chip);
+  background: var(--surface-sunk);
+  overflow: hidden;
+}
+.salute-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ink-muted);
+}
+.salute-bar-over .salute-bar-fill {
+  background: var(--drift);
+}
+
+.salute-budget-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 16px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.salute-budget-label {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+.salute-budget-value {
+  margin: 0;
+  font-size: var(--text-sm);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.salute-log-entry {
+  margin: 0 0 16px;
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.salute-table-path {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.salute-clickable {
+  cursor: pointer;
+}
+
+.salute-risks {
+  max-width: 72ch;
+}
