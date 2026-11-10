@@ -1,6 +1,7 @@
 pub mod git_ops;
 pub mod prompts;
 pub mod validator;
+pub mod watcher;
 pub mod wiki_fs;
 pub mod wiki_resolver;
 
@@ -9,6 +10,7 @@ pub use git_ops::{
     changed_files_since_commit, file_diff_since_commit, inspect_git_state, GitState,
 };
 pub use validator::{run_structural_lint, LintFinding, LintReport};
+pub use watcher::{watch_repo, WatchHandle};
 pub use wiki_fs::{
     collect_repo_files_recursive, load_wiki_snapshot, read_repo_file_safe,
     write_wiki_file_safe, RepoFilePayload, WikiPageEntry, WikiSnapshot,
