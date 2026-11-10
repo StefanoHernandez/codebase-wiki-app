@@ -12,6 +12,26 @@ const PROPOSAL_COLUMNS = ['Proposal', 'By', 'Date', 'Why'];
 const DONE_COLUMNS = ['ID', 'Status', 'Goal', 'Closed', 'Criteria met', 'Evidence'];
 const BATON_COLUMNS = ['Order', 'Task', 'Start files', 'Done when', 'Verification command', 'Notes / blockers'];
 
+// Header name (lowercased) -> row property, per tracker section.
+const OPEN_KEYS: Record<string, string> = {
+  id: 'id',
+  status: 'status',
+  goal: 'goal',
+  'done when': 'doneWhen',
+  owner: 'owner',
+  'next verification': 'nextVerification',
+  evidence: 'evidence',
+};
+const PROPOSAL_KEYS: Record<string, string> = { proposal: 'proposal', by: 'by', date: 'date', why: 'why' };
+const DONE_KEYS: Record<string, string> = {
+  id: 'id',
+  status: 'status',
+  goal: 'goal',
+  closed: 'closed',
+  'criteria met': 'criteriaMet',
+  evidence: 'evidence',
+};
+
 export function splitTableRow(line: string): string[] | null {
   const trimmed = line.trim();
   if (!trimmed.includes('|')) return null;
@@ -116,126 +136,110 @@ export function extractTableFromLines(lines: string[]): ExtractedTable | null {
   };
 }
 
+interface RawTrackerRecord {
+  fields: Record<string, string>;
+  extra: Record<string, string>;
+}
+
+/**
+ * Reads one tracker table. Named headers map known columns by name and keep every other
+ * column in `extra` under its original header text. Without the named columns the table is
+ * read positionally (`positional`, or `legacy` for a 5-column legacy table) and the canonical
+ * header is used when writing back.
+ */
+function readTrackerRecords(
+  lines: string[] | null,
+  canonical: string[],
+  keys: Record<string, string>,
+  positional: string[],
+  legacy?: string[]
+): { header: string[]; rows: RawTrackerRecord[] } {
+  const table = lines ? extractTableFromLines(lines) : null;
+  if (!table) return { header: canonical, rows: [] };
+
+  const lower = table.header.map((h) => h.trim().toLowerCase());
+  const named = canonical.every((col) => lower.includes(col.toLowerCase()));
+  const useLegacy = !named && legacy !== undefined && table.header.length === legacy.length;
+  const header = named ? table.header : canonical;
+  const positionalKeys = useLegacy ? legacy! : positional;
+
+  const rows = table.rows.map((cells) => {
+    const fields: Record<string, string> = {};
+    const extra: Record<string, string> = {};
+    table.header.forEach((h, i) => {
+      const value = (cells[i] ?? '').trim();
+      const key = named ? Object.hasOwn(keys, lower[i]) ? keys[lower[i]] : undefined : positionalKeys[i];
+      if (key) {
+        fields[key] = value;
+      } else if (named) {
+        extra[h] = value;
+      }
+    });
+    return { fields, extra };
+  });
+  return { header, rows };
+}
+
 export function parseTrackerMarkdown(markdown: string): TrackerData {
   const normalized = markdown.replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
 
-  const openRows: TrackerOpenRow[] = [];
-  const proposalRows: TrackerProposalRow[] = [];
-  const doneRows: TrackerDoneRow[] = [];
-
-  // 1. Open
-  const openSection = findSectionLines(lines, 'open', 'Open');
-  if (openSection) {
-    const table = extractTableFromLines(openSection.lines);
-    if (table) {
-      const { header, rows } = table;
-      const lowerHeader = header.map((h) => h.toLowerCase());
-      const hasNamed = OPEN_COLUMNS.every((col) => lowerHeader.includes(col.toLowerCase()));
-
-      const idIdx = hasNamed ? lowerHeader.indexOf('id') : 0;
-      const statusIdx = hasNamed ? lowerHeader.indexOf('status') : 1;
-      const goalIdx = hasNamed ? lowerHeader.indexOf('goal') : 2;
-      const doneWhenIdx = hasNamed ? lowerHeader.indexOf('done when') : 3;
-      const ownerIdx = hasNamed ? lowerHeader.indexOf('owner') : 4;
-      const nextVerificationIdx = hasNamed ? lowerHeader.indexOf('next verification') : 5;
-      const evidenceIdx = hasNamed ? lowerHeader.indexOf('evidence') : 6;
-
-      for (const row of rows) {
-        const id = (row[idIdx] || '').trim();
-        const status = (row[statusIdx] || '⚪').trim() as '🟡' | '⚪' | '🔴';
-        const goal = (row[goalIdx] || '').trim();
-        const doneWhen = (row[doneWhenIdx] || '').trim();
-        const owner = (row[ownerIdx] || '').trim();
-        const nextVerification = (row[nextVerificationIdx] || '').trim();
-        const evidence = (row[evidenceIdx] || '').trim();
-
-        if (id) {
-          openRows.push({ id, status, goal, doneWhen, owner, nextVerification, evidence });
-        }
-      }
-    }
-  }
-
-  // 2. Proposals
-  const proposalSection = findSectionLines(lines, 'proposals', 'Proposals');
-  if (proposalSection) {
-    const table = extractTableFromLines(proposalSection.lines);
-    if (table) {
-      const { header, rows } = table;
-      const lowerHeader = header.map((h) => h.toLowerCase());
-      const hasNamed = PROPOSAL_COLUMNS.every((col) => lowerHeader.includes(col.toLowerCase()));
-
-      const proposalIdx = hasNamed ? lowerHeader.indexOf('proposal') : 0;
-      const byIdx = hasNamed ? lowerHeader.indexOf('by') : 1;
-      const dateIdx = hasNamed ? lowerHeader.indexOf('date') : 2;
-      const whyIdx = hasNamed ? lowerHeader.indexOf('why') : 3;
-
-      for (const row of rows) {
-        const proposal = (row[proposalIdx] || '').trim();
-        const by = (row[byIdx] || '').trim();
-        const date = (row[dateIdx] || '').trim();
-        const why = (row[whyIdx] || '').trim();
-
-        if (proposal) {
-          proposalRows.push({ proposal, by, date, why });
-        }
-      }
-    }
-  }
-
-  // 3. Done
-  const doneSection = findSectionLines(lines, 'done', 'Done');
-  if (doneSection) {
-    const table = extractTableFromLines(doneSection.lines);
-    if (table) {
-      const { header, rows } = table;
-      const lowerHeader = header.map((h) => h.toLowerCase());
-      const hasNamed = DONE_COLUMNS.every((col) => lowerHeader.includes(col.toLowerCase()));
-      const isLegacy5 = !lowerHeader.includes('status') && header.length === 5;
-
-      let idIdx = 0;
-      let statusIdx = 1;
-      let goalIdx = 2;
-      let closedIdx = 3;
-      let criteriaMetIdx = 4;
-      let evidenceIdx = 5;
-
-      if (hasNamed) {
-        idIdx = lowerHeader.indexOf('id');
-        statusIdx = lowerHeader.indexOf('status');
-        goalIdx = lowerHeader.indexOf('goal');
-        closedIdx = lowerHeader.indexOf('closed');
-        criteriaMetIdx = lowerHeader.indexOf('criteria met');
-        evidenceIdx = lowerHeader.indexOf('evidence');
-      } else if (isLegacy5) {
-        idIdx = 0;
-        statusIdx = -1;
-        goalIdx = 1;
-        closedIdx = 2;
-        criteriaMetIdx = 3;
-        evidenceIdx = 4;
-      }
-
-      for (const row of rows) {
-        const id = (row[idIdx] || '').trim();
-        const status = (statusIdx === -1 ? '🟢' : (row[statusIdx] || '🟢').trim()) as '🟢' | '⚫';
-        const goal = (row[goalIdx] || '').trim();
-        const closed = (row[closedIdx] || '').trim();
-        const criteriaMet = (row[criteriaMetIdx] || '').trim();
-        const evidence = (row[evidenceIdx] || '').trim();
-
-        if (id) {
-          doneRows.push({ id, status, goal, closed, criteriaMet, evidence });
-        }
-      }
-    }
-  }
+  const open = readTrackerRecords(
+    findSectionLines(lines, 'open', 'Open')?.lines ?? null,
+    OPEN_COLUMNS,
+    OPEN_KEYS,
+    ['id', 'status', 'goal', 'doneWhen', 'owner', 'nextVerification', 'evidence']
+  );
+  const proposals = readTrackerRecords(
+    findSectionLines(lines, 'proposals', 'Proposals')?.lines ?? null,
+    PROPOSAL_COLUMNS,
+    PROPOSAL_KEYS,
+    ['proposal', 'by', 'date', 'why']
+  );
+  const done = readTrackerRecords(
+    findSectionLines(lines, 'done', 'Done')?.lines ?? null,
+    DONE_COLUMNS,
+    DONE_KEYS,
+    ['id', 'status', 'goal', 'closed', 'criteriaMet', 'evidence'],
+    ['id', 'goal', 'closed', 'criteriaMet', 'evidence'] // legacy: no Status column (proven 🟢 only)
+  );
 
   return {
-    open: openRows,
-    proposals: proposalRows,
-    done: doneRows,
+    open: open.rows
+      .filter((r) => r.fields.id)
+      .map((r) => ({
+        id: r.fields.id,
+        status: (r.fields.status || '⚪') as TrackerOpenRow['status'],
+        goal: r.fields.goal || '',
+        doneWhen: r.fields.doneWhen || '',
+        owner: r.fields.owner || '',
+        nextVerification: r.fields.nextVerification || '',
+        evidence: r.fields.evidence || '',
+        extra: r.extra,
+      })),
+    proposals: proposals.rows
+      .filter((r) => r.fields.proposal)
+      .map((r) => ({
+        proposal: r.fields.proposal,
+        by: r.fields.by || '',
+        date: r.fields.date || '',
+        why: r.fields.why || '',
+        extra: r.extra,
+      })),
+    done: done.rows
+      .filter((r) => r.fields.id)
+      .map((r) => ({
+        id: r.fields.id,
+        status: (r.fields.status || '🟢') as TrackerDoneRow['status'],
+        goal: r.fields.goal || '',
+        closed: r.fields.closed || '',
+        criteriaMet: r.fields.criteriaMet || '',
+        evidence: r.fields.evidence || '',
+        extra: r.extra,
+      })),
+    openHeader: open.header,
+    proposalsHeader: proposals.header,
+    doneHeader: done.header,
   };
 }
 
@@ -341,46 +345,41 @@ export function computeNextTrackerId(trackerMarkdown: string, logMarkdown: strin
   return `T${maxId + 1}`;
 }
 
-export function formatTrackerOpenTable(rows: TrackerOpenRow[], customHeader?: string[]): string {
-  const header = customHeader && customHeader.length === OPEN_COLUMNS.length ? customHeader : OPEN_COLUMNS;
-  const lines: string[] = [
-    `| ${header.join(' | ')} |`,
-    `| ${header.map(() => '---').join(' | ')} |`,
-  ];
+/** Returns `header` with any `extra` column names it lacks appended, so no column is dropped. */
+export function withExtraColumns(header: string[], extra: Record<string, string>): string[] {
+  const lower = header.map((h) => h.trim().toLowerCase());
+  const missing = Object.keys(extra).filter((k) => !lower.includes(k.trim().toLowerCase()));
+  return [...header, ...missing];
+}
+
+function formatTrackerTable<T extends { extra: Record<string, string> }>(
+  rows: T[],
+  header: string[],
+  keys: Record<string, string>
+): string {
+  const lines: string[] = [`| ${header.join(' | ')} |`, `| ${header.map(() => '---').join(' | ')} |`];
   for (const r of rows) {
-    lines.push(
-      `| ${escapeTableCell(r.id)} | ${escapeTableCell(r.status)} | ${escapeTableCell(r.goal)} | ${escapeTableCell(r.doneWhen)} | ${escapeTableCell(r.owner)} | ${escapeTableCell(r.nextVerification)} | ${escapeTableCell(r.evidence)} |`
-    );
+    const record = r as unknown as Record<string, unknown>;
+    const cells = header.map((h) => {
+      const key = keys[h.trim().toLowerCase()];
+      const value = key ? record[key] : r.extra[h];
+      return escapeTableCell(value === undefined || value === null ? '' : String(value));
+    });
+    lines.push(`| ${cells.join(' | ')} |`);
   }
   return lines.join('\n');
 }
 
-export function formatTrackerProposalTable(rows: TrackerProposalRow[], customHeader?: string[]): string {
-  const header = customHeader && customHeader.length === PROPOSAL_COLUMNS.length ? customHeader : PROPOSAL_COLUMNS;
-  const lines: string[] = [
-    `| ${header.join(' | ')} |`,
-    `| ${header.map(() => '---').join(' | ')} |`,
-  ];
-  for (const r of rows) {
-    lines.push(
-      `| ${escapeTableCell(r.proposal)} | ${escapeTableCell(r.by)} | ${escapeTableCell(r.date)} | ${escapeTableCell(r.why)} |`
-    );
-  }
-  return lines.join('\n');
+export function formatTrackerOpenTable(rows: TrackerOpenRow[], header: string[] = OPEN_COLUMNS): string {
+  return formatTrackerTable(rows, header, OPEN_KEYS);
 }
 
-export function formatTrackerDoneTable(rows: TrackerDoneRow[], customHeader?: string[]): string {
-  const header = customHeader && customHeader.length === DONE_COLUMNS.length ? customHeader : DONE_COLUMNS;
-  const lines: string[] = [
-    `| ${header.join(' | ')} |`,
-    `| ${header.map(() => '---').join(' | ')} |`,
-  ];
-  for (const r of rows) {
-    lines.push(
-      `| ${escapeTableCell(r.id)} | ${escapeTableCell(r.status)} | ${escapeTableCell(r.goal)} | ${escapeTableCell(r.closed)} | ${escapeTableCell(r.criteriaMet)} | ${escapeTableCell(r.evidence)} |`
-    );
-  }
-  return lines.join('\n');
+export function formatTrackerProposalTable(rows: TrackerProposalRow[], header: string[] = PROPOSAL_COLUMNS): string {
+  return formatTrackerTable(rows, header, PROPOSAL_KEYS);
+}
+
+export function formatTrackerDoneTable(rows: TrackerDoneRow[], header: string[] = DONE_COLUMNS): string {
+  return formatTrackerTable(rows, header, DONE_KEYS);
 }
 
 export function replaceSectionTable(

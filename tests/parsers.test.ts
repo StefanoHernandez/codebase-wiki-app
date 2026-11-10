@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseFrontmatter, updateFrontmatterFields, extractMarkdownLinks } from '../src/lib/frontmatter.ts';
+import { parseTrackerMarkdown, formatTrackerOpenTable } from '../src/lib/markdown-tables.ts';
 import { parseSchemaMarkdown, DEFAULT_CORE_MAP } from '../src/lib/schema-parser.ts';
 
 test('parseFrontmatter handles UTF-8 BOM, CRLF, scalar fields, and indented sources list', () => {
@@ -221,4 +222,41 @@ x`;
   const none = parseFrontmatter('---\ntitle: C\n---\nx');
   assert.equal(none.generated, undefined);
   assert.deepEqual(none.verified, []);
+});
+
+test('tracker rows keep extra columns and header order through parse and format', () => {
+  const md = `# Tracker
+
+## Open
+<!-- wiki:open -->
+
+| ID | Phase | Status | Goal | Done when | Owner | Next verification | Evidence |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| T1 | Core | 🟡 | Build parser | Tests pass | stefano | \`node --test\` | \`tests/parsers.test.ts\` |
+`;
+  const data = parseTrackerMarkdown(md);
+  assert.deepEqual(data.openHeader, ['ID', 'Phase', 'Status', 'Goal', 'Done when', 'Owner', 'Next verification', 'Evidence']);
+  assert.equal(data.open[0].extra.Phase, 'Core');
+  assert.equal(data.open[0].status, '🟡');
+  const out = formatTrackerOpenTable(data.open, data.openHeader);
+  assert.equal(out.split('\n')[0], '| ID | Phase | Status | Goal | Done when | Owner | Next verification | Evidence |');
+  assert.match(out, /\| T1 \| Core \| 🟡 \| Build parser \| Tests pass \| stefano \|/);
+});
+
+test('parseSchemaMarkdown matches section headings exactly and case-insensitively', () => {
+  const schemaMd = `# S
+
+## Core map (legacy)
+| Role | Path |
+| --- | --- |
+| tracker | \`legacy/tracker.md\` |
+
+##   CORE MAP
+| Role | Path |
+| --- | --- |
+| tracker | \`project/new-tracker.md\` |
+`;
+  assert.equal(parseSchemaMarkdown(schemaMd).coreMap.tracker, 'project/new-tracker.md');
+  const onlyLegacy = schemaMd.split('##   CORE MAP')[0];
+  assert.equal(parseSchemaMarkdown(onlyLegacy).coreMap.tracker, 'project/work-tracker.md');
 });

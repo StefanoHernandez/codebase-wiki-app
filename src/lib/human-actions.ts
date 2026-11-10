@@ -6,8 +6,11 @@ import {
   formatTrackerProposalTable,
   formatTrackerDoneTable,
   replaceSectionTable,
+  withExtraColumns,
 } from './markdown-tables.ts';
-import type { TrackerOpenRow, TrackerDoneRow } from '../types/wiki.ts';
+import type { Attribution, TrackerDoneRow, TrackerOpenRow } from '../types/wiki.ts';
+
+// Human actions never write `updated:` or `source_commit`: a status change is not a source review.
 
 const DISALLOWED_ACTORS = new Set([
   'agent',
@@ -48,6 +51,31 @@ export function validateNotProvenReason(reason: string): void {
   }
 }
 
+/** Lowercase person name with spaces as dashes, used in `human:<id>` attributions. */
+export function personId(person: string): string {
+  return person.trim().toLowerCase().replace(/\s+/g, '-');
+}
+
+/** Appends one `## date · title · human` entry at the end of the log, separated by one blank line. */
+export function appendLogEntry(params: {
+  logMarkdown: string;
+  date: string;
+  title: string;
+  what: string;
+  evidence: string;
+  ids: string[];
+}): string {
+  const entry = [
+    `## ${params.date} · ${params.title} · human`,
+    `- What: ${params.what}`,
+    `- Evidence: ${params.evidence}`,
+    `- IDs: ${params.ids.length > 0 ? params.ids.join(', ') : 'none'}`,
+    '',
+  ].join('\n');
+  const previous = params.logMarkdown.trimEnd();
+  return previous ? `${previous}\n\n${entry}` : entry;
+}
+
 export function promoteProposalToOpen(params: {
   trackerMarkdown: string;
   logMarkdown: string;
@@ -57,7 +85,6 @@ export function promoteProposalToOpen(params: {
   doneWhen: string;
   nextVerification: string;
   dateIso: string;
-  shortSha: string;
 }): { trackerMarkdown: string; logMarkdown: string; assignedId: string } {
   validateHumanActor(params.person);
   if (!params.owner || !params.owner.trim()) {
@@ -77,6 +104,7 @@ export function promoteProposalToOpen(params: {
     );
   }
 
+  const person = params.person.trim();
   const proposal = tracker.proposals[params.proposalIndex];
   const assignedId = computeNextTrackerId(params.trackerMarkdown, params.logMarkdown);
 
@@ -87,7 +115,8 @@ export function promoteProposalToOpen(params: {
     doneWhen: params.doneWhen.trim(),
     owner: params.owner.trim(),
     nextVerification: params.nextVerification.trim(),
-    evidence: `commit ${params.shortSha}`,
+    evidence: `promoted by ${person} ${params.dateIso}`,
+    extra: {},
   };
 
   const updatedOpen = [...tracker.open, newOpenRow];
@@ -97,40 +126,27 @@ export function promoteProposalToOpen(params: {
     params.trackerMarkdown,
     'open',
     'Open',
-    formatTrackerOpenTable(updatedOpen)
+    formatTrackerOpenTable(updatedOpen, tracker.openHeader)
   );
   updatedTracker = replaceSectionTable(
     updatedTracker,
     'proposals',
     'Proposals',
-    formatTrackerProposalTable(updatedProposals)
+    formatTrackerProposalTable(updatedProposals, tracker.proposalsHeader)
   );
 
-  updatedTracker = updateFrontmatterFields(updatedTracker, {
-    source_commit: params.shortSha,
-    updated: params.dateIso,
-  });
-
-  const logEntry = [
-    '',
-    `## ${params.dateIso} · Promote proposal to ${assignedId} · human`,
-    `- What: Promoted proposal "${proposal.proposal}" to ${assignedId}`,
-    `- By: ${params.person}`,
-    `- Owner: ${params.owner.trim()}`,
-    `- Evidence: manual review @${params.shortSha}`,
-    `- IDs: ${assignedId}`,
-    '',
-  ].join('\n');
-
-  let updatedLog = params.logMarkdown.trimEnd() + '\n' + logEntry;
-  updatedLog = updateFrontmatterFields(updatedLog, {
-    source_commit: params.shortSha,
-    updated: params.dateIso,
+  const logMarkdown = appendLogEntry({
+    logMarkdown: params.logMarkdown,
+    date: params.dateIso,
+    title: `Promote proposal to ${assignedId}`,
+    what: `${person} promoted proposal "${proposal.proposal}" to ${assignedId}`,
+    evidence: `promoted by ${person} ${params.dateIso}`,
+    ids: [assignedId],
   });
 
   return {
     trackerMarkdown: updatedTracker,
-    logMarkdown: updatedLog,
+    logMarkdown,
     assignedId,
   };
 }
@@ -141,11 +157,14 @@ export function closeTrackerItemHumanUnproven(params: {
   taskId: string;
   person: string;
   notProvenReason: string;
+  closureSource: string;
   dateIso: string;
-  shortSha: string;
 }): { trackerMarkdown: string; logMarkdown: string } {
   validateHumanActor(params.person);
   validateNotProvenReason(params.notProvenReason);
+  if (!params.closureSource || !params.closureSource.trim()) {
+    throw new Error('Closure requires a closureSource (where the person decided: message, meeting, PR...)');
+  }
 
   const tracker = parseTrackerMarkdown(params.trackerMarkdown);
   const openIndex = tracker.open.findIndex((r) => r.id === params.taskId);
@@ -153,127 +172,238 @@ export function closeTrackerItemHumanUnproven(params: {
     throw new Error(`Task ${params.taskId} not found in open tracker`);
   }
 
+  const person = params.person.trim();
+  const reason = params.notProvenReason.trim();
   const openRow = tracker.open[openIndex];
   const updatedOpen = tracker.open.filter((_, idx) => idx !== openIndex);
-
-  const cleanEvidence =
-    openRow.evidence && !DISALLOWED_ACTORS.has(openRow.evidence.trim().toLowerCase())
-      ? openRow.evidence
-      : `manual review @${params.shortSha}`;
 
   const closedRow: TrackerDoneRow = {
     id: openRow.id,
     status: '⚫',
     goal: openRow.goal,
     closed: params.dateIso,
-    criteriaMet: `closed by ${params.person} ${params.dateIso}; not proven: ${params.notProvenReason.trim()}`,
-    evidence: cleanEvidence,
+    criteriaMet: `closed by ${person} ${params.dateIso}; not proven: ${reason}`,
+    evidence: params.closureSource.trim(),
+    extra: openRow.extra,
   };
 
+  // Keep the extra columns of the moved row: add any the Done table lacks.
+  const doneHeader = withExtraColumns(tracker.doneHeader, openRow.extra);
   const updatedDone = [...tracker.done, closedRow];
 
   let updatedTracker = replaceSectionTable(
     params.trackerMarkdown,
     'open',
     'Open',
-    formatTrackerOpenTable(updatedOpen)
+    formatTrackerOpenTable(updatedOpen, tracker.openHeader)
   );
   updatedTracker = replaceSectionTable(
     updatedTracker,
     'done',
     'Done',
-    formatTrackerDoneTable(updatedDone)
+    formatTrackerDoneTable(updatedDone, doneHeader)
   );
 
-  updatedTracker = updateFrontmatterFields(updatedTracker, {
-    source_commit: params.shortSha,
-    updated: params.dateIso,
-  });
-
-  const logEntry = [
-    '',
-    `## ${params.dateIso} · Close ${params.taskId} without proof · human`,
-    `- What: Closed ${params.taskId} without proof (${params.notProvenReason.trim()})`,
-    `- By: ${params.person}`,
-    `- Evidence: manual review @${params.shortSha}`,
-    `- IDs: ${params.taskId}`,
-    '',
-  ].join('\n');
-
-  let updatedLog = params.logMarkdown.trimEnd() + '\n' + logEntry;
-  updatedLog = updateFrontmatterFields(updatedLog, {
-    source_commit: params.shortSha,
-    updated: params.dateIso,
+  const logMarkdown = appendLogEntry({
+    logMarkdown: params.logMarkdown,
+    date: params.dateIso,
+    title: `Close ${openRow.id} without proof`,
+    what: `${person} closed ${openRow.id} without proof: ${reason}`,
+    evidence: params.closureSource.trim(),
+    ids: [openRow.id],
   });
 
   return {
     trackerMarkdown: updatedTracker,
-    logMarkdown: updatedLog,
+    logMarkdown,
   };
 }
 
-export function approveDecisionHuman(params: {
-  decisionMarkdown: string;
-  logMarkdown: string;
-  person: string;
-  whereContext: string;
-  dateIso: string;
-  shortSha: string;
-}): { decisionMarkdown: string; logMarkdown: string } {
+/** Sets one editable cell of an Open row: `owner`, `goal`, `done when`, `next verification`, `evidence` or an extra column. */
+export function updateOpenRowField(params: {
+  trackerMarkdown: string;
+  id: string;
+  field: string;
+  value: string;
+}): { trackerMarkdown: string } {
+  const tracker = parseTrackerMarkdown(params.trackerMarkdown);
+  const row = tracker.open.find((r) => r.id === params.id);
+  if (!row) {
+    throw new Error(`Task ${params.id} not found in open tracker`);
+  }
+
+  const wanted = params.field.trim().toLowerCase();
+  if (wanted === 'id' || wanted === 'status') {
+    throw new Error(`Column '${params.field}' cannot be edited here`);
+  }
+  const header = tracker.openHeader.find((h) => h.trim().toLowerCase() === wanted);
+  if (!header) {
+    throw new Error(`Column '${params.field}' not found in the Open table`);
+  }
+
+  const value = params.value.trim();
+  const fieldProps: Record<string, 'owner' | 'goal' | 'doneWhen' | 'nextVerification' | 'evidence'> = {
+    owner: 'owner',
+    goal: 'goal',
+    'done when': 'doneWhen',
+    'next verification': 'nextVerification',
+    evidence: 'evidence',
+  };
+  if (Object.hasOwn(fieldProps, wanted)) {
+    row[fieldProps[wanted]] = value;
+  } else {
+    row.extra[header] = value;
+  }
+
+  return {
+    trackerMarkdown: replaceSectionTable(
+      params.trackerMarkdown,
+      'open',
+      'Open',
+      formatTrackerOpenTable(tracker.open, tracker.openHeader)
+    ),
+  };
+}
+
+function appendUnderApproval(markdown: string, line: string): string {
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
+  const approvalIdx = lines.findIndex((l) => l.trim().toLowerCase() === '## approval');
+  if (approvalIdx === -1) {
+    return markdown.trimEnd() + `\n\n## Approval\n${line}\n`;
+  }
+  let nextHeadingIdx = lines.findIndex((l, idx) => idx > approvalIdx && l.trim().startsWith('## '));
+  if (nextHeadingIdx === -1) {
+    nextHeadingIdx = lines.length;
+  }
+  let lastContent = nextHeadingIdx - 1;
+  while (lastContent > approvalIdx && !lines[lastContent].trim()) {
+    lastContent--;
+  }
+  lines.splice(lastContent + 1, 0, line);
+  return lines.join('\n');
+}
+
+function decideDecision(
+  params: {
+    decisionMarkdown: string;
+    logMarkdown: string;
+    person: string;
+    whereContext: string;
+    dateIso: string;
+  },
+  verdict: 'accepted' | 'rejected'
+): { decisionMarkdown: string; logMarkdown: string } {
   validateHumanActor(params.person);
   if (!params.whereContext || !params.whereContext.trim()) {
     throw new Error('whereContext must be specified');
   }
 
-  const parsedDecision = parseFrontmatter(params.decisionMarkdown);
-  let title = parsedDecision.fields['title'] || '';
+  const parsed = parseFrontmatter(params.decisionMarkdown);
+  if (parsed.fields.status !== 'proposed') {
+    throw new Error(
+      `Decision can only be ${verdict} from proposed (current status: ${parsed.fields.status || 'none'})`
+    );
+  }
+
+  const person = params.person.trim();
+  const where = params.whereContext.trim();
+  let title = parsed.fields.title || '';
   if (!title) {
-    const headingMatch = parsedDecision.body.match(/^#\s+(.*)$/m);
+    const headingMatch = parsed.body.match(/^#\s+(.*)$/m);
     title = headingMatch ? headingMatch[1].trim() : 'Decision';
   }
 
-  let updatedDecision = updateFrontmatterFields(params.decisionMarkdown, {
-    status: 'accepted',
-    source_commit: params.shortSha,
-    updated: params.dateIso,
+  const decisionMarkdown = appendUnderApproval(
+    updateFrontmatterFields(params.decisionMarkdown, { status: verdict }),
+    `${verdict}: ${person}, ${where}, ${params.dateIso}`
+  );
+
+  const logMarkdown = appendLogEntry({
+    logMarkdown: params.logMarkdown,
+    date: params.dateIso,
+    title: `${verdict === 'accepted' ? 'Accept' : 'Reject'} decision ${title}`,
+    what: `${person} ${verdict} decision ${title}`,
+    evidence: where,
+    ids: [],
   });
 
-  const approvalLine = `accepted: approved by ${params.person.trim()} (${params.whereContext.trim()}) on ${params.dateIso}.`;
+  return { decisionMarkdown, logMarkdown };
+}
 
-  const lines = updatedDecision.replace(/\r\n/g, '\n').split('\n');
-  const approvalIdx = lines.findIndex((l) => l.trim().toLowerCase() === '## approval');
+export function acceptDecisionHuman(params: {
+  decisionMarkdown: string;
+  logMarkdown: string;
+  person: string;
+  whereContext: string;
+  dateIso: string;
+}): { decisionMarkdown: string; logMarkdown: string } {
+  return decideDecision(params, 'accepted');
+}
 
-  if (approvalIdx !== -1) {
-    let nextHeadingIdx = lines.findIndex(
-      (l, idx) => idx > approvalIdx && l.trim().startsWith('## ')
-    );
-    if (nextHeadingIdx === -1) {
-      nextHeadingIdx = lines.length;
-    }
-    lines.splice(approvalIdx + 1, nextHeadingIdx - (approvalIdx + 1), approvalLine);
-    updatedDecision = lines.join('\n');
-  } else {
-    updatedDecision = updatedDecision.trimEnd() + `\n\n## Approval\n${approvalLine}\n`;
+export function rejectDecisionHuman(params: {
+  decisionMarkdown: string;
+  logMarkdown: string;
+  person: string;
+  whereContext: string;
+  dateIso: string;
+}): { decisionMarkdown: string; logMarkdown: string } {
+  return decideDecision(params, 'rejected');
+}
+
+function formatAttribution(a: Attribution): string {
+  return `{ by: ${a.by}, at: ${a.at}${a.commit ? `, commit: ${a.commit}` : ''} }`;
+}
+
+/** Replaces the `verified:` frontmatter key: one inline map, or a list when there are several. */
+function setVerifiedFrontmatter(markdown: string, entries: Attribution[]): string {
+  const bom = markdown.startsWith('﻿') ? '﻿' : '';
+  const lines = markdown.slice(bom.length).replace(/\r\n/g, '\n').split('\n');
+  const end = lines.indexOf('---', 1);
+  if (lines[0] !== '---' || end === -1) {
+    throw new Error('Page has no frontmatter to record a review in');
   }
 
-  const logEntry = [
-    '',
-    `## ${params.dateIso} · Approve decision ${title} · human`,
-    `- What: Approved decision ${title}`,
-    `- By: ${params.person} (${params.whereContext.trim()})`,
-    `- Evidence: manual review @${params.shortSha}`,
-    `- Decisions: ${title}`,
-    '',
-  ].join('\n');
+  const block =
+    entries.length === 1
+      ? [`verified: ${formatAttribution(entries[0])}`]
+      : ['verified:', ...entries.map((e) => `  - ${formatAttribution(e)}`)];
 
-  let updatedLog = params.logMarkdown.trimEnd() + '\n' + logEntry;
-  updatedLog = updateFrontmatterFields(updatedLog, {
-    source_commit: params.shortSha,
-    updated: params.dateIso,
+  const start = lines.findIndex((l, i) => i > 0 && i < end && /^verified:/.test(l));
+  if (start === -1) {
+    lines.splice(end, 0, ...block);
+  } else {
+    let stop = start + 1;
+    while (stop < end && /^\s+/.test(lines[stop])) stop++;
+    lines.splice(start, stop - start, ...block);
+  }
+  return bom + lines.join('\n');
+}
+
+export function markPageReviewed(params: {
+  pageMarkdown: string;
+  logMarkdown: string;
+  person: string;
+  atIso: string;
+  commit: string;
+}): { pageMarkdown: string; logMarkdown: string } {
+  validateHumanActor(params.person);
+  const person = params.person.trim();
+  const commit = params.commit.trim();
+  const page = parseFrontmatter(params.pageMarkdown);
+
+  const entry: Attribution = { by: `human:${personId(person)}`, at: params.atIso };
+  if (commit) entry.commit = commit;
+
+  const pageMarkdown = setVerifiedFrontmatter(params.pageMarkdown, [...page.verified, entry]);
+  const title = page.fields.title || 'page';
+  const logMarkdown = appendLogEntry({
+    logMarkdown: params.logMarkdown,
+    date: params.atIso.slice(0, 10),
+    title: 'Mark page reviewed',
+    what: `${person} marked page "${title}" reviewed`,
+    evidence: commit ? `commit ${commit}` : 'human review',
+    ids: [],
   });
 
-  return {
-    decisionMarkdown: updatedDecision,
-    logMarkdown: updatedLog,
-  };
+  return { pageMarkdown, logMarkdown };
 }

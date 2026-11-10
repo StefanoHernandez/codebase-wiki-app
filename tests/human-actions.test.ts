@@ -4,7 +4,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { parseTrackerMarkdown, parseHandoffMarkdown, computeNextTrackerId } from '../src/lib/markdown-tables.ts';
-import { promoteProposalToOpen, closeTrackerItemHumanUnproven, approveDecisionHuman } from '../src/lib/human-actions.ts';
+import { parseFrontmatter } from '../src/lib/frontmatter.ts';
+import {
+  promoteProposalToOpen,
+  closeTrackerItemHumanUnproven,
+  acceptDecisionHuman,
+  rejectDecisionHuman,
+  updateOpenRowField,
+  markPageReviewed,
+  appendLogEntry,
+} from '../src/lib/human-actions.ts';
 
 const SAMPLE_TRACKER = `---
 type: Project
@@ -71,17 +80,46 @@ test('parseTrackerMarkdown supports translated headings via wiki markers and com
   assert.equal(nextId, 'T8');
 });
 
-test('promoteProposalToOpen assigns next never-reused T<N>, adds Open row with ⚪, removes proposal, and appends human log', () => {
+const PHASE_TRACKER = `---
+type: Project
+title: Work Tracker
+source_commit: a1b2c3d
+updated: 2026-11-01
+---
+
+# Work Tracker
+
+## Open
+<!-- wiki:open -->
+
+| ID | Phase | Status | Goal | Done when | Owner | Next verification | Evidence |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| T1 | Core | 🟡 | Build parser | Tests pass | stefano | \`node --test\` | \`tests/parsers.test.ts\` |
+
+## Proposals
+<!-- wiki:proposals -->
+
+| Proposal | By | Date | Why |
+| --- | --- | --- | --- |
+| Add graph filter | stefano | 2026-11-10 | Faster debugging |
+
+## Done
+<!-- wiki:done -->
+
+| ID | Status | Goal | Closed | Criteria met | Evidence |
+| --- | --- | --- | --- | --- | --- |
+`;
+
+test('promoteProposalToOpen assigns next never-reused T<N>, sets owner and evidence, and appends a human log entry', () => {
   const res = promoteProposalToOpen({
     trackerMarkdown: SAMPLE_TRACKER,
     logMarkdown: SAMPLE_LOG,
     proposalIndex: 0,
     person: 'Stefano',
-    owner: 'Stefano',
+    owner: 'Mario',
     doneWhen: 'Filter toggles source nodes',
     nextVerification: 'node --test',
     dateIso: '2026-11-10',
-    shortSha: 'b2c3d4e',
   });
   assert.equal(res.assignedId, 'T8');
   const parsed = parseTrackerMarkdown(res.trackerMarkdown);
@@ -89,31 +127,63 @@ test('promoteProposalToOpen assigns next never-reused T<N>, adds Open row with �
   assert.equal(parsed.open.length, 2);
   assert.equal(parsed.open[1].id, 'T8');
   assert.equal(parsed.open[1].status, '⚪');
-  assert.match(res.logMarkdown, /## 2026-11-10 · Promote proposal to T8 · human/);
+  assert.equal(parsed.open[1].owner, 'Mario');
+  assert.equal(parsed.open[1].evidence, 'promoted by Stefano 2026-11-10');
+  assert.deepEqual(parsed.open[1].extra, {});
+  assert.doesNotMatch(res.trackerMarkdown, /^updated:/m);
+  assert.match(res.trackerMarkdown, /^source_commit: a1b2c3d$/m);
+  assert.equal(
+    res.logMarkdown.slice(SAMPLE_LOG.trimEnd().length),
+    '\n\n## 2026-11-10 · Promote proposal to T8 · human\n- What: Stefano promoted proposal "Add graph filter" to T8\n- Evidence: promoted by Stefano 2026-11-10\n- IDs: T8\n'
+  );
 });
 
-test('closeTrackerItemHumanUnproven enforces human authority and formats ⚫ row to match validate-wiki.py', () => {
-  assert.throws(() => {
-    closeTrackerItemHumanUnproven({
-      trackerMarkdown: SAMPLE_TRACKER,
-      logMarkdown: SAMPLE_LOG,
-      taskId: 'T1',
-      person: 'coding agent',
-      notProvenReason: 'skipped',
-      dateIso: '2026-11-10',
-      shortSha: 'b2c3d4e',
-    });
-  }, /human/i);
+test('extra tracker columns such as Phase survive promote and close', () => {
+  const promoted = promoteProposalToOpen({
+    trackerMarkdown: PHASE_TRACKER,
+    logMarkdown: SAMPLE_LOG,
+    proposalIndex: 0,
+    person: 'Stefano',
+    owner: 'Mario',
+    doneWhen: 'Filter works',
+    nextVerification: 'node --test',
+    dateIso: '2026-11-10',
+  });
+  const afterPromote = parseTrackerMarkdown(promoted.trackerMarkdown);
+  assert.equal(afterPromote.open[0].extra.Phase, 'Core');
+  assert.equal(afterPromote.open[1].id, 'T8');
 
-  const res = closeTrackerItemHumanUnproven({
+  const closed = closeTrackerItemHumanUnproven({
+    trackerMarkdown: promoted.trackerMarkdown,
+    logMarkdown: promoted.logMarkdown,
+    taskId: 'T1',
+    person: 'Stefano',
+    notProvenReason: 'superseded',
+    closureSource: 'chat',
+    dateIso: '2026-11-10',
+  });
+  const afterClose = parseTrackerMarkdown(closed.trackerMarkdown);
+  assert.deepEqual(afterClose.doneHeader.slice(-1), ['Phase']);
+  assert.equal(afterClose.done.find((r) => r.id === 'T1')!.extra.Phase, 'Core');
+  assert.match(closed.trackerMarkdown, /^\| ID \| Status \| Goal \| Closed \| Criteria met \| Evidence \| Phase \|$/m);
+  // The promoted T8 row has no Phase value: new rows get empty extra columns.
+  assert.equal(afterClose.open[0].id, 'T8');
+  assert.equal(afterClose.open[0].extra.Phase, '');
+});
+
+test('closeTrackerItemHumanUnproven enforces human authority and records closure source', () => {
+  const base = {
     trackerMarkdown: SAMPLE_TRACKER,
     logMarkdown: SAMPLE_LOG,
     taskId: 'T1',
-    person: 'Stefano',
     notProvenReason: 'superseded by direct parser',
+    closureSource: 'team meeting 2026-11-10',
     dateIso: '2026-11-10',
-    shortSha: 'b2c3d4e',
-  });
+  };
+  assert.throws(() => closeTrackerItemHumanUnproven({ ...base, person: 'coding agent' }), /human/i);
+  assert.throws(() => closeTrackerItemHumanUnproven({ ...base, person: 'Stefano', closureSource: ' ' }), /closure/i);
+
+  const res = closeTrackerItemHumanUnproven({ ...base, person: 'Stefano' });
   const parsed = parseTrackerMarkdown(res.trackerMarkdown);
   assert.equal(parsed.open.length, 0);
   assert.equal(parsed.done.length, 2);
@@ -121,51 +191,127 @@ test('closeTrackerItemHumanUnproven enforces human authority and formats ⚫ row
   assert.equal(closedRow.status, '⚫');
   assert.equal(closedRow.closed, '2026-11-10');
   assert.equal(closedRow.criteriaMet, 'closed by Stefano 2026-11-10; not proven: superseded by direct parser');
-  assert.match(res.logMarkdown, /## 2026-11-10 · Close T1 without proof · human/);
+  assert.equal(closedRow.evidence, 'team meeting 2026-11-10');
+  assert.doesNotMatch(res.trackerMarkdown, /^updated:/m);
+  assert.match(res.logMarkdown, /\n## 2026-11-10 · Close T1 without proof · human\n- What: Stefano closed T1 without proof: superseded by direct parser\n- Evidence: team meeting 2026-11-10\n- IDs: T1\n$/);
 });
 
-test('approveDecisionHuman updates status to accepted, rewrites ## Approval, and appends human log', () => {
-  const decisionMd = `---
+const DECISION_PROPOSED = `---
 type: Decision
 title: 0002 - Use Canvas Graph
-description: Render graph in 2D canvas
 status: proposed
+source_commit: a1b2c3d
+confidence: high
 generated: { by: codex/gpt-5, at: 2026-11-10T09:00:00Z }
 sources:
   - README.md
-source_commit: a1b2c3d
-confidence: high
 ---
 
 # 0002 - Use Canvas Graph
 
-## Context
-Need smooth rendering on Linux Wayland.
-
 ## Decision
 Use HTML5 2D Canvas force graph.
-
-## Alternatives rejected
-- WebGL: Wayland driver glitches.
-
-## Consequences
-Fast rendering.
 
 ## Approval
 proposed: codex on 2026-11-10.
 `;
 
-  const res = approveDecisionHuman({
-    decisionMarkdown: decisionMd,
+test('acceptDecisionHuman and rejectDecisionHuman append approval lines and keep the proposed line', () => {
+  const accepted = acceptDecisionHuman({
+    decisionMarkdown: DECISION_PROPOSED,
     logMarkdown: SAMPLE_LOG,
     person: 'Stefano',
-    whereContext: 'Codebase Wiki Desktop App',
+    whereContext: 'PR review #12',
     dateIso: '2026-11-10',
-    shortSha: 'b2c3d4e',
   });
-  assert.match(res.decisionMarkdown, /status: accepted/);
-  assert.match(res.decisionMarkdown, /accepted: approved by Stefano \(Codebase Wiki Desktop App\) on 2026-11-10/);
-  assert.match(res.logMarkdown, /## 2026-11-10 · Approve decision 0002 - Use Canvas Graph · human/);
+  assert.match(accepted.decisionMarkdown, /^status: accepted$/m);
+  assert.match(accepted.decisionMarkdown, /^source_commit: a1b2c3d$/m);
+  const approvalStart = accepted.decisionMarkdown.indexOf('## Approval');
+  const approval = accepted.decisionMarkdown.slice(approvalStart);
+  assert.ok(approval.indexOf('proposed: codex on 2026-11-10.') < approval.indexOf('accepted: Stefano, PR review #12, 2026-11-10'));
+  assert.match(accepted.logMarkdown, /\n## 2026-11-10 · Accept decision 0002 - Use Canvas Graph · human\n- What: Stefano accepted decision 0002 - Use Canvas Graph\n- Evidence: PR review #12\n- IDs: none\n$/);
+
+  const rejected = rejectDecisionHuman({
+    decisionMarkdown: DECISION_PROPOSED,
+    logMarkdown: SAMPLE_LOG,
+    person: 'Stefano',
+    whereContext: 'meeting',
+    dateIso: '2026-11-10',
+  });
+  assert.match(rejected.decisionMarkdown, /^status: rejected$/m);
+  assert.match(rejected.decisionMarkdown, /^rejected: Stefano, meeting, 2026-11-10$/m);
+  assert.match(rejected.logMarkdown, /## 2026-11-10 · Reject decision 0002 - Use Canvas Graph · human/);
+});
+
+test('accept and reject only work from proposed status', () => {
+  const accepted = acceptDecisionHuman({
+    decisionMarkdown: DECISION_PROPOSED,
+    logMarkdown: SAMPLE_LOG,
+    person: 'Stefano',
+    whereContext: 'PR review #12',
+    dateIso: '2026-11-10',
+  });
+  assert.throws(
+    () => acceptDecisionHuman({ decisionMarkdown: accepted.decisionMarkdown, logMarkdown: SAMPLE_LOG, person: 'Stefano', whereContext: 'x', dateIso: '2026-11-11' }),
+    /proposed/
+  );
+  assert.throws(
+    () => rejectDecisionHuman({ decisionMarkdown: accepted.decisionMarkdown, logMarkdown: SAMPLE_LOG, person: 'Stefano', whereContext: 'x', dateIso: '2026-11-11' }),
+    /proposed/
+  );
+});
+
+test('updateOpenRowField changes owner or an extra column and rejects unknown ids and columns', () => {
+  const byOwner = updateOpenRowField({ trackerMarkdown: PHASE_TRACKER, id: 'T1', field: 'owner', value: 'Mario' });
+  assert.equal(parseTrackerMarkdown(byOwner.trackerMarkdown).open[0].owner, 'Mario');
+
+  const byPhase = updateOpenRowField({ trackerMarkdown: PHASE_TRACKER, id: 'T1', field: 'Phase', value: 'Next' });
+  const parsed = parseTrackerMarkdown(byPhase.trackerMarkdown);
+  assert.equal(parsed.open[0].extra.Phase, 'Next');
+  assert.equal(parsed.open[0].owner, 'stefano');
+
+  assert.throws(() => updateOpenRowField({ trackerMarkdown: PHASE_TRACKER, id: 'T9', field: 'owner', value: 'x' }), /T9/);
+  assert.throws(() => updateOpenRowField({ trackerMarkdown: PHASE_TRACKER, id: 'T1', field: 'Priority', value: 'x' }), /Priority/);
+});
+
+test('markPageReviewed adds a human verified entry, keeps earlier entries, and logs the review', () => {
+  const page = `---
+title: Auth
+updated: 2026-11-01
+verified: { by: claude-code/opus, at: 2026-11-01T00:00:00Z }
+source_commit: a1b2c3d
+confidence: high
+---
+
+# Auth
+`;
+  const res = markPageReviewed({
+    pageMarkdown: page,
+    logMarkdown: SAMPLE_LOG,
+    person: 'Mario Rossi',
+    atIso: '2026-11-10T12:00:00Z',
+    commit: 'b2c3d4e',
+  });
+  const parsed = parseFrontmatter(res.pageMarkdown);
+  assert.deepEqual(parsed.verified, [
+    { by: 'claude-code/opus', at: '2026-11-01T00:00:00Z' },
+    { by: 'human:mario-rossi', at: '2026-11-10T12:00:00Z', commit: 'b2c3d4e' },
+  ]);
+  assert.equal(parsed.fields.updated, '2026-11-01');
+  assert.equal(parsed.fields.source_commit, 'a1b2c3d');
+  assert.match(res.logMarkdown, /\n## 2026-11-10 · Mark page reviewed · human\n- What: Mario Rossi marked page "Auth" reviewed\n- Evidence: commit b2c3d4e\n- IDs: none\n$/);
+});
+
+test('appendLogEntry appends exactly one blank-line-separated entry at the end of the log', () => {
+  const log = appendLogEntry({
+    logMarkdown: '# Log\n',
+    date: '2026-11-10',
+    title: 'Something',
+    what: 'Stefano did it',
+    evidence: 'chat',
+    ids: ['T2', 'T3'],
+  });
+  assert.equal(log, '# Log\n\n## 2026-11-10 · Something · human\n- What: Stefano did it\n- Evidence: chat\n- IDs: T2, T3\n');
 });
 
 test('parseHandoffMarkdown parses state bullets, baton rows, and blockers', () => {
@@ -439,7 +585,6 @@ proposed: codex on 2026-11-10.
       doneWhen: 'Filter toggles source nodes',
       nextVerification: 'node --test',
       dateIso: '2026-11-10',
-      shortSha: 'b2c3d4e',
     });
     trackerMd = res1.trackerMarkdown;
     logMd = res1.logMarkdown;
@@ -451,20 +596,19 @@ proposed: codex on 2026-11-10.
       taskId: 'T1',
       person: 'Stefano',
       notProvenReason: 'superseded by direct parser',
+      closureSource: 'chat',
       dateIso: '2026-11-10',
-      shortSha: 'b2c3d4e',
     });
     trackerMd = res2.trackerMarkdown;
     logMd = res2.logMarkdown;
 
     // 3. Approve decision
-    const res3 = approveDecisionHuman({
+    const res3 = acceptDecisionHuman({
       decisionMarkdown: decisionMd,
       logMarkdown: logMd,
       person: 'Stefano',
       whereContext: 'Codebase Wiki Desktop App',
       dateIso: '2026-11-10',
-      shortSha: 'b2c3d4e',
     });
     decisionMd = res3.decisionMarkdown;
     logMd = res3.logMarkdown;

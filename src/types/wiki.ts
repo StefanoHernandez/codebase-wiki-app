@@ -59,6 +59,7 @@ export interface TrackerOpenRow {
   owner: string;
   nextVerification: string;
   evidence: string;
+  extra: Record<string, string>;
 }
 
 export interface TrackerProposalRow {
@@ -66,6 +67,7 @@ export interface TrackerProposalRow {
   by: string;
   date: string;
   why: string;
+  extra: Record<string, string>;
 }
 
 export interface TrackerDoneRow {
@@ -75,12 +77,17 @@ export interface TrackerDoneRow {
   closed: string;
   criteriaMet: string;
   evidence: string;
+  extra: Record<string, string>;
 }
 
 export interface TrackerData {
   open: TrackerOpenRow[];
   proposals: TrackerProposalRow[];
   done: TrackerDoneRow[];
+  /** Header of each section as written in the file (extra columns included). */
+  openHeader: string[];
+  proposalsHeader: string[];
+  doneHeader: string[];
 }
 
 export interface BatonRow {
