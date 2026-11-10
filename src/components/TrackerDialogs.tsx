@@ -1,0 +1,253 @@
+import { useState, type ReactNode } from 'react';
+import { Dialog, Field } from './Dialog';
+import { useProject, type ProjectState } from '../state/project';
+import { DEFAULT_CORE_MAP } from '../lib/schema-parser';
+import {
+  appendLogEntry,
+  closeTrackerItemHumanUnproven,
+  promoteProposalToOpen,
+  updateOpenRowField,
+} from '../lib/human-actions';
+import type { TrackerOpenRow } from '../types/wiki';
+
+/** Shown on every human action that is disabled because no signing name is set. */
+export const SIGN_HINT = 'Imposta il tuo nome nelle impostazioni per firmare.';
+
+const NOT_READY = 'La wiki non è ancora caricata. Premi Ricarica e riprova.';
+
+/** Local calendar date as YYYY-MM-DD (the date the person signs, not UTC). */
+export function localIsoDate(d = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+interface TrackerFiles {
+  trackerPath: string;
+  trackerMarkdown: string;
+  logPath: string;
+  logMarkdown: string;
+}
+
+/** Current tracker and log text from the open snapshot, or null when either page is missing. */
+function trackerFiles(project: ProjectState): TrackerFiles | null {
+  const core = project.schema?.coreMap ?? DEFAULT_CORE_MAP;
+  const tracker = project.pages.find((p) => p.relPath === core.tracker);
+  const log = project.pages.find((p) => p.relPath === core.log);
+  if (!tracker || !log) return null;
+  return {
+    trackerPath: tracker.relPath,
+    trackerMarkdown: tracker.markdown,
+    logPath: log.relPath,
+    logMarkdown: log.markdown,
+  };
+}
+
+function errorText(e: unknown): string {
+  return `Non riesco a salvare. ${e instanceof Error ? e.message : String(e)}`;
+}
+
+interface Handlers {
+  onClose(): void;
+  /** Called after the write succeeded, with the ID of the row that changed or was created. */
+  onDone(id: string): void;
+}
+
+/** Runs one signed write: busy and error state shared by all tracker dialogs. */
+function useSigned(onDone: (id: string) => void) {
+  const project = useProject();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const run = async (
+    check: string | null,
+    write: (files: TrackerFiles) => Promise<string>,
+  ) => {
+    if (check) {
+      setError(check);
+      return;
+    }
+    const files = trackerFiles(project);
+    if (!files) {
+      setError(NOT_READY);
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    try {
+      onDone(await write(files));
+    } catch (e) {
+      setError(errorText(e));
+      setBusy(false);
+    }
+  };
+
+  return { project, error, busy, run };
+}
+
+function Note({ children }: { children: ReactNode }) {
+  return <p className="dialog-note">{children}</p>;
+}
+
+/** Promuovi a lavoro: a proposal becomes an Open row with the next free ID. */
+export function PromoteDialog({ proposalIndex, proposal, onClose, onDone }: Handlers & { proposalIndex: number; proposal: string }) {
+  const { project, error, busy, run } = useSigned(onDone);
+  const [owner, setOwner] = useState(project.actor);
+  const [doneWhen, setDoneWhen] = useState('');
+  const [nextVerification, setNextVerification] = useState('');
+
+  const submit = () =>
+    run(
+      !owner.trim()
+        ? 'Scrivi il responsabile.'
+        : !doneWhen.trim()
+          ? 'Scrivi quando il lavoro è fatto.'
+          : !nextVerification.trim()
+            ? 'Scrivi come verificherai il lavoro.'
+            : null,
+      async (files) => {
+        const r = promoteProposalToOpen({
+          trackerMarkdown: files.trackerMarkdown,
+          logMarkdown: files.logMarkdown,
+          proposalIndex,
+          person: project.actor,
+          owner,
+          doneWhen,
+          nextVerification,
+          dateIso: localIsoDate(),
+        });
+        await project.act([
+          { relPath: files.trackerPath, content: r.trackerMarkdown },
+          { relPath: files.logPath, content: r.logMarkdown },
+        ]);
+        return r.assignedId;
+      },
+    );
+
+  return (
+    <Dialog
+      open
+      title="Promuovi a lavoro"
+      confirmLabel="Promuovi a lavoro"
+      human
+      busy={busy}
+      error={error}
+      onConfirm={submit}
+      onCancel={onClose}
+    >
+      <Note>
+        Proposta: {proposal}. Diventa un lavoro aperto con il prossimo ID. Lo firmi tu come {project.actor}.
+      </Note>
+      <Field label="Responsabile">
+        <input value={owner} onChange={(e) => setOwner(e.target.value)} />
+      </Field>
+      <Field label="Fatto quando">
+        <input value={doneWhen} onChange={(e) => setDoneWhen(e.target.value)} />
+      </Field>
+      <Field label="Prossima verifica" hint="Un comando o un controllo, per esempio `npm test`.">
+        <input value={nextVerification} onChange={(e) => setNextVerification(e.target.value)} />
+      </Field>
+    </Dialog>
+  );
+}
+
+/** Chiudi senza prova ⚫: a person closes an Open row without proof. The app never does this alone. */
+export function CloseDialog({ row, onClose, onDone }: Handlers & { row: TrackerOpenRow }) {
+  const { project, error, busy, run } = useSigned(onDone);
+  const [notProven, setNotProven] = useState('');
+  const [source, setSource] = useState('');
+
+  const submit = () =>
+    run(
+      !notProven.trim()
+        ? 'Scrivi cosa non è provato.'
+        : !source.trim()
+          ? "Scrivi dove l'hai deciso: messaggio, riunione, PR."
+          : null,
+      async (files) => {
+        const r = closeTrackerItemHumanUnproven({
+          trackerMarkdown: files.trackerMarkdown,
+          logMarkdown: files.logMarkdown,
+          taskId: row.id,
+          person: project.actor,
+          notProvenReason: notProven,
+          closureSource: source,
+          dateIso: localIsoDate(),
+        });
+        await project.act([
+          { relPath: files.trackerPath, content: r.trackerMarkdown },
+          { relPath: files.logPath, content: r.logMarkdown },
+        ]);
+        return row.id;
+      },
+    );
+
+  return (
+    <Dialog
+      open
+      title={`Chiudi ${row.id} senza prova`}
+      confirmLabel="Chiudi senza prova"
+      human
+      busy={busy}
+      error={error}
+      onConfirm={submit}
+      onCancel={onClose}
+    >
+      <Note>
+        Chiudere a mano registra che sei tu a chiudere {row.goal} senza prova. Il lavoro esce dai lavori aperti come
+        ⚫ e non diventa verificato.
+      </Note>
+      <Field label="Cosa non è provato">
+        <input value={notProven} onChange={(e) => setNotProven(e.target.value)} />
+      </Field>
+      <Field label="Dove l'hai deciso" hint="Messaggio, riunione o PR dove hai preso la decisione.">
+        <input value={source} onChange={(e) => setSource(e.target.value)} />
+      </Field>
+    </Dialog>
+  );
+}
+
+/** Cambia responsabile / Cambia priorità: one editable cell of an Open row, logged as a human change. */
+export function FieldDialog({
+  row,
+  column,
+  label,
+  title,
+  initial,
+  onClose,
+  onDone,
+}: Handlers & { row: TrackerOpenRow; column: string; label: string; title: string; initial: string }) {
+  const { project, error, busy, run } = useSigned(onDone);
+  const [value, setValue] = useState(initial);
+
+  const submit = () =>
+    run(!value.trim() ? `Scrivi ${label.toLowerCase()}.` : null, async (files) => {
+      const next = updateOpenRowField({
+        trackerMarkdown: files.trackerMarkdown,
+        id: row.id,
+        field: column,
+        value,
+      });
+      const date = localIsoDate();
+      const logMarkdown = appendLogEntry({
+        logMarkdown: files.logMarkdown,
+        date,
+        title: `Change ${column.toLowerCase()} of ${row.id}`,
+        what: `${project.actor} set ${column.toLowerCase()} of ${row.id} to ${value.trim()}`,
+        evidence: `changed by ${project.actor} ${date}`,
+        ids: [row.id],
+      });
+      await project.act([
+        { relPath: files.trackerPath, content: next.trackerMarkdown },
+        { relPath: files.logPath, content: logMarkdown },
+      ]);
+      return row.id;
+    });
+
+  return (
+    <Dialog open title={title} confirmLabel={title} human busy={busy} error={error} onConfirm={submit} onCancel={onClose}>
+      <Field label={label}>
+        <input value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
+      </Field>
+    </Dialog>
+  );
+}

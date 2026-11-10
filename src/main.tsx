@@ -10,6 +10,7 @@ import '@fontsource/jetbrains-mono/400.css';
 import './styles/tokens.css';
 import './styles/base.css';
 import './styles/components.css';
+import './styles/views.css';
 import App from './App.tsx';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

@@ -1,0 +1,152 @@
+/* View layout for Per te and Lavori. Buttons, rows, cards and dialogs come from components.css. */
+
+.group {
+  margin-top: 28px;
+}
+.group:first-of-type {
+  margin-top: 0;
+}
+.group-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: var(--text-md);
+  font-weight: 500;
+}
+.group-count {
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+.row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.row-title,
+.row-detail {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.row-title {
+  font-weight: 500;
+}
+.row-detail {
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.toolbar-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+.toolbar-field select {
+  width: auto;
+}
+
+.kanban {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.kanban-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.kanban-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 500;
+}
+.kanban-count {
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+.kanban-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.kanban-card-id {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+.card-goal,
+.card-meta-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.card-goal {
+  font-weight: 500;
+}
+.card-meta-text {
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+.clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-meta {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.card-meta > div,
+.card-extra {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 10px;
+}
+.card-meta dt {
+  color: var(--ink-muted);
+}
+.card-meta dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.is-selected {
+  box-shadow: 0 0 0 2px var(--ink-muted);
+}
+.btn[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.dialog-note {
+  margin: 0;
+  color: var(--ink-muted);
+}
