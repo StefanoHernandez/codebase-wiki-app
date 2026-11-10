@@ -261,6 +261,7 @@ mod tests {
         assert!(page_paths.contains(&"index.md"));
         assert!(page_paths.contains(&"log.md"));
         assert!(page_paths.contains(&"project/work-tracker.md"));
+        assert!(page_paths.contains(&"project/decisions/0001-initial-architecture.md"));
         assert!(page_paths.contains(&"project/risks.md"));
         assert!(page_paths.contains(&"agent/context.md"));
         assert!(page_paths.contains(&"agent/handoff.md"));
@@ -268,6 +269,25 @@ mod tests {
         assert!(page_paths.contains(&"glossary.md"));
         assert!(page_paths.contains(&"architecture.md"));
         assert!(page_paths.contains(&"testing.md"));
+
+        // Verify proposals table in work-tracker.md
+        let tracker_page = snapshot.pages.iter().find(|p| p.wiki_rel_path == "project/work-tracker.md").unwrap();
+        assert!(tracker_page.content.contains("| Proposal | By | Date | Why |"));
+        assert!(tracker_page.content.contains("| Document core architecture and modules | developer |"));
+
+        // Verify decision frontmatter status and ## Approval
+        let decision_page = snapshot.pages.iter().find(|p| p.wiki_rel_path == "project/decisions/0001-initial-architecture.md").unwrap();
+        assert!(decision_page.content.contains("status: proposed"));
+        assert!(decision_page.content.contains("## Approval"));
+        assert!(decision_page.content.contains("proposed: wiki-init on 2026-11-10."));
+
+        // Verify handoff state bullets
+        let handoff_page = snapshot.pages.iter().find(|p| p.wiki_rel_path == "agent/handoff.md").unwrap();
+        assert!(handoff_page.content.contains("- Tracker IDs: T1"));
+        assert!(handoff_page.content.contains("- Goal: Initial repository wiki setup"));
+        assert!(handoff_page.content.contains("- Last completed step: Initialized wiki structure"));
+        assert!(handoff_page.content.contains("- Current branch: `main`"));
+        assert!(handoff_page.content.contains("- Worktree: clean"));
     }
 
     #[test]
@@ -384,6 +404,74 @@ mod tests {
         // Check diff
         let diff = file_diff_since_commit(repo, &initial_sha, "src_file.rs");
         assert!(diff.contains("+fn main() { println!(\"v3\"); }"));
+    }
+
+    #[test]
+    fn test_frontmatter_source_cleaning_in_snapshot() {
+        let td = TestDir::new("clean_sources");
+        let repo = td.path();
+
+        let run_cmd = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(["-C"])
+                .arg(repo)
+                .args(args)
+                .output()
+                .expect("git cmd failed");
+            assert!(out.status.success());
+            out
+        };
+
+        run_cmd(&["init"]);
+        run_cmd(&["config", "user.email", "agent@example.com"]);
+        run_cmd(&["config", "user.name", "Agent"]);
+
+        fs::write(repo.join("file1.rs"), "fn one() {}\n").unwrap();
+        run_cmd(&["add", "file1.rs"]);
+        run_cmd(&["commit", "-m", "Initial commit"]);
+
+        let initial_sha = String::from_utf8_lossy(&run_cmd(&["rev-parse", "HEAD"]).stdout)
+            .trim()
+            .to_string();
+
+        // Create wiki page with fragment and line numbers in sources
+        let wiki_dir = repo.join("wiki");
+        fs::create_dir_all(&wiki_dir).unwrap();
+        let page_content = format!(
+r#"---
+type: Topic
+title: My Page
+description: Page with line-scoped sources.
+updated: 2026-11-10
+confidence: high
+source_commit: {initial_sha}
+sources:
+  - file1.rs#L1-L10
+  - file1.rs:42:15
+---
+
+# Topic
+"#,
+            initial_sha = initial_sha
+        );
+        fs::write(wiki_dir.join("topic.md"), page_content).unwrap();
+        fs::write(wiki_dir.join("SCHEMA.md"), "# Schema\n").unwrap();
+
+        // Second commit modifies file1.rs
+        fs::write(repo.join("file1.rs"), "fn one() { println!(\"mod\"); }\n").unwrap();
+        run_cmd(&["add", "file1.rs"]);
+        run_cmd(&["commit", "-m", "Second commit"]);
+
+        let validator_script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("resources")
+            .join("validate-wiki.py");
+
+        let snapshot = load_wiki_snapshot(repo, "wiki", &validator_script).unwrap();
+        let changed = snapshot.changed_files_by_page.get("topic.md");
+        assert!(changed.is_some(), "Changed files should be present for topic.md");
+        assert_eq!(changed.unwrap(), &vec!["file1.rs".to_string()]);
     }
 
     #[test]

@@ -163,6 +163,13 @@ pub fn write_wiki_file_safe(
     Ok(())
 }
 
+fn clean_source_path(raw: &str) -> String {
+    let without_hash = raw.split('#').next().unwrap_or(raw).trim();
+    static LINE_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = LINE_RE.get_or_init(|| regex::Regex::new(r":\d+(?::\d+)?$").unwrap());
+    re.replace(without_hash, "").trim().to_string()
+}
+
 fn extract_frontmatter_sources_and_commit(content: &str) -> (Option<String>, Vec<String>) {
     let lines: Vec<&str> = content.lines().collect();
     if lines.is_empty() || lines[0].trim() != "---" {
@@ -193,8 +200,9 @@ fn extract_frontmatter_sources_and_commit(content: &str) -> (Option<String>, Vec
             in_sources = true;
         } else if in_sources && line.starts_with("  - ") {
             let item = line[4..].trim().trim_matches('"').trim_matches('\'');
-            if !item.is_empty() {
-                sources.push(item.to_string());
+            let cleaned = clean_source_path(item);
+            if !cleaned.is_empty() {
+                sources.push(cleaned);
             }
         } else if !line.starts_with("  ") {
             in_sources = false;
@@ -563,9 +571,9 @@ source_commit: initial
 
 ## Proposals
 <!-- wiki:proposals -->
-| Idea | Context |
-| --- | --- |
-| Initial architecture review | Document core components and flows |
+| Proposal | By | Date | Why |
+| --- | --- | --- | --- |
+| Document core architecture and modules | developer | {today} | Establish baseline module documentation |
 
 ## Done
 <!-- wiki:done -->
@@ -581,6 +589,7 @@ r#"---
 type: Decision
 title: Initial Architecture
 description: Initial architecture baseline.
+status: proposed
 updated: {today}
 confidence: high
 sources:
@@ -591,13 +600,16 @@ source_commit: initial
 # 0001 - Initial Architecture
 
 ## Status
-Accepted
+Proposed
 
 ## Context
 Initial repository setup.
 
 ## Decision
 Adopt standard codebase wiki structure.
+
+## Approval
+proposed: wiki-init on {today}.
 "#,
         today = today
     );
@@ -683,7 +695,11 @@ source_commit: initial
 
 ## Current Work State
 <!-- wiki:state -->
-Initial wiki bootstrap complete.
+- Tracker IDs: T1
+- Goal: Initial repository wiki setup
+- Last completed step: Initialized wiki structure
+- Current branch: `main`
+- Worktree: clean
 
 ## Baton For Next Coding Agent
 <!-- wiki:baton -->
