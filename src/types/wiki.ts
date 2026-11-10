@@ -149,3 +149,15 @@ export interface GraphFilterOptions {
   localGraphHops?: number;
 }
 
+
+export type DecisionStatus = 'proposed' | 'accepted' | 'rejected' | 'superseded' | 'unknown';
+
+export interface Decision {
+  relPath: string;
+  number: string;
+  slug: string;
+  title: string;
+  status: DecisionStatus;
+  supersededBy?: string;
+  approvalLines: string[];
+}
