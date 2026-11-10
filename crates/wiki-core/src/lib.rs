@@ -420,6 +420,41 @@ sources:
     }
 
     #[test]
+    fn test_private_terms_name_variants_are_refused() {
+        let td = TestDir::new("terms_variants");
+        let repo = td.path();
+        let wiki = repo.join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        fs::write(wiki.join(".private-terms"), "acme\n").unwrap();
+        for name in [".PRIVATE-TERMS", ".Private-Terms", ".private-terms.", ".private-terms. ", ".private-terms::$DATA", "a:b.md"] {
+            assert!(write_wiki_file_safe(repo, "wiki", name, "").is_err(), "write {name}");
+            assert!(read_repo_file_safe(repo, &format!("wiki/{name}"), None).is_err(), "read {name}");
+        }
+        assert_eq!(fs::read_to_string(wiki.join(".private-terms")).unwrap(), "acme\n");
+        // A symlink inside the wiki pointing at .private-terms is refused too.
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(wiki.join(".private-terms"), wiki.join("alias.md")).unwrap();
+            assert!(write_wiki_file_safe(repo, "wiki", "alias.md", "").is_err());
+            assert_eq!(fs::read_to_string(wiki.join(".private-terms")).unwrap(), "acme\n");
+        }
+    }
+
+    #[test]
+    fn test_private_terms_bom_and_unreadable_file() {
+        let td = TestDir::new("terms_bom");
+        let repo = td.path();
+        let wiki = repo.join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        fs::write(wiki.join(".private-terms"), "\u{feff}acme\n").unwrap();
+        assert!(write_wiki_file_safe(repo, "wiki", "p.md", "ACME").is_err(), "BOM must not hide first term");
+        // UTF-16 LE (invalid UTF-8): refuse instead of skipping the check.
+        fs::write(wiki.join(".private-terms"), [0xFF, 0xFE, b'a', 0, b'c', 0]).unwrap();
+        assert!(write_wiki_file_safe(repo, "wiki", "p.md", "clean").is_err());
+        assert!(!wiki.join("p.md").exists());
+    }
+
+    #[test]
     fn test_snapshot_has_no_lint_and_camel_case_json() {
         let td = TestDir::new("snapshot_json");
         let repo = td.path();

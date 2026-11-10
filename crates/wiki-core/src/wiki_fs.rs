@@ -35,6 +35,14 @@ pub struct RepoFilePayload {
     pub diff: String,
 }
 
+/// True for any spelling the OS may resolve to `.private-terms`: case-insensitive
+/// (APFS/NTFS) and ignoring trailing dots/spaces (Windows).
+fn is_private_terms_name(name: &std::ffi::OsStr) -> bool {
+    name.to_string_lossy()
+        .trim_end_matches(['.', ' '])
+        .eq_ignore_ascii_case(".private-terms")
+}
+
 fn is_safe_relative_path(path_str: &str) -> bool {
     let p = Path::new(path_str);
     if p.is_absolute() {
@@ -44,7 +52,8 @@ fn is_safe_relative_path(path_str: &str) -> bool {
         match comp {
             Component::ParentDir => return false,
             Component::Normal(s) => {
-                if s == ".private-terms" {
+                // `:` would allow NTFS alternate data streams (`.private-terms::$DATA`).
+                if is_private_terms_name(s) || s.to_string_lossy().contains(':') {
                     return false;
                 }
             }
@@ -82,7 +91,7 @@ pub fn read_repo_file_safe(
 
     if canon_file
         .components()
-        .any(|c| c.as_os_str() == ".private-terms")
+        .any(|c| is_private_terms_name(c.as_os_str()))
     {
         return Err("Access denied: .private-terms cannot be read".into());
     }
@@ -127,13 +136,24 @@ pub fn write_wiki_file_safe(
         probe = probe.parent().ok_or("Target path escapes wiki root")?;
     }
     match probe.canonicalize() {
-        Ok(canon) if canon.starts_with(&canon_wiki) => {}
+        Ok(canon) if canon.starts_with(&canon_wiki) => {
+            if canon.components().any(|c| is_private_terms_name(c.as_os_str())) {
+                return Err("Access denied: .private-terms cannot be written".into());
+            }
+        }
         _ => return Err("Target path escapes wiki root".into()),
     }
 
     // `.private-terms` in the wiki root is the source of truth for forbidden terms.
     let private_terms_path = wiki_dir.join(".private-terms");
-    if let Ok(terms_content) = fs::read_to_string(&private_terms_path) {
+    // Fail closed: an existing but unreadable terms file refuses the write.
+    let terms_content = match fs::read_to_string(&private_terms_path) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(format!("Cannot read .private-terms, write refused: {}", e)),
+    };
+    if let Some(terms_content) = terms_content {
+        let terms_content = terms_content.trim_start_matches('\u{feff}');
         let lower_content = content.to_lowercase();
         for line in terms_content.lines() {
             let term = line.trim();
