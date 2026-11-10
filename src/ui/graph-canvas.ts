@@ -154,15 +154,6 @@ export class GraphCanvas {
 
   public selectNode(nodeId: string | null): void {
     this.selectedNodeId = nodeId;
-    if (nodeId) {
-      const node = this.nodeMap.get(nodeId);
-      if (node) {
-        // Center view on selected node smoothly
-        const rect = this.canvas.getBoundingClientRect();
-        this.panX = (rect.width || 600) / 2 - node.x * this.zoom;
-        this.panY = (rect.height || 400) / 2 - node.y * this.zoom;
-      }
-    }
     this.requestRender();
   }
 
@@ -297,44 +288,63 @@ export class GraphCanvas {
     const height = rect.height || 400;
 
     this.ctx.clearRect(0, 0, width, height);
+
+    if (this.nodes.length === 0) {
+      this.ctx.save();
+      this.ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      this.ctx.fillStyle = '#64748b';
+      this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'middle';
+      this.ctx.fillText(
+        "No Wiki loaded in this folder — click '📁 Browse...' to select a repo or '+ Init Wiki' to create one",
+        width / 2,
+        height / 2
+      );
+      this.ctx.restore();
+      return;
+    }
+
     this.ctx.save();
 
     // Transform view
     this.ctx.translate(this.panX, this.panY);
     this.ctx.scale(this.zoom, this.zoom);
 
-    // Connected neighbors for hover/selection highlight
-    const highlightId = this.hoveredNode?.id || this.selectedNodeId;
-    const neighborIds = new Set<string>();
-    if (highlightId) {
-      neighborIds.add(highlightId);
+    // Connected neighbors for hover
+    const hoverId = this.hoveredNode?.id;
+    const selectedId = this.selectedNodeId;
+    const hoverNeighborIds = new Set<string>();
+    if (hoverId) {
+      hoverNeighborIds.add(hoverId);
       for (const e of this.edges) {
-        if (e.source.id === highlightId) neighborIds.add(e.target.id);
-        if (e.target.id === highlightId) neighborIds.add(e.source.id);
+        if (e.source.id === hoverId) hoverNeighborIds.add(e.target.id);
+        if (e.target.id === hoverId) hoverNeighborIds.add(e.source.id);
       }
     }
 
     // 1. Draw Edges
     for (const e of this.edges) {
-      const isHighlighted = highlightId && (e.source.id === highlightId || e.target.id === highlightId);
-      const isDimmed = highlightId && !isHighlighted;
+      const isIncidentToHover = Boolean(hoverId && (e.source.id === hoverId || e.target.id === hoverId));
+      const isIncidentToSelected = Boolean(selectedId && (e.source.id === selectedId || e.target.id === selectedId));
+      const isHighlighted = isIncidentToHover || isIncidentToSelected;
+      const isDimmed = Boolean(hoverId && !isIncidentToHover);
 
       this.ctx.beginPath();
       this.ctx.moveTo(e.source.x, e.source.y);
       this.ctx.lineTo(e.target.x, e.target.y);
 
       if (isHighlighted) {
-        this.ctx.strokeStyle = '#818cf8';
-        this.ctx.lineWidth = 2.0 / this.zoom;
+        this.ctx.strokeStyle = isIncidentToHover ? '#a5b4fc' : '#818cf8';
+        this.ctx.lineWidth = 2.2 / this.zoom;
       } else if (isDimmed) {
         this.ctx.strokeStyle = 'rgba(100, 116, 139, 0.08)';
         this.ctx.lineWidth = 0.8 / this.zoom;
       } else if (e.kind === 'source-link') {
-        this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.2)';
-        this.ctx.lineWidth = 1.0 / this.zoom;
+        this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.40)';
+        this.ctx.lineWidth = 1.5 / this.zoom;
       } else {
-        this.ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
-        this.ctx.lineWidth = 1.2 / this.zoom;
+        this.ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+        this.ctx.lineWidth = 1.5 / this.zoom;
       }
       this.ctx.stroke();
     }
@@ -343,8 +353,7 @@ export class GraphCanvas {
     for (const n of this.nodes) {
       const isSelected = n.id === this.selectedNodeId;
       const isHovered = n === this.hoveredNode;
-      const isNeighbor = neighborIds.has(n.id);
-      const isDimmed = highlightId && !isNeighbor;
+      const isDimmed = Boolean(hoverId && !hoverNeighborIds.has(n.id));
 
       this.ctx.save();
       if (isDimmed) {

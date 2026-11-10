@@ -2113,15 +2113,6 @@ class GraphCanvas {
 
          selectNode(nodeId               )       {
     this.selectedNodeId = nodeId;
-    if (nodeId) {
-      const node = this.nodeMap.get(nodeId);
-      if (node) {
-        // Center view on selected node smoothly
-        const rect = this.canvas.getBoundingClientRect();
-        this.panX = (rect.width || 600) / 2 - node.x * this.zoom;
-        this.panY = (rect.height || 400) / 2 - node.y * this.zoom;
-      }
-    }
     this.requestRender();
   }
 
@@ -2256,44 +2247,63 @@ class GraphCanvas {
     const height = rect.height || 400;
 
     this.ctx.clearRect(0, 0, width, height);
+
+    if (this.nodes.length === 0) {
+      this.ctx.save();
+      this.ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      this.ctx.fillStyle = '#64748b';
+      this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'middle';
+      this.ctx.fillText(
+        "No Wiki loaded in this folder — click '📁 Browse...' to select a repo or '+ Init Wiki' to create one",
+        width / 2,
+        height / 2
+      );
+      this.ctx.restore();
+      return;
+    }
+
     this.ctx.save();
 
     // Transform view
     this.ctx.translate(this.panX, this.panY);
     this.ctx.scale(this.zoom, this.zoom);
 
-    // Connected neighbors for hover/selection highlight
-    const highlightId = this.hoveredNode?.id || this.selectedNodeId;
-    const neighborIds = new Set        ();
-    if (highlightId) {
-      neighborIds.add(highlightId);
+    // Connected neighbors for hover
+    const hoverId = this.hoveredNode?.id;
+    const selectedId = this.selectedNodeId;
+    const hoverNeighborIds = new Set        ();
+    if (hoverId) {
+      hoverNeighborIds.add(hoverId);
       for (const e of this.edges) {
-        if (e.source.id === highlightId) neighborIds.add(e.target.id);
-        if (e.target.id === highlightId) neighborIds.add(e.source.id);
+        if (e.source.id === hoverId) hoverNeighborIds.add(e.target.id);
+        if (e.target.id === hoverId) hoverNeighborIds.add(e.source.id);
       }
     }
 
     // 1. Draw Edges
     for (const e of this.edges) {
-      const isHighlighted = highlightId && (e.source.id === highlightId || e.target.id === highlightId);
-      const isDimmed = highlightId && !isHighlighted;
+      const isIncidentToHover = Boolean(hoverId && (e.source.id === hoverId || e.target.id === hoverId));
+      const isIncidentToSelected = Boolean(selectedId && (e.source.id === selectedId || e.target.id === selectedId));
+      const isHighlighted = isIncidentToHover || isIncidentToSelected;
+      const isDimmed = Boolean(hoverId && !isIncidentToHover);
 
       this.ctx.beginPath();
       this.ctx.moveTo(e.source.x, e.source.y);
       this.ctx.lineTo(e.target.x, e.target.y);
 
       if (isHighlighted) {
-        this.ctx.strokeStyle = '#818cf8';
-        this.ctx.lineWidth = 2.0 / this.zoom;
+        this.ctx.strokeStyle = isIncidentToHover ? '#a5b4fc' : '#818cf8';
+        this.ctx.lineWidth = 2.2 / this.zoom;
       } else if (isDimmed) {
         this.ctx.strokeStyle = 'rgba(100, 116, 139, 0.08)';
         this.ctx.lineWidth = 0.8 / this.zoom;
       } else if (e.kind === 'source-link') {
-        this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.2)';
-        this.ctx.lineWidth = 1.0 / this.zoom;
+        this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.40)';
+        this.ctx.lineWidth = 1.5 / this.zoom;
       } else {
-        this.ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
-        this.ctx.lineWidth = 1.2 / this.zoom;
+        this.ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+        this.ctx.lineWidth = 1.5 / this.zoom;
       }
       this.ctx.stroke();
     }
@@ -2302,8 +2312,7 @@ class GraphCanvas {
     for (const n of this.nodes) {
       const isSelected = n.id === this.selectedNodeId;
       const isHovered = n === this.hoveredNode;
-      const isNeighbor = neighborIds.has(n.id);
-      const isDimmed = highlightId && !isNeighbor;
+      const isDimmed = Boolean(hoverId && !hoverNeighborIds.has(n.id));
 
       this.ctx.save();
       if (isDimmed) {
@@ -2624,7 +2633,7 @@ class AppController {
 
   // Filter state
           filterOptions                     = {
-    includeCodeSources: false,
+    includeCodeSources: true,
     onlyDriftOrErrors: false,
     searchQuery: '',
     localGraphHops: undefined,
@@ -2694,8 +2703,18 @@ class AppController {
     this.renderSidebar();
     this.renderGraph();
 
-    if (!preserveEditor || !this.activeWikiPage) {
-      if (this.snapshot.is_initialized && this.snapshot.pages.length > 0) {
+    if (!this.snapshot.is_initialized) {
+      this.activeWikiPage = null;
+      const editorFile = document.getElementById('editor-file-path');
+      if (editorFile) editorFile.textContent = 'No Wiki initialized';
+      const inspector = document.getElementById('frontmatter-inspector');
+      if (inspector) inspector.innerHTML = '';
+      const textarea = document.getElementById('editor-textarea')                              ;
+      if (textarea) textarea.value = '';
+      const preview = document.getElementById('editor-preview');
+      if (preview) preview.innerHTML = '<p class="empty-state">No wiki found in this folder. Click <strong>+ Init Wiki</strong> to create one.</p>';
+    } else if (!preserveEditor || !this.activeWikiPage) {
+      if (this.snapshot.pages.length > 0) {
         const indexPage =
           this.snapshot.pages.find((p) => p.wiki_rel_path === 'index.md') ||
           this.snapshot.pages[0];
@@ -2706,6 +2725,28 @@ class AppController {
     }
 
     this.renderActiveTab();
+  }
+
+          buildCurrentGraph()            {
+    if (!this.snapshot || !this.snapshot.is_initialized) {
+      return { nodes: [], edges: [], backlinks: {}, uncoveredRepoFiles: this.snapshot?.repo_files || [] };
+    }
+    return buildWikiCodeGraph({
+      wikiRoot: this.snapshot.wiki_root || 'wiki',
+      pages: (this.snapshot.pages || []).map((p) => ({
+        wikiRelPath: p.wiki_rel_path,
+        content: p.content,
+        sizeBytes: p.size_bytes,
+      })),
+      repoFiles: this.snapshot.repo_files || [],
+      changedFilesByPage: this.snapshot.changed_files_by_page || {},
+      dirtyRepoFiles: this.snapshot.git_state?.dirty_files || [],
+      lintFindings: (this.snapshot.lint_report?.findings || []).map((f) => ({
+        wikiRelPath: f.wiki_rel_path,
+        line: f.line,
+        message: f.message,
+      })),
+    });
   }
 
           parseActiveSchema()       {
@@ -2909,13 +2950,7 @@ class AppController {
     const uncoveredCount = document.getElementById('uncovered-count');
     if (uncoveredList) {
       uncoveredList.innerHTML = '';
-      const graph = buildWikiCodeGraph({
-        pages: this.snapshot.pages,
-        repoFiles: this.snapshot.repo_files,
-        changedFilesByPage: this.snapshot.changed_files_by_page,
-        lintFindings: this.snapshot.lint_report?.findings,
-        schema: this.schemaConfig || undefined,
-      });
+      const graph = this.buildCurrentGraph();
 
       if (uncoveredCount) {
         uncoveredCount.textContent = `${graph.uncoveredRepoFiles.length}`;
@@ -2936,13 +2971,7 @@ class AppController {
           renderGraph()       {
     if (!this.graphCanvas || !this.snapshot) return;
 
-    const fullGraph = buildWikiCodeGraph({
-      pages: this.snapshot.pages,
-      repoFiles: this.snapshot.repo_files,
-      changedFilesByPage: this.snapshot.changed_files_by_page,
-      lintFindings: this.snapshot.lint_report?.findings,
-      schema: this.schemaConfig || undefined,
-    });
+    const fullGraph = this.buildCurrentGraph();
 
     const filtered = filterWikiGraph(fullGraph, {
       ...this.filterOptions,
@@ -3570,6 +3599,8 @@ class AppController {
       });
       if (res.ok) {
         this.snapshot = await res.json();
+        this.activeWikiPage = null;
+        this.selectedNodeId = null;
         this.closeAllModals();
         this.renderAll();
         this.showToast('Repository opened');
@@ -3760,6 +3791,8 @@ class AppController {
           const data                     = await res.json();
           if (!data.cancelled && data.snapshot) {
             this.snapshot = data.snapshot;
+            this.activeWikiPage = null;
+            this.selectedNodeId = null;
             this.closeAllModals();
             this.renderAll();
             this.showToast('Repository opened');

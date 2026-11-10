@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
+import { buildWikiCodeGraph } from '../src/lib/graph-builder.ts';
 
 async function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -130,6 +131,26 @@ test('E2E Desktop Server and Obsidian UI', async (t) => {
     assert.ok(fs.existsSync(path.join(tempDir, 'wiki/project/work-tracker.md')));
     assert.ok(fs.existsSync(path.join(tempDir, 'wiki/log.md')));
     assert.ok(fs.existsSync(path.join(tempDir, 'CLAUDE.md')));
+
+    // Verify mapped snapshot constructs valid WikiGraph with nodes and edges
+    const graph = buildWikiCodeGraph({
+      wikiRoot: snapshot.wiki_root || 'wiki',
+      pages: (snapshot.pages || []).map((p: any) => ({
+        wikiRelPath: p.wiki_rel_path,
+        content: p.content,
+        sizeBytes: p.size_bytes,
+      })),
+      repoFiles: snapshot.repo_files || [],
+      changedFilesByPage: snapshot.changed_files_by_page || {},
+      dirtyRepoFiles: snapshot.git_state?.dirty_files || [],
+      lintFindings: (snapshot.lint_report?.findings || []).map((f: any) => ({
+        wikiRelPath: f.wiki_rel_path,
+        line: f.line,
+        message: f.message,
+      })),
+    });
+    assert.ok(graph.nodes.length >= 8, `Expected at least 8 nodes, got ${graph.nodes.length}`);
+    assert.ok(graph.edges.length >= 7, `Expected at least 7 edges, got ${graph.edges.length}`);
   });
 
   // Step 3: POST /api/human-action promotes proposal to T2 and closes it as ⚫ by Stefano

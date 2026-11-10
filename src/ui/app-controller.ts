@@ -89,7 +89,7 @@ export class AppController {
 
   // Filter state
   private filterOptions: GraphFilterOptions = {
-    includeCodeSources: false,
+    includeCodeSources: true,
     onlyDriftOrErrors: false,
     searchQuery: '',
     localGraphHops: undefined,
@@ -159,8 +159,18 @@ export class AppController {
     this.renderSidebar();
     this.renderGraph();
 
-    if (!preserveEditor || !this.activeWikiPage) {
-      if (this.snapshot.is_initialized && this.snapshot.pages.length > 0) {
+    if (!this.snapshot.is_initialized) {
+      this.activeWikiPage = null;
+      const editorFile = document.getElementById('editor-file-path');
+      if (editorFile) editorFile.textContent = 'No Wiki initialized';
+      const inspector = document.getElementById('frontmatter-inspector');
+      if (inspector) inspector.innerHTML = '';
+      const textarea = document.getElementById('editor-textarea') as HTMLTextAreaElement | null;
+      if (textarea) textarea.value = '';
+      const preview = document.getElementById('editor-preview');
+      if (preview) preview.innerHTML = '<p class="empty-state">No wiki found in this folder. Click <strong>+ Init Wiki</strong> to create one.</p>';
+    } else if (!preserveEditor || !this.activeWikiPage) {
+      if (this.snapshot.pages.length > 0) {
         const indexPage =
           this.snapshot.pages.find((p) => p.wiki_rel_path === 'index.md') ||
           this.snapshot.pages[0];
@@ -171,6 +181,28 @@ export class AppController {
     }
 
     this.renderActiveTab();
+  }
+
+  private buildCurrentGraph(): WikiGraph {
+    if (!this.snapshot || !this.snapshot.is_initialized) {
+      return { nodes: [], edges: [], backlinks: {}, uncoveredRepoFiles: this.snapshot?.repo_files || [] };
+    }
+    return buildWikiCodeGraph({
+      wikiRoot: this.snapshot.wiki_root || 'wiki',
+      pages: (this.snapshot.pages || []).map((p) => ({
+        wikiRelPath: p.wiki_rel_path,
+        content: p.content,
+        sizeBytes: p.size_bytes,
+      })),
+      repoFiles: this.snapshot.repo_files || [],
+      changedFilesByPage: this.snapshot.changed_files_by_page || {},
+      dirtyRepoFiles: this.snapshot.git_state?.dirty_files || [],
+      lintFindings: (this.snapshot.lint_report?.findings || []).map((f) => ({
+        wikiRelPath: f.wiki_rel_path,
+        line: f.line,
+        message: f.message,
+      })),
+    });
   }
 
   private parseActiveSchema(): void {
@@ -374,13 +406,7 @@ export class AppController {
     const uncoveredCount = document.getElementById('uncovered-count');
     if (uncoveredList) {
       uncoveredList.innerHTML = '';
-      const graph = buildWikiCodeGraph({
-        pages: this.snapshot.pages,
-        repoFiles: this.snapshot.repo_files,
-        changedFilesByPage: this.snapshot.changed_files_by_page,
-        lintFindings: this.snapshot.lint_report?.findings,
-        schema: this.schemaConfig || undefined,
-      });
+      const graph = this.buildCurrentGraph();
 
       if (uncoveredCount) {
         uncoveredCount.textContent = `${graph.uncoveredRepoFiles.length}`;
@@ -401,13 +427,7 @@ export class AppController {
   private renderGraph(): void {
     if (!this.graphCanvas || !this.snapshot) return;
 
-    const fullGraph = buildWikiCodeGraph({
-      pages: this.snapshot.pages,
-      repoFiles: this.snapshot.repo_files,
-      changedFilesByPage: this.snapshot.changed_files_by_page,
-      lintFindings: this.snapshot.lint_report?.findings,
-      schema: this.schemaConfig || undefined,
-    });
+    const fullGraph = this.buildCurrentGraph();
 
     const filtered = filterWikiGraph(fullGraph, {
       ...this.filterOptions,
@@ -1035,6 +1055,8 @@ export class AppController {
       });
       if (res.ok) {
         this.snapshot = await res.json();
+        this.activeWikiPage = null;
+        this.selectedNodeId = null;
         this.closeAllModals();
         this.renderAll();
         this.showToast('Repository opened');
@@ -1225,6 +1247,8 @@ export class AppController {
           const data: PickFolderResponse = await res.json();
           if (!data.cancelled && data.snapshot) {
             this.snapshot = data.snapshot;
+            this.activeWikiPage = null;
+            this.selectedNodeId = null;
             this.closeAllModals();
             this.renderAll();
             this.showToast('Repository opened');
