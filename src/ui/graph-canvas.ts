@@ -80,13 +80,22 @@ export class GraphCanvas {
     this.requestRender();
   }
 
+  public clear(): void {
+    this.nodes = [];
+    this.edges = [];
+    this.nodeMap.clear();
+  }
+
   public setData(rawNodes: GraphNode[], rawEdges: GraphEdge[]): void {
     const existingPositions = new Map<string, { x: number; y: number; vx: number; vy: number }>();
     for (const n of this.nodes) {
       existingPositions.set(n.id, { x: n.x, y: n.y, vx: n.vx, vy: n.vy });
     }
 
-    const isNewLayout = existingPositions.size === 0;
+    const isNewLayout =
+      existingPositions.size === 0 ||
+      rawNodes.length !== existingPositions.size ||
+      rawNodes.some((n) => !existingPositions.has(n.id));
 
     this.nodes = rawNodes.map((n, idx) => {
       const existing = existingPositions.get(n.id);
@@ -168,6 +177,7 @@ export class GraphCanvas {
   }
 
   public fitToView(): void {
+    this.resizeCanvas();
     const rect = this.canvas.getBoundingClientRect();
     const width = rect.width || 600;
     const height = rect.height || 400;

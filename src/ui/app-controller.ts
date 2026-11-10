@@ -1068,6 +1068,7 @@ export class AppController {
         this.snapshot = await res.json();
         this.activeWikiPage = null;
         this.selectedNodeId = null;
+        this.graphCanvas?.clear();
         this.closeAllModals();
         this.renderAll();
         this.showToast('Repository opened');
@@ -1260,6 +1261,7 @@ export class AppController {
             this.snapshot = data.snapshot;
             this.activeWikiPage = null;
             this.selectedNodeId = null;
+            this.graphCanvas?.clear();
             this.closeAllModals();
             this.renderAll();
             this.showToast('Repository opened');
@@ -1427,6 +1429,7 @@ export class AppController {
         }
 
         this.snapshot = await res.json();
+        this.graphCanvas?.clear();
         this.closeAllModals();
         this.renderAll();
         this.showToast('Wiki initialized successfully!');

@@ -2039,13 +2039,22 @@ class GraphCanvas {
     this.requestRender();
   }
 
+         clear()       {
+    this.nodes = [];
+    this.edges = [];
+    this.nodeMap.clear();
+  }
+
          setData(rawNodes             , rawEdges             )       {
     const existingPositions = new Map                                                          ();
     for (const n of this.nodes) {
       existingPositions.set(n.id, { x: n.x, y: n.y, vx: n.vx, vy: n.vy });
     }
 
-    const isNewLayout = existingPositions.size === 0;
+    const isNewLayout =
+      existingPositions.size === 0 ||
+      rawNodes.length !== existingPositions.size ||
+      rawNodes.some((n) => !existingPositions.has(n.id));
 
     this.nodes = rawNodes.map((n, idx) => {
       const existing = existingPositions.get(n.id);
@@ -2127,6 +2136,7 @@ class GraphCanvas {
   }
 
          fitToView()       {
+    this.resizeCanvas();
     const rect = this.canvas.getBoundingClientRect();
     const width = rect.width || 600;
     const height = rect.height || 400;
@@ -3905,6 +3915,7 @@ class AppController {
         this.snapshot = await res.json();
         this.activeWikiPage = null;
         this.selectedNodeId = null;
+        this.graphCanvas?.clear();
         this.closeAllModals();
         this.renderAll();
         this.showToast('Repository opened');
@@ -4097,6 +4108,7 @@ class AppController {
             this.snapshot = data.snapshot;
             this.activeWikiPage = null;
             this.selectedNodeId = null;
+            this.graphCanvas?.clear();
             this.closeAllModals();
             this.renderAll();
             this.showToast('Repository opened');
@@ -4264,6 +4276,7 @@ class AppController {
         }
 
         this.snapshot = await res.json();
+        this.graphCanvas?.clear();
         this.closeAllModals();
         this.renderAll();
         this.showToast('Wiki initialized successfully!');
