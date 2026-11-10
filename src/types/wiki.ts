@@ -90,3 +90,47 @@ export interface HandoffData {
   noOpenWork: boolean;
   blockers: Array<Record<string, string>>;
 }
+
+export type GraphNodeCategory = 'core' | 'decision' | 'tracker' | 'agent' | 'topic' | 'source';
+
+export interface GraphNode {
+  id: string;
+  label: string;
+  path: string;
+  kind: 'wiki' | 'source';
+  category: GraphNodeCategory;
+  role?: string;
+  confidence?: string;
+  sourceCommit?: string;
+  hasDrift: boolean;
+  driftFiles: string[];
+  hasLintError: boolean;
+  lintCount: number;
+  needsReverify: boolean;
+  isOrphan: boolean;
+  sizeBytes: number;
+  degree: number;
+}
+
+export interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  kind: 'markdown-link' | 'source-link';
+}
+
+export interface WikiGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  backlinks: Record<string, string[]>;
+  uncoveredRepoFiles: string[];
+}
+
+export interface GraphFilterOptions {
+  includeCodeSources: boolean;
+  onlyDriftOrErrors: boolean;
+  searchQuery: string;
+  focusNodeId?: string;
+  localGraphHops?: number;
+}
+
