@@ -63,12 +63,16 @@ export function Shell() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
-      if (e.key.toLowerCase() === 'k') {
+      // A modal action form owns the keyboard: no palette over it, no section switch under it.
+      if (document.querySelector('dialog[open]')) return;
+      if (e.code === 'KeyK') {
         e.preventDefault();
         setPaletteOpen((o) => !o);
         return;
       }
-      const digit = Number(e.key);
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+      const digit = /^Digit(\d)$/.exec(e.code) ? Number(e.code.slice(5)) : 0;
       if (digit >= 1 && digit <= SECTIONS.length) {
         e.preventDefault();
         nav.go(SECTIONS[digit - 1].id);
@@ -146,7 +150,7 @@ export function Shell() {
               <Empty
                 title="Apri una repository per vedere cosa aspetta te."
                 action={
-                  <button type="button" className="btn btn-strong" onClick={addProject}>
+                  <button type="button" className="btn btn-strong" onClick={addProject} disabled={project.loading}>
                     Aggiungi progetto
                   </button>
                 }
@@ -293,7 +297,14 @@ function Rail({
           );
         })}
         <li>
-          <button type="button" className="rail-tile rail-add" aria-label="Aggiungi progetto" title="Aggiungi progetto" onClick={onAdd}>
+          <button
+            type="button"
+            className="rail-tile rail-add"
+            aria-label="Aggiungi progetto"
+            title="Aggiungi progetto"
+            disabled={loading}
+            onClick={onAdd}
+          >
             <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16">
               <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
@@ -366,6 +377,8 @@ const THEMES: Array<{ id: ThemeChoice; label: string }> = [
 
 function Settings({ theme, setTheme, onClose }: { theme: ThemeChoice; setTheme(t: ThemeChoice): void; onClose(): void }) {
   const { actor, actorError, setActor } = useProject();
+  // Draft keeps what is typed (spaces between names); the context exposes it trimmed.
+  const [draft, setDraft] = useState(actor);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -389,9 +402,12 @@ function Settings({ theme, setTheme, onClose }: { theme: ThemeChoice; setTheme(t
         <span className="field-label">Il tuo nome</span>
         <input
           className="input"
-          value={actor}
+          value={draft}
           autoFocus
-          onChange={(e) => setActor(e.target.value)}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setActor(e.target.value);
+          }}
           aria-invalid={!!actorError}
           placeholder="Nome e cognome"
         />

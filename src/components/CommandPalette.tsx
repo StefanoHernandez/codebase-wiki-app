@@ -15,7 +15,7 @@ interface Props {
 }
 
 export function CommandPalette({ open, onOpenChange, onLint, onCopySync, onToggleTheme }: Props) {
-  const { recent, current, snapshot, open: openProject } = useProject();
+  const { recent, current, snapshot, loading, open: openProject } = useProject();
   const nav = useNav();
   const hasWiki = !!snapshot?.wikiRoot;
 
@@ -56,7 +56,11 @@ export function CommandPalette({ open, onOpenChange, onLint, onCopySync, onToggl
             {recent
               .filter((r) => r.path !== current)
               .map((r) => (
-                <Command.Item key={r.path} value={`progetto ${r.name} ${r.path}`} onSelect={run(() => void openProject(r.path))}>
+                <Command.Item
+                  key={r.path}
+                  value={`progetto ${r.name} ${r.path}`}
+                  disabled={loading}
+                  onSelect={run(() => void openProject(r.path))}>
                   <span>Apri {r.name}</span>
                   <span className="palette-meta">{r.path}</span>
                 </Command.Item>

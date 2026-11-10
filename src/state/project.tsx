@@ -43,6 +43,7 @@ export interface ProjectState extends Derived {
   lint: LintReport | null;
   lintRunning: boolean;
   runLint(): Promise<LintReport | null>;
+  /** Signing person, trimmed; '' when unset. Valid only when `actorError` is null. */
   actor: string;
   actorError: string | null;
   setActor(name: string): void;
@@ -147,6 +148,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const current = snapshot?.repoPath ?? null;
   const currentRef = useRef<string | null>(null);
+  /** Only the latest open() may set state: rapid switching must end on the last project asked for. */
+  const openSeq = useRef(0);
   currentRef.current = current;
 
   const derived = useMemo(() => derive(snapshot, lint), [snapshot, lint]);
@@ -165,20 +168,22 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const open = useCallback(
     async (path: string) => {
+      const seq = ++openSeq.current;
       setLoading(true);
       setError(null);
       try {
         const snap = await api.openProject(path);
+        if (seq !== openSeq.current) return;
         setLint(null);
         setSnapshot(snap);
         if (!readStoredActor()) {
-          const name = await api.gitUserName(snap.repoPath).catch(() => null);
-          if (name && !actorProblem(name)) setActorState(name);
+          const name = (await api.gitUserName(snap.repoPath).catch(() => null))?.trim();
+          if (seq === openSeq.current && name && !actorProblem(name)) setActorState(name);
         }
       } catch (e) {
-        setError(message(e));
+        if (seq === openSeq.current) setError(message(e));
       } finally {
-        setLoading(false);
+        if (seq === openSeq.current) setLoading(false);
         await refreshRecent();
       }
     },
@@ -196,7 +201,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         setError(null);
       }
     } catch (e) {
-      setError(message(e));
+      if (currentRef.current === repo) setError(message(e));
     } finally {
       setLoading(false);
     }
@@ -294,8 +299,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     lint,
     lintRunning,
     runLint,
-    actor,
-    actorError: actor.trim() ? actorProblem(actor) : 'Imposta il tuo nome nelle impostazioni.',
+    actor: actor.trim(),
+    actorError: actor.trim() ? actorProblem(actor.trim()) : 'Imposta il tuo nome nelle impostazioni.',
     setActor,
     loading,
     error,
