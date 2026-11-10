@@ -1,4 +1,3 @@
-import * as path from 'node:path';
 import { parseFrontmatter, extractMarkdownLinks } from './frontmatter.ts';
 import { parseSchemaMarkdown, DEFAULT_CORE_MAP } from './schema-parser.ts';
 import type {
@@ -8,6 +7,53 @@ import type {
   GraphFilterOptions,
   GraphNodeCategory,
 } from '../types/wiki.ts';
+
+function posixNormalize(p: string): string {
+  if (!p) return '.';
+  const isAbsolute = p.startsWith('/') || p.startsWith('\\');
+  const normalized = p.replace(/\\/g, '/');
+  const segments = normalized.split('/');
+  const stack: string[] = [];
+
+  for (const seg of segments) {
+    if (!seg || seg === '.') {
+      continue;
+    }
+    if (seg === '..') {
+      if (stack.length > 0 && stack[stack.length - 1] !== '..') {
+        stack.pop();
+      } else if (!isAbsolute) {
+        stack.push('..');
+      }
+    } else {
+      stack.push(seg);
+    }
+  }
+
+  let result = stack.join('/');
+  if (isAbsolute) {
+    result = '/' + result;
+  }
+  return result || (isAbsolute ? '/' : '.');
+}
+
+function posixDirname(p: string): string {
+  const normalized = posixNormalize(p);
+  const lastSlash = normalized.lastIndexOf('/');
+  if (lastSlash === -1) {
+    return '.';
+  }
+  if (lastSlash === 0) {
+    return '/';
+  }
+  return normalized.slice(0, lastSlash);
+}
+
+function posixJoin(...parts: string[]): string {
+  const filtered = parts.filter(Boolean);
+  if (filtered.length === 0) return '.';
+  return posixNormalize(filtered.join('/'));
+}
 
 function isPrivateTermsPath(filePath: string): boolean {
   const parts = filePath.replace(/\\/g, '/').split('/');
@@ -126,8 +172,7 @@ export function buildWikiCodeGraph(input: {
   dirtyRepoFiles: string[];
   lintFindings: Array<{ wikiRelPath: string; line: number; message: string }>;
 }): WikiGraph {
-  const normWikiRoot = path.posix
-    .normalize(input.wikiRoot.replace(/\\/g, '/'))
+  const normWikiRoot = posixNormalize(input.wikiRoot)
     .replace(/^\.\//, '')
     .replace(/\/+$/, '');
 
@@ -250,7 +295,7 @@ export function buildWikiCodeGraph(input: {
 
   for (const proc of processedPages) {
     const rawLinks = extractMarkdownLinks(proc.fm.body);
-    const fromDir = path.posix.dirname(proc.page.wikiRelPath);
+    const fromDir = posixDirname(proc.page.wikiRelPath);
 
     for (const rawLink of rawLinks) {
       let clean = rawLink.split('#')[0].trim();
@@ -262,12 +307,10 @@ export function buildWikiCodeGraph(input: {
       if (clean.startsWith('//')) continue;
 
       const candidates = [
-        path.posix.normalize(fromDir === '.' ? clean : path.posix.join(fromDir, clean)),
-        path.posix.normalize(
-          fromDir === '.' ? clean + '.md' : path.posix.join(fromDir, clean + '.md')
-        ),
-        path.posix.normalize(clean),
-        path.posix.normalize(clean + '.md'),
+        posixJoin(fromDir, clean),
+        posixJoin(fromDir, clean + '.md'),
+        posixNormalize(clean),
+        posixNormalize(clean + '.md'),
       ];
 
       let targetRelPath: string | null = null;
