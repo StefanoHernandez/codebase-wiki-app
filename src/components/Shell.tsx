@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { copyText, pickFolder, workflowPrompt } from '../api';
 import { useProject } from '../state/project';
 import { useNav } from '../state/nav';
@@ -254,6 +254,12 @@ function Rail({
   const { recent, current, open, forget, attentionCounts, loading } = useProject();
   const [menu, setMenu] = useState<{ path: string; x: number; y: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsBtnRef = useRef<HTMLButtonElement>(null);
+
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    settingsBtnRef.current?.focus();
+  }, []);
   const tiles = useStableOrder(recent);
 
   useEffect(() => {
@@ -314,12 +320,13 @@ function Rail({
 
       <div className="rail-bottom">
         <button
+          ref={settingsBtnRef}
           type="button"
           className="rail-tile rail-settings"
           aria-label="Impostazioni"
           aria-expanded={settingsOpen}
           title="Impostazioni"
-          onClick={() => setSettingsOpen((o) => !o)}
+          onClick={() => (settingsOpen ? closeSettings() : setSettingsOpen(true))}
         >
           <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16">
             <circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.4" />
@@ -331,7 +338,7 @@ function Rail({
             />
           </svg>
         </button>
-        {settingsOpen && <Settings theme={theme} setTheme={setTheme} onClose={() => setSettingsOpen(false)} />}
+        {settingsOpen && <Settings theme={theme} setTheme={setTheme} onClose={closeSettings} />}
       </div>
 
       {menu && (
