@@ -1,3 +1,6 @@
 [workspace]
 resolver = "2"
 members = ["crates/wiki-core", "src-tauri"]
+
+[workspace.package]
+rust-version = "1.90"

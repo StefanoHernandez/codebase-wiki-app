@@ -140,7 +140,8 @@
 }
 
 .is-selected {
-  box-shadow: 0 0 0 2px var(--ink-muted);
+  outline: 2px solid var(--ink-muted);
+  outline-offset: 0;
 }
 .btn[aria-disabled='true'] {
   opacity: 0.5;

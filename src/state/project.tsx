@@ -9,6 +9,7 @@ import { listDecisions } from '../lib/decisions';
 import { trustTier, type TrustTier } from '../lib/trust';
 import { computeAttention, type AttentionItem } from '../lib/attention';
 import { validateHumanActor } from '../lib/human-actions';
+import { clearNavRef } from './nav';
 
 export interface WikiPage {
   relPath: string;
@@ -174,6 +175,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       try {
         const snap = await api.openProject(path);
         if (seq !== openSeq.current) return;
+        clearNavRef();
         setLint(null);
         setSnapshot(snap);
         if (!readStoredActor()) {
@@ -203,22 +205,25 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       if (currentRef.current === repo) setError(message(e));
     } finally {
-      setLoading(false);
+      if (currentRef.current === repo) setLoading(false);
     }
   }, []);
 
   const forget = useCallback(
     async (path: string) => {
+      const seq = ++openSeq.current;
       try {
         await api.removeRecent(path);
+        if (seq !== openSeq.current) return;
         if (path === currentRef.current) {
+          clearNavRef();
           setSnapshot(null);
           setLint(null);
         }
       } catch (e) {
-        setError(message(e));
+        if (seq === openSeq.current) setError(message(e));
       }
-      await refreshRecent();
+      if (seq === openSeq.current) await refreshRecent();
     },
     [refreshRecent],
   );
@@ -240,8 +245,15 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     async (writes: FileWrite[]) => {
       const repo = currentRef.current;
       if (!repo) throw new Error('Nessun progetto aperto.');
-      for (const w of writes) await api.writeWikiFile(repo, w.relPath, w.content);
-      await reload();
+      let failed: unknown;
+      try {
+        for (const w of writes) await api.writeWikiFile(repo, w.relPath, w.content);
+      } catch (e) {
+        failed = e;
+      } finally {
+        await reload();
+      }
+      if (failed) throw failed;
     },
     [reload],
   );
@@ -291,25 +303,45 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     };
   }, [reload]);
 
-  const value: ProjectState = {
-    ...derived,
-    recent,
-    current,
-    snapshot,
-    lint,
-    lintRunning,
-    runLint,
-    actor: actor.trim(),
-    actorError: actor.trim() ? actorProblem(actor.trim()) : 'Imposta il tuo nome nelle impostazioni.',
-    setActor,
-    loading,
-    error,
-    attentionCounts,
-    reload,
-    open,
-    forget,
-    act,
-  };
+  const value = useMemo<ProjectState>(
+    () => ({
+      ...derived,
+      recent,
+      current,
+      snapshot,
+      lint,
+      lintRunning,
+      runLint,
+      actor: actor.trim(),
+      actorError: actor.trim() ? actorProblem(actor.trim()) : 'Imposta il tuo nome nelle impostazioni.',
+      setActor,
+      loading,
+      error,
+      attentionCounts,
+      reload,
+      open,
+      forget,
+      act,
+    }),
+    [
+      derived,
+      recent,
+      current,
+      snapshot,
+      lint,
+      lintRunning,
+      runLint,
+      actor,
+      loading,
+      error,
+      attentionCounts,
+      reload,
+      open,
+      forget,
+      act,
+      setActor,
+    ],
+  );
 
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;
 }

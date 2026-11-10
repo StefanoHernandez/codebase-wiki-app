@@ -146,11 +146,18 @@ mod tests {
         let _ = fs::remove_dir_all(&repo);
         fs::create_dir_all(repo.join("wiki")).unwrap();
         fs::write(repo.join("wiki/SCHEMA.md"), "# Schema\n").unwrap();
-        fs::write(repo.join("wiki/topic.md"), "# Topic\n").unwrap();
+        // Missing YAML frontmatter → structural finding from validate-wiki.py.
+        fs::write(repo.join("wiki/topic.md"), "# Topic\nbody\n").unwrap();
 
         let report = run_structural_lint(&repo, "wiki", &script);
         let _ = fs::remove_dir_all(&repo);
-        assert!(report.exit_code >= 0, "validator did not run: {}", report.raw_output);
-        let _: &Vec<LintFinding> = &report.findings;
+        assert!(report.exit_code != 0 || !report.findings.is_empty(), "expected lint issues");
+        assert!(!report.raw_output.is_empty(), "raw_output must not be empty");
+        let f = report
+            .findings
+            .iter()
+            .find(|f| !f.wiki_rel_path.is_empty())
+            .expect("at least one finding with wiki_rel_path");
+        assert!(!f.message.is_empty());
     }
 }

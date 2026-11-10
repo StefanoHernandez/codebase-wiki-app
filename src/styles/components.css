@@ -286,7 +286,7 @@ kbd {
   border-color: var(--human);
   color: var(--on-human);
 }
-.btn-human:hover:not(:disabled) {
+.btn-human:hover:not(:disabled):not([aria-disabled='true']) {
   border-color: var(--human);
   filter: brightness(1.08);
 }
@@ -698,6 +698,18 @@ kbd {
 .toast-error {
   background: var(--error);
   color: #fff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .toast-error {
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--error);
+  }
+}
+:root[data-theme='dark'] .toast-error {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--error);
 }
 
 /* ---------- Stamp: the one orchestrated moment ---------- */
