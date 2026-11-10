@@ -163,12 +163,34 @@ test('extra tracker columns such as Phase survive promote and close', () => {
     dateIso: '2026-11-10',
   });
   const afterClose = parseTrackerMarkdown(closed.trackerMarkdown);
-  assert.deepEqual(afterClose.doneHeader.slice(-1), ['Phase']);
-  assert.equal(afterClose.done.find((r) => r.id === 'T1')!.extra.Phase, 'Core');
-  assert.match(closed.trackerMarkdown, /^\| ID \| Status \| Goal \| Closed \| Criteria met \| Evidence \| Phase \|$/m);
+  // Done has no Phase column: the header is not extended and the value is not copied.
+  assert.equal(afterClose.doneHeader.includes('Phase'), false);
+  assert.match(closed.trackerMarkdown, /^\| ID \| Status \| Goal \| Closed \| Criteria met \| Evidence \|$/m);
+  assert.equal(afterClose.done.find((r) => r.id === 'T1')!.extra.Phase, undefined);
   // The promoted T8 row has no Phase value: new rows get empty extra columns.
   assert.equal(afterClose.open[0].id, 'T8');
   assert.equal(afterClose.open[0].extra.Phase, '');
+});
+
+test('close copies Open extra values only into existing Done columns, matching case-insensitively', () => {
+  const doneWithPhase = PHASE_TRACKER.replace(
+    '| ID | Status | Goal | Closed | Criteria met | Evidence |\n| --- | --- | --- | --- | --- | --- |',
+    '| ID | Status | Goal | Closed | Criteria met | Evidence | phase |\n| --- | --- | --- | --- | --- | --- | --- |'
+  );
+  assert.notEqual(doneWithPhase, PHASE_TRACKER);
+  const res = closeTrackerItemHumanUnproven({
+    trackerMarkdown: doneWithPhase,
+    logMarkdown: SAMPLE_LOG,
+    taskId: 'T1',
+    person: 'Stefano',
+    notProvenReason: 'superseded',
+    closureSource: 'chat',
+    dateIso: '2026-11-10',
+  });
+  const parsed = parseTrackerMarkdown(res.trackerMarkdown);
+  assert.deepEqual(parsed.doneHeader, ['ID', 'Status', 'Goal', 'Closed', 'Criteria met', 'Evidence', 'phase']);
+  assert.equal(parsed.done.find((r) => r.id === 'T1')!.extra.phase, 'Core');
+  assert.match(res.trackerMarkdown, /^\| T1 \| ⚫ \| Build parser \| 2026-11-10 \| .* \| chat \| Core \|$/m);
 });
 
 test('closeTrackerItemHumanUnproven enforces human authority and records closure source', () => {
@@ -297,9 +319,37 @@ confidence: high
     { by: 'claude-code/opus', at: '2026-11-01T00:00:00Z' },
     { by: 'human:mario-rossi', at: '2026-11-10T12:00:00Z', commit: 'b2c3d4e' },
   ]);
+  assert.match(
+    res.pageMarkdown,
+    /^verified: \[\{ by: claude-code\/opus, at: 2026-11-01T00:00:00Z \}, \{ by: human:mario-rossi, at: 2026-11-10T12:00:00Z, commit: b2c3d4e \}\]$/m
+  );
   assert.equal(parsed.fields.updated, '2026-11-01');
   assert.equal(parsed.fields.source_commit, 'a1b2c3d');
   assert.match(res.logMarkdown, /\n## 2026-11-10 · Mark page reviewed · human\n- What: Mario Rossi marked page "Auth" reviewed\n- Evidence: commit b2c3d4e\n- IDs: none\n$/);
+});
+
+test('markPageReviewed writes one verified line for a single entry and keeps a flow list on one line', () => {
+  const bare = '---\ntitle: Bare\nupdated: 2026-11-01\nsource_commit: a1b2c3d\n---\n# Bare\n';
+  const single = markPageReviewed({ pageMarkdown: bare, logMarkdown: '', person: 'Stefano', atIso: '2026-11-10T12:00:00Z', commit: 'b2c3d4e' });
+  assert.match(single.pageMarkdown, /^verified: \{ by: human:stefano, at: 2026-11-10T12:00:00Z, commit: b2c3d4e \}$/m);
+
+  const flow = `---
+title: Flow
+updated: 2026-11-01
+verified: [{ by: claude-code/opus, at: 2026-11-01T00:00:00Z }, { by: human:stefano, at: 2026-11-02T00:00:00Z, commit: abc1234 }]
+source_commit: a1b2c3d
+---
+# Flow
+`;
+  const res = markPageReviewed({ pageMarkdown: flow, logMarkdown: '', person: 'Mario Rossi', atIso: '2026-11-10T12:00:00Z', commit: 'b2c3d4e' });
+  const parsed = parseFrontmatter(res.pageMarkdown);
+  assert.equal(parsed.verified.length, 3);
+  assert.deepEqual(parsed.verified[1], { by: 'human:stefano', at: '2026-11-02T00:00:00Z', commit: 'abc1234' });
+  assert.equal(res.pageMarkdown.match(/^verified:/gm)!.length, 1);
+  assert.match(
+    res.pageMarkdown,
+    /^verified: \[\{ by: claude-code\/opus, at: 2026-11-01T00:00:00Z \}, \{ by: human:stefano, at: 2026-11-02T00:00:00Z, commit: abc1234 \}, \{ by: human:mario-rossi, at: 2026-11-10T12:00:00Z, commit: b2c3d4e \}\]$/m
+  );
 });
 
 test('appendLogEntry appends exactly one blank-line-separated entry at the end of the log', () => {

@@ -345,13 +345,6 @@ export function computeNextTrackerId(trackerMarkdown: string, logMarkdown: strin
   return `T${maxId + 1}`;
 }
 
-/** Returns `header` with any `extra` column names it lacks appended, so no column is dropped. */
-export function withExtraColumns(header: string[], extra: Record<string, string>): string[] {
-  const lower = header.map((h) => h.trim().toLowerCase());
-  const missing = Object.keys(extra).filter((k) => !lower.includes(k.trim().toLowerCase()));
-  return [...header, ...missing];
-}
-
 function formatTrackerTable<T extends { extra: Record<string, string> }>(
   rows: T[],
   header: string[],

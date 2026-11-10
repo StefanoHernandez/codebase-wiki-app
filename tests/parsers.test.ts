@@ -260,3 +260,15 @@ test('parseSchemaMarkdown matches section headings exactly and case-insensitivel
   const onlyLegacy = schemaMd.split('##   CORE MAP')[0];
   assert.equal(parseSchemaMarkdown(onlyLegacy).coreMap.tracker, 'project/work-tracker.md');
 });
+
+test('parseFrontmatter reads verified as a one-line flow list of inline maps', () => {
+  const md = `---
+title: Flow
+verified: [{ by: claude-code/opus, at: 2026-01-01T00:00:00Z }, { by: human:stefano, at: 2026-02-01T00:00:00Z, commit: abc1234 }]
+---
+x`;
+  assert.deepEqual(parseFrontmatter(md).verified, [
+    { by: 'claude-code/opus', at: '2026-01-01T00:00:00Z' },
+    { by: 'human:stefano', at: '2026-02-01T00:00:00Z', commit: 'abc1234' },
+  ]);
+});

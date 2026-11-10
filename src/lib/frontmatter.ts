@@ -94,7 +94,11 @@ export function parseFrontmatter(markdown: string): ParsedFrontmatter {
       currentKey = key;
       if (key === 'sources') continue;
       if (key === 'verified') {
-        if (rawVal.startsWith('{')) verifiedMaps.push(parseMapBody(rawVal));
+        if (rawVal.startsWith('[')) {
+          for (const flowMap of rawVal.match(/\{[^}]*\}/g) ?? []) verifiedMaps.push(parseMapBody(flowMap));
+        } else if (rawVal.startsWith('{')) {
+          verifiedMaps.push(parseMapBody(rawVal));
+        }
       } else if (key === 'generated') {
         if (rawVal.startsWith('{')) generatedMap = parseMapBody(rawVal);
       } else {

@@ -6,7 +6,6 @@ import {
   formatTrackerProposalTable,
   formatTrackerDoneTable,
   replaceSectionTable,
-  withExtraColumns,
 } from './markdown-tables.ts';
 import type { Attribution, TrackerDoneRow, TrackerOpenRow } from '../types/wiki.ts';
 
@@ -177,6 +176,13 @@ export function closeTrackerItemHumanUnproven(params: {
   const openRow = tracker.open[openIndex];
   const updatedOpen = tracker.open.filter((_, idx) => idx !== openIndex);
 
+  // Copy Open extra values only into Done columns that already exist (headers matched case-insensitively).
+  const closedExtra: Record<string, string> = {};
+  for (const header of tracker.doneHeader) {
+    const source = Object.keys(openRow.extra).find((k) => k.trim().toLowerCase() === header.trim().toLowerCase());
+    if (source !== undefined) closedExtra[header] = openRow.extra[source];
+  }
+
   const closedRow: TrackerDoneRow = {
     id: openRow.id,
     status: '⚫',
@@ -184,11 +190,9 @@ export function closeTrackerItemHumanUnproven(params: {
     closed: params.dateIso,
     criteriaMet: `closed by ${person} ${params.dateIso}; not proven: ${reason}`,
     evidence: params.closureSource.trim(),
-    extra: openRow.extra,
+    extra: closedExtra,
   };
 
-  // Keep the extra columns of the moved row: add any the Done table lacks.
-  const doneHeader = withExtraColumns(tracker.doneHeader, openRow.extra);
   const updatedDone = [...tracker.done, closedRow];
 
   let updatedTracker = replaceSectionTable(
@@ -201,7 +205,7 @@ export function closeTrackerItemHumanUnproven(params: {
     updatedTracker,
     'done',
     'Done',
-    formatTrackerDoneTable(updatedDone, doneHeader)
+    formatTrackerDoneTable(updatedDone, tracker.doneHeader)
   );
 
   const logMarkdown = appendLogEntry({
@@ -354,7 +358,7 @@ function formatAttribution(a: Attribution): string {
   return `{ by: ${a.by}, at: ${a.at}${a.commit ? `, commit: ${a.commit}` : ''} }`;
 }
 
-/** Replaces the `verified:` frontmatter key: one inline map, or a list when there are several. */
+/** Replaces the `verified:` frontmatter key with a single line (the validator reads one-line values only). */
 function setVerifiedFrontmatter(markdown: string, entries: Attribution[]): string {
   const bom = markdown.startsWith('﻿') ? '﻿' : '';
   const lines = markdown.slice(bom.length).replace(/\r\n/g, '\n').split('\n');
@@ -363,10 +367,10 @@ function setVerifiedFrontmatter(markdown: string, entries: Attribution[]): strin
     throw new Error('Page has no frontmatter to record a review in');
   }
 
-  const block =
-    entries.length === 1
-      ? [`verified: ${formatAttribution(entries[0])}`]
-      : ['verified:', ...entries.map((e) => `  - ${formatAttribution(e)}`)];
+  // One line: a single inline map, or a flow list when there are several.
+  const value =
+    entries.length === 1 ? formatAttribution(entries[0]) : `[${entries.map(formatAttribution).join(', ')}]`;
+  const block = [`verified: ${value}`];
 
   const start = lines.findIndex((l, i) => i > 0 && i < end && /^verified:/.test(l));
   if (start === -1) {
