@@ -10,8 +10,8 @@ pub use git_ops::{
 };
 pub use validator::{run_structural_lint, LintFinding, LintReport};
 pub use wiki_fs::{
-    collect_repo_files_recursive, initialize_new_wiki, load_wiki_snapshot, read_repo_file_safe,
-    write_wiki_file_safe, InitWikiRequest, RepoFilePayload, WikiPageEntry, WikiSnapshot,
+    collect_repo_files_recursive, load_wiki_snapshot, read_repo_file_safe,
+    write_wiki_file_safe, RepoFilePayload, WikiPageEntry, WikiSnapshot,
 };
 pub use wiki_resolver::{is_valid_wiki_folder_name, resolve_wiki_root, WikiResolution};
 
@@ -159,11 +159,11 @@ mod tests {
         fs::create_dir_all(&wiki_dir).unwrap();
 
         // 1. Path traversal write rejection
-        let res = write_wiki_file_safe(repo, "wiki", "../outside.md", "bad content", false);
+        let res = write_wiki_file_safe(repo, "wiki", "../outside.md", "bad content");
         assert!(res.is_err(), "Must reject path traversal in write");
 
         // 2. Rejection of .private-terms modification
-        let res = write_wiki_file_safe(repo, "wiki", ".private-terms", "term", false);
+        let res = write_wiki_file_safe(repo, "wiki", ".private-terms", "term");
         assert!(res.is_err(), "Must reject writing .private-terms directly");
 
         // 3. Sensitive data forbidden terms check
@@ -173,7 +173,6 @@ mod tests {
             "wiki",
             "page.md",
             "This document has secret_api_key in it.",
-            true,
         );
         assert!(write_bad.is_err(), "Must reject write containing forbidden term");
         assert!(write_bad.unwrap_err().contains("SECRET_API_KEY"));
@@ -183,7 +182,6 @@ mod tests {
             "wiki",
             "page.md",
             "This document is clean.",
-            true,
         );
         assert!(write_ok.is_ok(), "Must allow safe write");
 
@@ -199,144 +197,6 @@ mod tests {
 
         let read_bad2 = read_repo_file_safe(repo, "wiki/.private-terms", None);
         assert!(read_bad2.is_err(), "Must reject reading .private-terms");
-    }
-
-    #[test]
-    fn test_initialize_new_wiki_and_lint_validation() {
-        let td = TestDir::new("init_and_lint");
-        let repo = td.path();
-
-        // Initialize git repo so validate-wiki.py detects the repository boundary properly
-        let init_git = Command::new("git")
-            .args(["init"])
-            .current_dir(repo)
-            .output()
-            .expect("git init failed");
-        assert!(init_git.status.success());
-
-        let req = InitWikiRequest {
-            folder: "wiki".into(),
-            language: "English".into(),
-            project_division: "none".into(),
-            topics: vec!["architecture".into(), "testing".into()],
-            sensitive_data: false,
-            forbidden_terms: vec![],
-            agent_entry_file: "none".into(),
-            parallel_work: true,
-        };
-
-        let default_schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("resources")
-            .join("default-schema.md");
-        let validator_script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("resources")
-            .join("validate-wiki.py");
-
-        let init_res = initialize_new_wiki(repo, &req, &default_schema_path);
-        assert!(init_res.is_ok(), "initialize_new_wiki failed: {:?}", init_res.err());
-
-        // Run structural lint directly
-        let report = run_structural_lint(repo, "wiki", &validator_script);
-        assert_eq!(
-            report.exit_code, 0,
-            "validate-wiki.py failed with findings: {:?}\nRaw: {}",
-            report.findings, report.raw_output
-        );
-        assert!(report.findings.is_empty(), "Findings should be empty: {:?}", report.findings);
-
-        // Load snapshot
-        let snapshot = load_wiki_snapshot(repo, "wiki", &validator_script).unwrap();
-        assert!(snapshot.is_initialized);
-        assert_eq!(snapshot.wiki_root, Some("wiki".into()));
-        assert!(snapshot.lint_report.is_some());
-        assert_eq!(snapshot.lint_report.unwrap().exit_code, 0);
-
-        // Verify required pages exist in snapshot
-        let page_paths: Vec<&str> = snapshot.pages.iter().map(|p| p.wiki_rel_path.as_str()).collect();
-        assert!(page_paths.contains(&"SCHEMA.md"));
-        assert!(page_paths.contains(&"index.md"));
-        assert!(page_paths.contains(&"log.md"));
-        assert!(page_paths.contains(&"project/work-tracker.md"));
-        assert!(page_paths.contains(&"project/decisions/0001-initial-architecture.md"));
-        assert!(page_paths.contains(&"project/risks.md"));
-        assert!(page_paths.contains(&"agent/context.md"));
-        assert!(page_paths.contains(&"agent/handoff.md"));
-        assert!(page_paths.contains(&"troubleshooting.md"));
-        assert!(page_paths.contains(&"glossary.md"));
-        assert!(page_paths.contains(&"architecture.md"));
-        assert!(page_paths.contains(&"testing.md"));
-
-        // Verify proposals table in work-tracker.md
-        let tracker_page = snapshot.pages.iter().find(|p| p.wiki_rel_path == "project/work-tracker.md").unwrap();
-        assert!(tracker_page.content.contains("| Proposal | By | Date | Why |"));
-        assert!(tracker_page.content.contains("| Document core architecture and modules | developer |"));
-
-        // Verify decision frontmatter status and ## Approval
-        let decision_page = snapshot.pages.iter().find(|p| p.wiki_rel_path == "project/decisions/0001-initial-architecture.md").unwrap();
-        assert!(decision_page.content.contains("status: proposed"));
-        assert!(decision_page.content.contains("## Approval"));
-        assert!(decision_page.content.contains("proposed: wiki-init on 2026-11-10."));
-
-        // Verify handoff state bullets
-        let handoff_page = snapshot.pages.iter().find(|p| p.wiki_rel_path == "agent/handoff.md").unwrap();
-        assert!(handoff_page.content.contains("- Tracker IDs: T1"));
-        assert!(handoff_page.content.contains("- Goal: Initial repository wiki setup"));
-        assert!(handoff_page.content.contains("- Last completed step: Initialized wiki structure"));
-        assert!(handoff_page.content.contains("- Current branch: `main`"));
-        assert!(handoff_page.content.contains("- Worktree: clean"));
-    }
-
-    #[test]
-    fn test_custom_folder_wiki_init_and_lint() {
-        let td = TestDir::new("custom_folder_lint");
-        let repo = td.path();
-
-        let _ = Command::new("git")
-            .args(["init"])
-            .current_dir(repo)
-            .output();
-
-        let req = InitWikiRequest {
-            folder: ".wiki".into(),
-            language: "English".into(),
-            project_division: "phases/WP".into(),
-            topics: vec!["architecture".into()],
-            sensitive_data: true,
-            forbidden_terms: vec!["RESTRICTED_SECRET".into()],
-            agent_entry_file: "AGENTS.md".into(),
-            parallel_work: true,
-        };
-
-        let default_schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("resources")
-            .join("default-schema.md");
-        let validator_script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("resources")
-            .join("validate-wiki.py");
-
-        let init_res = initialize_new_wiki(repo, &req, &default_schema_path);
-        assert!(init_res.is_ok());
-
-        assert!(repo.join(".wikidir").is_file());
-        assert_eq!(fs::read_to_string(repo.join(".wikidir")).unwrap().trim(), ".wiki");
-        assert!(repo.join("AGENTS.md").is_file());
-        assert!(repo.join(".wiki").join(".private-terms").is_file());
-
-        let res = resolve_wiki_root(repo);
-        assert_eq!(res.wiki_root, Some(".wiki".into()));
-        assert!(res.is_initialized);
-
-        let report = run_structural_lint(repo, ".wiki", &validator_script);
-        assert_eq!(
-            report.exit_code, 0,
-            "validate-wiki.py failed on .wiki: {:?}\nRaw: {}",
-            report.findings, report.raw_output
-        );
-        assert!(report.findings.is_empty());
     }
 
     #[test]
@@ -458,15 +318,137 @@ sources:
         run_cmd(&["add", "file1.rs"]);
         run_cmd(&["commit", "-m", "Second commit"]);
 
-        let validator_script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("resources")
-            .join("validate-wiki.py");
-
-        let snapshot = load_wiki_snapshot(repo, "wiki", &validator_script).unwrap();
+        let snapshot = load_wiki_snapshot(repo, "wiki").unwrap();
         let changed = snapshot.changed_files_by_page.get("topic.md");
         assert!(changed.is_some(), "Changed files should be present for topic.md");
         assert_eq!(changed.unwrap(), &vec!["file1.rs".to_string()]);
+    }
+
+    fn git(repo: &Path, args: &[&str]) -> String {
+        let out = Command::new("git").arg("-C").arg(repo).args(args).output().unwrap();
+        assert!(out.status.success(), "git {:?} failed", args);
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    fn init_repo(repo: &Path) -> String {
+        git(repo, &["init", "-q"]);
+        git(repo, &["config", "user.email", "agent@example.com"]);
+        git(repo, &["config", "user.name", "Agent"]);
+        fs::write(repo.join("a.txt"), "one\n").unwrap();
+        git(repo, &["add", "."]);
+        git(repo, &["commit", "-qm", "init"]);
+        git(repo, &["rev-parse", "HEAD"])
+    }
+
+    #[test]
+    fn test_file_diff_rejects_option_like_commit() {
+        let td = TestDir::new("diff_opt");
+        let repo = td.path();
+        init_repo(repo);
+        fs::write(repo.join("a.txt"), "two\n").unwrap();
+        let out_file = repo.join("pwned");
+        let evil = format!("--output={}", out_file.display());
+        let diff = file_diff_since_commit(repo, &evil, "a.txt");
+        assert_eq!(diff, "");
+        assert!(!out_file.exists(), "source_commit was parsed as a git option");
+        // A non-ancestor / unknown commit also yields an empty diff.
+        assert_eq!(file_diff_since_commit(repo, "deadbeef", "a.txt"), "");
+        // Empty commit still diffs against HEAD.
+        assert!(file_diff_since_commit(repo, "", "a.txt").contains("+two"));
+    }
+
+    #[test]
+    fn test_git_paths_with_spaces_and_unicode_are_unquoted() {
+        let td = TestDir::new("git_quote");
+        let repo = td.path();
+        let base = init_repo(repo);
+        fs::create_dir_all(repo.join("dir")).unwrap();
+        let name = "dir/a b \u{e8}.md";
+        fs::write(repo.join(name), "x\n").unwrap();
+        git(repo, &["add", "."]);
+        git(repo, &["commit", "-qm", "add"]);
+        fs::write(repo.join(name), "y\n").unwrap();
+        git(repo, &["mv", "a.txt", "b c.txt"]);
+
+        let state = inspect_git_state(repo, None);
+        let mut dirty = state.dirty_files.clone();
+        dirty.sort();
+        assert_eq!(dirty, vec!["b c.txt".to_string(), name.to_string()]);
+
+        let changed = changed_files_since_commit(repo, &base, &["dir".to_string()]);
+        assert_eq!(changed, vec![name.to_string()]);
+    }
+
+    #[test]
+    fn test_write_outside_wiki_creates_no_directory() {
+        let td = TestDir::new("write_escape");
+        let repo = td.path();
+        fs::create_dir_all(repo.join("wiki")).unwrap();
+        assert!(write_wiki_file_safe(repo, "wiki", "../outside/x.md", "x").is_err());
+        assert!(!repo.join("outside").exists());
+        // Escaping through the wiki_root argument is refused too.
+        fs::create_dir_all(repo.join("sibling")).unwrap();
+        assert!(write_wiki_file_safe(&repo.join("wiki"), "../sibling", "new/x.md", "x").is_err());
+        assert!(!repo.join("sibling/new").exists());
+        // Escaping through a symlinked directory inside the wiki is refused.
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(repo.join("sibling"), repo.join("wiki/link")).unwrap();
+            assert!(write_wiki_file_safe(repo, "wiki", "link/new/x.md", "x").is_err());
+            assert!(!repo.join("sibling/new").exists());
+        }
+        // Nested new directories inside the wiki are still created.
+        write_wiki_file_safe(repo, "wiki", "new/deep/x.md", "x").unwrap();
+        assert!(repo.join("wiki/new/deep/x.md").is_file());
+    }
+
+    #[test]
+    fn test_private_terms_file_drives_forbidden_terms() {
+        let td = TestDir::new("private_terms");
+        let repo = td.path();
+        let wiki = repo.join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        assert!(write_wiki_file_safe(repo, "wiki", "p.md", "Acme inc").is_ok());
+        fs::write(wiki.join(".private-terms"), "# comment\nacme\n").unwrap();
+        let err = write_wiki_file_safe(repo, "wiki", "p.md", "Acme inc").unwrap_err();
+        assert!(err.contains("acme"));
+        assert!(write_wiki_file_safe(repo, "wiki", "p.md", "clean").is_ok());
+        assert!(write_wiki_file_safe(repo, "wiki", ".private-terms", "x").is_err());
+        assert!(write_wiki_file_safe(repo, "wiki", "sub/.private-terms", "x").is_err());
+    }
+
+    #[test]
+    fn test_snapshot_has_no_lint_and_camel_case_json() {
+        let td = TestDir::new("snapshot_json");
+        let repo = td.path();
+        init_repo(repo);
+        fs::create_dir_all(repo.join("wiki")).unwrap();
+        fs::write(repo.join("wiki/SCHEMA.md"), "# Schema\n").unwrap();
+        let snapshot = load_wiki_snapshot(repo, "wiki").unwrap();
+        let json = serde_json::to_value(&snapshot).unwrap();
+        let obj = json.as_object().unwrap();
+        assert!(!obj.contains_key("lintReport") && !obj.contains_key("lint_report"));
+        for key in ["repoPath", "wikiRoot", "isInitialized", "gitState", "repoFiles", "changedFilesByPage"] {
+            assert!(obj.contains_key(key), "missing {key}");
+        }
+        assert!(json["gitState"].get("headSha").is_some());
+        assert!(json["gitState"].get("handoffCommitsBehind").is_some());
+        assert!(json["pages"][0].get("wikiRelPath").is_some());
+        assert!(json["pages"][0].get("sizeBytes").is_some());
+
+        let payload = read_repo_file_safe(repo, "a.txt", None).unwrap();
+        assert!(serde_json::to_value(&payload).unwrap().get("relPath").is_some());
+        let res = serde_json::to_value(resolve_wiki_root(repo)).unwrap();
+        assert!(res.get("isInitialized").is_some());
+        let report = LintReport {
+            exit_code: 0,
+            findings: vec![LintFinding { wiki_rel_path: "x.md".into(), line: 1, message: "m".into() }],
+            infos: vec![],
+            raw_output: String::new(),
+        };
+        let report = serde_json::to_value(&report).unwrap();
+        assert!(report.get("exitCode").is_some() && report.get("rawOutput").is_some());
+        assert!(report["findings"][0].get("wikiRelPath").is_some());
     }
 
     #[test]

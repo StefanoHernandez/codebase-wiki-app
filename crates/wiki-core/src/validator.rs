@@ -5,6 +5,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LintFinding {
     pub wiki_rel_path: String,
     pub line: u32,
@@ -12,6 +13,7 @@ pub struct LintFinding {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LintReport {
     pub exit_code: i32,
     pub findings: Vec<LintFinding>,

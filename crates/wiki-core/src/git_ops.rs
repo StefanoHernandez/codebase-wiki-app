@@ -3,6 +3,7 @@ use std::process::Command;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GitState {
     pub head_sha: String,
     pub branch: String,
@@ -34,28 +35,24 @@ pub fn inspect_git_state(repo_path: &Path, handoff_rel_path: Option<&str>) -> Gi
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "unknown".into());
 
+    // `-z`: NUL-separated, never quoted. Renames/copies are `XY new\0old\0`.
     let mut dirty_files = Vec::new();
     if let Ok(output) = Command::new("git")
         .args(["-C"])
         .arg(repo_path)
-        .args(["status", "--porcelain"])
+        .args(["status", "--porcelain", "-z"])
         .output()
     {
         if output.status.success() {
-            let out_str = String::from_utf8_lossy(&output.stdout);
-            for line in out_str.lines() {
-                if line.len() >= 3 {
-                    let path_part = line[3..].trim();
-                    let final_path = if let Some((_, dest)) = path_part.split_once("->") {
-                        dest.trim()
-                    } else {
-                        path_part
-                    };
-                    let unquoted = final_path.trim_matches('"');
-                    if !unquoted.is_empty() {
-                        dirty_files.push(unquoted.to_string());
-                    }
+            let mut entries = output.stdout.split(|&b| b == 0);
+            while let Some(entry) = entries.next() {
+                if entry.len() < 4 {
+                    continue;
                 }
+                if entry[..2].iter().any(|&c| c == b'R' || c == b'C') {
+                    entries.next();
+                }
+                dirty_files.push(String::from_utf8_lossy(&entry[3..]).into_owned());
             }
         }
     }
@@ -103,6 +100,30 @@ pub fn inspect_git_state(repo_path: &Path, handoff_rel_path: Option<&str>) -> Gi
     }
 }
 
+/// Resolves `commit` to a full sha if it names a commit that is an ancestor of
+/// HEAD. Option-like input is never parsed as a git option.
+fn resolve_ancestor_commit(repo_path: &Path, commit: &str) -> Option<String> {
+    let out = Command::new("git")
+        .args(["-C"])
+        .arg(repo_path)
+        .args(["rev-parse", "--verify", "--end-of-options", &format!("{}^{{commit}}", commit)])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    let resolved = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if resolved.is_empty() {
+        return None;
+    }
+    Command::new("git")
+        .args(["-C"])
+        .arg(repo_path)
+        .args(["merge-base", "--is-ancestor", &resolved, "HEAD"])
+        .status()
+        .ok()
+        .filter(|st| st.success())
+        .map(|_| resolved)
+}
+
 pub fn changed_files_since_commit(
     repo_path: &Path,
     source_commit: &str,
@@ -113,38 +134,14 @@ pub fn changed_files_since_commit(
         return Vec::new();
     }
 
-    let rev_parse = Command::new("git")
-        .args(["-C"])
-        .arg(repo_path)
-        .args(["rev-parse", "--verify", "--end-of-options", &format!("{}^{{commit}}", commit)])
-        .output();
-
-    let resolved = match rev_parse {
-        Ok(out) if out.status.success() => {
-            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if s.is_empty() {
-                return Vec::new();
-            }
-            s
-        }
-        _ => return Vec::new(),
+    let Some(resolved) = resolve_ancestor_commit(repo_path, commit) else {
+        return Vec::new();
     };
-
-    let is_ancestor = Command::new("git")
-        .args(["-C"])
-        .arg(repo_path)
-        .args(["merge-base", "--is-ancestor", &resolved, "HEAD"])
-        .status();
-
-    match is_ancestor {
-        Ok(st) if st.success() => {}
-        _ => return Vec::new(),
-    }
 
     let mut cmd = Command::new("git");
     cmd.args(["-C"])
         .arg(repo_path)
-        .args(["diff", "--name-only", &resolved]);
+        .args(["diff", "--name-only", "-z", &resolved]);
 
     if !sources.is_empty() {
         cmd.arg("--");
@@ -158,11 +155,11 @@ pub fn changed_files_since_commit(
         _ => return Vec::new(),
     };
 
-    let text = String::from_utf8_lossy(&output.stdout);
-    let mut files: Vec<String> = text
-        .lines()
-        .map(|l| l.trim().trim_matches('"').to_string())
-        .filter(|s| !s.is_empty())
+    let mut files: Vec<String> = output
+        .stdout
+        .split(|&b| b == 0)
+        .filter(|p| !p.is_empty())
+        .map(|p| String::from_utf8_lossy(p).into_owned())
         .collect();
 
     files.sort();
@@ -170,18 +167,26 @@ pub fn changed_files_since_commit(
     files
 }
 
+/// Diff of `rel_path` from `source_commit` (or HEAD when empty/"unknown") to the
+/// working tree. Returns an empty string when the commit is invalid or not an
+/// ancestor of HEAD.
 pub fn file_diff_since_commit(repo_path: &Path, source_commit: &str, rel_path: &str) -> String {
     let commit = source_commit.trim();
-    let mut cmd = Command::new("git");
-    cmd.args(["-C"]).arg(repo_path).arg("diff");
-
-    if commit.is_empty() || commit.eq_ignore_ascii_case("unknown") {
-        cmd.args(["HEAD", "--", rel_path]);
+    let base = if commit.is_empty() || commit.eq_ignore_ascii_case("unknown") {
+        "HEAD".to_string()
     } else {
-        cmd.args([commit, "--", rel_path]);
-    }
+        match resolve_ancestor_commit(repo_path, commit) {
+            Some(sha) => sha,
+            None => return String::new(),
+        }
+    };
 
-    match cmd.output() {
+    match Command::new("git")
+        .args(["-C"])
+        .arg(repo_path)
+        .args(["diff", &base, "--", rel_path])
+        .output()
+    {
         Ok(out) => String::from_utf8_lossy(&out.stdout).into_owned(),
         Err(_) => String::new(),
     }
