@@ -168,7 +168,7 @@ function readTrackerRecords(
     const extra: Record<string, string> = {};
     table.header.forEach((h, i) => {
       const value = (cells[i] ?? '').trim();
-      const key = named ? Object.hasOwn(keys, lower[i]) ? keys[lower[i]] : undefined : positionalKeys[i];
+      const key = named ? (Object.hasOwn(keys, lower[i]) ? keys[lower[i]] : undefined) : positionalKeys[i];
       if (key) {
         fields[key] = value;
       } else if (named) {
