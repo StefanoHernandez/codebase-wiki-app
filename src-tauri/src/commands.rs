@@ -65,13 +65,29 @@ async fn blocking<T: Send + 'static>(
         .map_err(|e| e.to_string())?
 }
 
-fn repo_dir(path: &str) -> Result<PathBuf, String> {
-    let p = PathBuf::from(path);
-    if p.is_dir() {
-        Ok(p)
-    } else {
-        Err(format!("Not a directory: {path}"))
+const NOT_OPENED: &str = "Project not opened";
+
+/// True when the canonical `repo` is one of the recent projects (the folders
+/// the user picked through `open_project`).
+pub fn is_opened(list: &[RecentProject], repo: &Path) -> bool {
+    list.iter().any(|r| {
+        Path::new(&r.path)
+            .canonicalize()
+            .map(|p| p == repo)
+            .unwrap_or(false)
+    })
+}
+
+/// Gate for every command that takes a `repo`: canonicalize it, then require
+/// it to be an opened project and still a git repo.
+fn opened_repo(app: &AppHandle, repo: &str) -> Result<PathBuf, String> {
+    let canonical = Path::new(repo)
+        .canonicalize()
+        .map_err(|_| NOT_OPENED.to_string())?;
+    if !is_opened(&read_recents(app)?, &canonical) || !is_git_repo(&canonical) {
+        return Err(NOT_OPENED.to_string());
     }
+    Ok(canonical)
 }
 
 fn wiki_root_of(repo: &Path) -> Result<String, String> {
@@ -213,18 +229,19 @@ pub async fn remove_recent(app: AppHandle, path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn load_snapshot(repo: String) -> Result<WikiSnapshot, String> {
-    blocking(move || snapshot_for(&repo_dir(&repo)?)).await
+pub async fn load_snapshot(app: AppHandle, repo: String) -> Result<WikiSnapshot, String> {
+    blocking(move || snapshot_for(&opened_repo(&app, &repo)?)).await
 }
 
 #[tauri::command]
 pub async fn write_wiki_file(
+    app: AppHandle,
     repo: String,
     rel_path: String,
     content: String,
 ) -> Result<(), String> {
     blocking(move || {
-        let repo = repo_dir(&repo)?;
+        let repo = opened_repo(&app, &repo)?;
         let root = wiki_root_of(&repo)?;
         write_wiki_file_safe(&repo, &root, &rel_path, &content)
     })
@@ -232,19 +249,28 @@ pub async fn write_wiki_file(
 }
 
 #[tauri::command]
-pub async fn read_source_file(repo: String, rel_path: String) -> Result<RepoFilePayload, String> {
-    blocking(move || read_repo_file_safe(&repo_dir(&repo)?, &rel_path, None)).await
+pub async fn read_source_file(
+    app: AppHandle,
+    repo: String,
+    rel_path: String,
+) -> Result<RepoFilePayload, String> {
+    blocking(move || read_repo_file_safe(&opened_repo(&app, &repo)?, &rel_path, None)).await
 }
 
 #[tauri::command]
-pub async fn source_diff(repo: String, rel_path: String, commit: String) -> Result<String, String> {
-    blocking(move || Ok(file_diff_since_commit(&repo_dir(&repo)?, &commit, &rel_path))).await
+pub async fn source_diff(
+    app: AppHandle,
+    repo: String,
+    rel_path: String,
+    commit: String,
+) -> Result<String, String> {
+    blocking(move || Ok(file_diff_since_commit(&opened_repo(&app, &repo)?, &commit, &rel_path))).await
 }
 
 #[tauri::command]
 pub async fn run_lint(app: AppHandle, repo: String) -> Result<LintReport, String> {
     blocking(move || {
-        let repo = repo_dir(&repo)?;
+        let repo = opened_repo(&app, &repo)?;
         let root = wiki_root_of(&repo)?;
         let python = find_python().ok_or_else(|| "Python 3 not found".to_string())?;
         let script = resource(&app, "validate-wiki.py")?;
@@ -254,8 +280,8 @@ pub async fn run_lint(app: AppHandle, repo: String) -> Result<LintReport, String
 }
 
 #[tauri::command]
-pub async fn git_user_name(repo: String) -> Result<Option<String>, String> {
-    blocking(move || Ok(wiki_core::git_user_name(&repo_dir(&repo)?))).await
+pub async fn git_user_name(app: AppHandle, repo: String) -> Result<Option<String>, String> {
+    blocking(move || Ok(wiki_core::git_user_name(&opened_repo(&app, &repo)?))).await
 }
 
 #[tauri::command]
@@ -265,7 +291,7 @@ pub async fn workflow_prompt(
     workflow: String,
 ) -> Result<String, String> {
     blocking(move || {
-        repo_dir(&repo)?;
+        opened_repo(&app, &repo)?;
         let dir = resource(&app, "workflows")?;
         build_workflow_prompt(&workflow, None, &dir)
     })
@@ -281,6 +307,34 @@ mod tests {
             path: path.into(),
             name: path.rsplit('/').next().unwrap_or(path).into(),
         }
+    }
+
+    #[test]
+    fn is_opened_matches_only_listed_projects_after_canonicalization() {
+        let base = std::env::temp_dir().join(format!("cw_opened_{}", std::process::id()));
+        let a = base.join("a");
+        let b = base.join("b");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        let a_canon = a.canonicalize().unwrap();
+        let b_canon = b.canonicalize().unwrap();
+
+        let listed = vec![RecentProject {
+            path: a_canon.to_string_lossy().into_owned(),
+            name: "a".into(),
+        }];
+        assert!(is_opened(&listed, &a_canon));
+        assert!(!is_opened(&listed, &b_canon));
+        assert!(!is_opened(&[], &a_canon));
+
+        // A stored entry written in a non-canonical spelling still matches.
+        let loose = vec![RecentProject {
+            path: format!("{}/./", a.display()),
+            name: "a".into(),
+        }];
+        assert!(is_opened(&loose, &a_canon));
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
