@@ -1,4 +1,4 @@
-import type { ParsedFrontmatter } from '../types/wiki.ts';
+import type { Attribution, ParsedFrontmatter } from '../types/wiki.ts';
 
 function stripQuotes(value: string): string {
   const trimmed = value.trim();
@@ -9,6 +9,26 @@ function stripQuotes(value: string): string {
     return trimmed.slice(1, -1).trim();
   }
   return trimmed;
+}
+
+function parseMapBody(text: string): Record<string, string> {
+  const trimmed = text.trim();
+  const map: Record<string, string> = {};
+  const isInline = trimmed.startsWith('{');
+  const body = isInline ? trimmed.replace(/^\{/, '').replace(/\}$/, '') : trimmed;
+  for (const part of isInline ? body.split(',') : [body]) {
+    const idx = part.indexOf(':');
+    if (idx === -1) continue;
+    map[part.slice(0, idx).trim()] = stripQuotes(part.slice(idx + 1));
+  }
+  return map;
+}
+
+function toAttribution(map: Record<string, string> | null): Attribution | undefined {
+  if (!map || !map.by) return undefined;
+  const attribution: Attribution = { by: map.by, at: map.at ?? '' };
+  if (map.commit) attribution.commit = map.commit;
+  return attribution;
 }
 
 export function parseFrontmatter(markdown: string): ParsedFrontmatter {
@@ -23,6 +43,7 @@ export function parseFrontmatter(markdown: string): ParsedFrontmatter {
     return {
       fields: {},
       sources: [],
+      verified: [],
       hasFrontmatter: false,
       bodyOffsetLine: 0,
       body: normalized,
@@ -34,6 +55,7 @@ export function parseFrontmatter(markdown: string): ParsedFrontmatter {
     return {
       fields: {},
       sources: [],
+      verified: [],
       hasFrontmatter: false,
       bodyOffsetLine: 0,
       body: normalized,
@@ -42,6 +64,8 @@ export function parseFrontmatter(markdown: string): ParsedFrontmatter {
 
   const fields: Record<string, string> = {};
   const sources: string[] = [];
+  const verifiedMaps: Record<string, string>[] = [];
+  let generatedMap: Record<string, string> | null = null;
   let currentKey = '';
 
   for (let i = 1; i < end; i++) {
@@ -53,13 +77,27 @@ export function parseFrontmatter(markdown: string): ParsedFrontmatter {
       sources.push(stripQuotes(itemMatch[1].trim()));
       continue;
     }
+    if (itemMatch && currentKey === 'verified') {
+      verifiedMaps.push(parseMapBody(itemMatch[1]));
+      continue;
+    }
+    const continuation = line.match(/^\s+([a-zA-Z0-9_-]+):\s*(.*)$/);
+    if (continuation && currentKey === 'verified' && verifiedMaps.length > 0) {
+      verifiedMaps[verifiedMaps.length - 1][continuation[1]] = stripQuotes(continuation[2]);
+      continue;
+    }
 
     const scalarMatch = line.match(/^([a-zA-Z0-9_-]+):(?:\s*(.*))?$/);
     if (scalarMatch) {
       const key = scalarMatch[1];
       const rawVal = (scalarMatch[2] || '').trim();
       currentKey = key;
-      if (key !== 'sources') {
+      if (key === 'sources') continue;
+      if (key === 'verified') {
+        if (rawVal.startsWith('{')) verifiedMaps.push(parseMapBody(rawVal));
+      } else if (key === 'generated') {
+        if (rawVal.startsWith('{')) generatedMap = parseMapBody(rawVal);
+      } else {
         fields[key] = stripQuotes(rawVal);
       }
     }
@@ -70,6 +108,8 @@ export function parseFrontmatter(markdown: string): ParsedFrontmatter {
   return {
     fields,
     sources,
+    generated: toAttribution(generatedMap),
+    verified: verifiedMaps.map(toAttribution).filter((a): a is Attribution => a !== undefined),
     hasFrontmatter: true,
     bodyOffsetLine: end + 1,
     body,

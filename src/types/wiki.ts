@@ -12,9 +12,17 @@ export type CoreRole =
   | 'troubleshooting'
   | 'glossary';
 
+export interface Attribution {
+  by: string;
+  at: string;
+  commit?: string;
+}
+
 export interface ParsedFrontmatter {
   fields: Record<string, string>;
   sources: string[];
+  generated?: Attribution;
+  verified: Attribution[];
   hasFrontmatter: boolean;
   bodyOffsetLine: number;
   body: string;

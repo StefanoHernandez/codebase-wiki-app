@@ -173,3 +173,52 @@ test('parseSchemaMarkdown parses actual resources/default-schema.md file', () =>
   assert.equal(config.topics[0].name, 'architecture');
   assert.equal(config.topics[0].path, 'architecture.md');
 });
+
+test('parseFrontmatter exposes generated and verified attributions from inline maps', () => {
+  const md = `---
+title: Auth
+generated: { by: claude-code/opus, at: 2026-01-01T00:00:00Z }
+verified: { by: human:stefano, at: 2026-02-01T10:00:00Z, commit: abc1234 }
+sources:
+  - src/auth.ts
+---
+# Auth`;
+  const parsed = parseFrontmatter(md);
+  assert.deepEqual(parsed.generated, { by: 'claude-code/opus', at: '2026-01-01T00:00:00Z' });
+  assert.deepEqual(parsed.verified, [{ by: 'human:stefano', at: '2026-02-01T10:00:00Z', commit: 'abc1234' }]);
+  assert.deepEqual(parsed.sources, ['src/auth.ts']);
+  assert.equal(parsed.fields.title, 'Auth');
+});
+
+test('parseFrontmatter reads verified as a list of inline or block maps and defaults to empty', () => {
+  const listInline = `---
+title: A
+verified:
+  - { by: agent/codex, at: 2026-01-01T00:00:00Z }
+  - { by: human:stefano, at: 2026-02-01T00:00:00Z, commit: def5678 }
+---
+x`;
+  assert.deepEqual(parseFrontmatter(listInline).verified, [
+    { by: 'agent/codex', at: '2026-01-01T00:00:00Z' },
+    { by: 'human:stefano', at: '2026-02-01T00:00:00Z', commit: 'def5678' },
+  ]);
+
+  const listBlock = `---
+title: B
+verified:
+  - by: human:mario
+    at: 2026-03-01T00:00:00Z
+  - by: claude
+    at: 2026-03-02T00:00:00Z
+    commit: 1a2b3c4
+---
+x`;
+  assert.deepEqual(parseFrontmatter(listBlock).verified, [
+    { by: 'human:mario', at: '2026-03-01T00:00:00Z' },
+    { by: 'claude', at: '2026-03-02T00:00:00Z', commit: '1a2b3c4' },
+  ]);
+
+  const none = parseFrontmatter('---\ntitle: C\n---\nx');
+  assert.equal(none.generated, undefined);
+  assert.deepEqual(none.verified, []);
+});
