@@ -1,6 +1,5 @@
 # Build and dependency artifacts
 node_modules/
-dist/
 dist-tauri/
 
 # Tauri / Rust target

@@ -10,8 +10,11 @@ pub fn build_workflow_prompt(
     let mut file_path = workflow_dir.join(clean_wf);
     if !file_path.is_file() {
         let with_md = workflow_dir.join(format!("{}.md", clean_wf));
+        let with_wiki_md = workflow_dir.join(format!("wiki-{}.md", clean_wf));
         if with_md.is_file() {
             file_path = with_md;
+        } else if with_wiki_md.is_file() {
+            file_path = with_wiki_md;
         } else {
             return Err(format!(
                 "Workflow template not found: '{}' in '{}'",

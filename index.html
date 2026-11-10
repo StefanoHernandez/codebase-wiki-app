@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codebase Wiki App</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- TopBar -->
+    <header id="topbar">
+      <div class="topbar-left">
+        <div class="app-brand">
+          <span class="brand-icon">⚡</span>
+          <span>Codebase Wiki</span>
+        </div>
+        <div class="repo-bar">
+          <input type="text" id="repo-path-input" placeholder="/path/to/git-repo" />
+          <button id="repo-open-btn">Open</button>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span id="git-status-pill" class="pill pill-dimmed">Checking Git...</span>
+        <span id="drift-badge" class="pill pill-clean">0 Drift</span>
+        <span id="lint-badge" class="pill pill-dimmed">Lint ...</span>
+        <button id="init-wiki-btn" class="btn btn-sm btn-primary">+ Init Wiki</button>
+        <button id="agent-runner-btn" class="btn btn-sm">Agent Runner</button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div id="main-container">
+      <!-- Left Sidebar -->
+      <aside id="sidebar">
+        <!-- Wiki Root & Core Read Budget -->
+        <div class="sidebar-section">
+          <div id="wiki-root-label" class="sidebar-heading">Root: wiki/</div>
+          <div class="budget-meter">
+            <div class="sidebar-heading">Core Read Budget</div>
+            <div class="progress-track">
+              <div id="budget-bar-fill" class="progress-fill under-budget" style="width: 0%"></div>
+            </div>
+            <div id="budget-text" class="budget-label">0 KB / 60 KB (0%)</div>
+          </div>
+        </div>
+
+        <!-- Core Map -->
+        <div class="sidebar-section">
+          <div class="sidebar-heading">Core Map</div>
+          <ul id="core-map-list" class="sidebar-list"></ul>
+        </div>
+
+        <!-- Decisions -->
+        <div class="sidebar-section">
+          <div class="sidebar-heading">Decisions</div>
+          <ul id="decisions-list" class="sidebar-list"></ul>
+        </div>
+
+        <!-- Topics -->
+        <div class="sidebar-section">
+          <div class="sidebar-heading">Topics</div>
+          <ul id="topics-list" class="sidebar-list"></ul>
+        </div>
+
+        <!-- Uncovered Repo Files -->
+        <div class="sidebar-section">
+          <div class="sidebar-heading">
+            <span>Uncovered Files</span>
+            <span id="uncovered-count" class="pill pill-dimmed">0</span>
+          </div>
+          <ul id="uncovered-files-list" class="sidebar-list"></ul>
+        </div>
+      </aside>
+
+      <!-- Content Area with Tabs -->
+      <main id="content-area">
+        <!-- Tab Navigation Bar -->
+        <nav id="tab-nav">
+          <button class="tab-btn active" data-tab="workbench">Graph & Workbench</button>
+          <button class="tab-btn" data-tab="tracker">Work Tracker</button>
+          <button class="tab-btn" data-tab="decisions">Decisions</button>
+          <button class="tab-btn" data-tab="baton">Agent Baton</button>
+          <button class="tab-btn" data-tab="lint">Live Lint</button>
+        </nav>
+
+        <!-- Tab 1: Workbench (Split Graph & Editor) -->
+        <section id="tab-workbench" class="tab-panel active">
+          <!-- Force-Graph Canvas -->
+          <div id="graph-container">
+            <div class="graph-controls">
+              <label class="control-toggle">
+                <input type="checkbox" id="filter-code-sources" />
+                <span>Code Sources</span>
+              </label>
+              <label class="control-toggle">
+                <input type="checkbox" id="filter-drift-only" />
+                <span>Drift Only</span>
+              </label>
+              <label class="control-toggle">
+                <input type="checkbox" id="filter-local-graph" />
+                <span>Local (1-hop)</span>
+              </label>
+              <input type="text" id="graph-search-input" class="graph-search" placeholder="Search nodes..." />
+            </div>
+
+            <div class="graph-zoom-controls">
+              <button id="btn-zoom-in" class="btn btn-icon" title="Zoom in">+</button>
+              <button id="btn-zoom-out" class="btn btn-icon" title="Zoom out">-</button>
+              <button id="btn-reset-zoom" class="btn btn-icon" title="Fit to view">⟲</button>
+            </div>
+
+            <canvas id="graph-canvas"></canvas>
+          </div>
+
+          <!-- Split Markdown Editor / Preview -->
+          <div id="editor-container">
+            <div class="editor-toolbar">
+              <div class="editor-file-info">
+                <span id="editor-file-path">index.md</span>
+              </div>
+              <div class="editor-actions">
+                <button id="btn-save-page" class="btn btn-sm btn-primary">Save Page (Ctrl+S)</button>
+              </div>
+            </div>
+
+            <!-- Frontmatter & Sources Inspector -->
+            <div id="frontmatter-inspector"></div>
+
+            <!-- Editor Body -->
+            <div class="editor-body">
+              <textarea id="editor-textarea" spellcheck="false" placeholder="Page content..."></textarea>
+              <div id="editor-preview"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 2: Work Tracker -->
+        <section id="tab-tracker" class="tab-panel">
+          <div class="tracker-section">
+            <h2>Open Work Activities</h2>
+            <table class="wiki-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Status</th>
+                  <th>Goal</th>
+                  <th>Done When</th>
+                  <th>Owner</th>
+                  <th>Next Verification</th>
+                  <th>Evidence</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="tracker-open-tbody"></tbody>
+            </table>
+          </div>
+
+          <div class="tracker-section">
+            <h2>Proposals</h2>
+            <table class="wiki-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Proposal</th>
+                  <th>By</th>
+                  <th>Date</th>
+                  <th>Why</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="tracker-proposals-tbody"></tbody>
+            </table>
+          </div>
+
+          <div class="tracker-section">
+            <h2>Completed & Closed Activities</h2>
+            <table class="wiki-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Status</th>
+                  <th>Goal</th>
+                  <th>Closed</th>
+                  <th>Criteria Met</th>
+                  <th>Evidence</th>
+                </tr>
+              </thead>
+              <tbody id="tracker-done-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Tab 3: Decisions -->
+        <section id="tab-decisions" class="tab-panel">
+          <div class="decisions-header">
+            <h2>Architectural Decision Records (ADR)</h2>
+          </div>
+          <div id="decisions-grid" class="decisions-grid"></div>
+        </section>
+
+        <!-- Tab 4: Agent Baton -->
+        <section id="tab-baton" class="tab-panel">
+          <div id="baton-staleness-banner" class="staleness-banner" style="display: none;"></div>
+
+          <div class="baton-section">
+            <h2>Current Work State</h2>
+            <div id="handoff-state-bullets"></div>
+          </div>
+
+          <div class="baton-section">
+            <h2>Baton For Next Coding Agent</h2>
+            <table class="wiki-table">
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Task</th>
+                  <th>Start Files</th>
+                  <th>Done When</th>
+                  <th>Verification Command</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody id="handoff-baton-tbody"></tbody>
+            </table>
+          </div>
+
+          <div class="baton-section">
+            <h2>Blockers</h2>
+            <div id="handoff-blockers-list"></div>
+          </div>
+        </section>
+
+        <!-- Tab 5: Live Structural Lint -->
+        <section id="tab-lint" class="tab-panel">
+          <div class="lint-header">
+            <h2>Structural Lint Status:</h2>
+            <span id="lint-exit-badge" class="badge">Checking...</span>
+          </div>
+
+          <table class="wiki-table">
+            <thead>
+              <tr>
+                <th>Wiki Rel Path</th>
+                <th>Line</th>
+                <th>Message</th>
+              </tr>
+            </thead>
+            <tbody id="lint-findings-tbody"></tbody>
+          </table>
+
+          <div class="lint-raw-section">
+            <h3>Validator Output</h3>
+            <pre id="lint-raw-output" class="raw-output-box"></pre>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- Read-Only Code Source & Git Diff Drawer -->
+    <div id="code-drawer">
+      <div class="drawer-header">
+        <div class="drawer-title">
+          <span id="code-drawer-path">file.ts</span>
+          <span id="code-drawer-commit" class="pill pill-dimmed"></span>
+        </div>
+        <button id="code-drawer-close" class="modal-close">&times;</button>
+      </div>
+      <div class="drawer-body">
+        <div id="code-drawer-diff"></div>
+        <h4>File Content</h4>
+        <pre id="code-drawer-content" class="code-block"></pre>
+      </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- 7-Question /wiki-init Wizard Modal -->
+    <div id="init-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Initialize Codebase Wiki</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <form id="init-wiki-form">
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="init-folder">1. Wiki Folder Name</label>
+              <input type="text" id="init-folder" value="wiki" required />
+            </div>
+            <div class="form-group">
+              <label for="init-language">2. Primary Documentation Language</label>
+              <input type="text" id="init-language" value="English" required />
+            </div>
+            <div class="form-group">
+              <label for="init-division">3. Project Division</label>
+              <input type="text" id="init-division" value="monolith" required />
+            </div>
+            <div class="form-group">
+              <label for="init-topics">4. Topic Folders (comma-separated)</label>
+              <input type="text" id="init-topics" value="architecture, api, guides" required />
+            </div>
+            <div class="form-group checkbox-group">
+              <input type="checkbox" id="init-sensitive" />
+              <label for="init-sensitive">5. Sensitive Data Prohibition (.private-terms guardrail)</label>
+            </div>
+            <div class="form-group">
+              <label for="init-forbidden">6. Forbidden Terms (if sensitive, comma-separated)</label>
+              <input type="text" id="init-forbidden" value="password, secret, token, key, credentials" />
+            </div>
+            <div class="form-group">
+              <label for="init-agent-entry">7. Agent Entry File</label>
+              <input type="text" id="init-agent-entry" value="CLAUDE.md" required />
+            </div>
+            <div class="form-group checkbox-group">
+              <input type="checkbox" id="init-parallel" checked />
+              <label for="init-parallel">8. Parallel branch union-merge on log.md (.gitattributes)</label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn modal-close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Initialize Wiki</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Promote Proposal Modal -->
+    <div id="promote-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Promote Proposal to Open Task</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <form id="promote-form">
+          <input type="hidden" id="promote-proposal-index" />
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="promote-person">Human Person Name (Authority)</label>
+              <input type="text" id="promote-person" value="Stefano" required />
+            </div>
+            <div class="form-group">
+              <label for="promote-owner">Task Owner</label>
+              <input type="text" id="promote-owner" value="Stefano" required />
+            </div>
+            <div class="form-group">
+              <label for="promote-done-when">Done When Criteria</label>
+              <input type="text" id="promote-done-when" value="Implementation complete and verified" required />
+            </div>
+            <div class="form-group">
+              <label for="promote-verification">Next Verification Command</label>
+              <input type="text" id="promote-verification" value="cargo test && npm test" required />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn modal-close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Promote Proposal</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Close Unproven Modal -->
+    <div id="close-unproven-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Close Task as Unproven (⚫ Human)</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <form id="close-unproven-form">
+          <input type="hidden" id="close-task-id" />
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="close-person">Human Person Name (Authority)</label>
+              <input type="text" id="close-person" value="Stefano" required />
+            </div>
+            <div class="form-group">
+              <label for="close-reason">Not Proven Reason</label>
+              <input type="text" id="close-reason" value="cancelled after prototype review" required />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn modal-close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Close Unproven (⚫)</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Approve Decision Modal -->
+    <div id="approve-decision-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Approve Architectural Decision (Human)</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <form id="approve-decision-form">
+          <input type="hidden" id="approve-decision-file" />
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="approve-person">Human Person Name (Authority)</label>
+              <input type="text" id="approve-person" value="Stefano" required />
+            </div>
+            <div class="form-group">
+              <label for="approve-context">Where / Context (e.g. team sync, ADR review)</label>
+              <input type="text" id="approve-context" value="team architecture review" required />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn modal-close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Approve Decision</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Agent Runner Modal -->
+    <div id="agent-modal" class="modal">
+      <div class="modal-content" style="width: 600px;">
+        <div class="modal-header">
+          <h3>Agent Runner (LLM Workflows)</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="agent-workflow-select">Workflow</label>
+            <select id="agent-workflow-select">
+              <option value="sync">/wiki-sync - Drift Re-anchoring</option>
+              <option value="ingest">/wiki-ingest - Incremental Page Generation</option>
+              <option value="lint">/wiki-lint - Structural Lint & Auto-fix</option>
+              <option value="init">/wiki-init - Bootstrap New Wiki</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="agent-target-input">Target (Wiki rel-path or Repo file, optional)</label>
+            <input type="text" id="agent-target-input" placeholder="e.g. index.md or src/lib/auth.ts" />
+          </div>
+          <div class="form-group">
+            <label for="agent-host-select">CLI Agent Host</label>
+            <select id="agent-host-select">
+              <option value="claude">Claude CLI (claude)</option>
+              <option value="codex">Codex CLI (codex)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <div style="display: flex; gap: 8px;">
+              <button id="btn-agent-copy-prompt" class="btn btn-primary">Generate & Copy Prompt</button>
+              <button id="btn-agent-run-cli" class="btn">Run in Background CLI</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Generated Prompt:</label>
+            <textarea id="agent-prompt-output" rows="6" readonly placeholder="Prompt output will appear here..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>CLI Execution Output:</label>
+            <textarea id="agent-cli-output" rows="4" readonly placeholder="CLI execution output will appear here..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn modal-close">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

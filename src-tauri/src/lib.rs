@@ -10,8 +10,8 @@ pub use git_ops::{
 };
 pub use validator::{run_structural_lint, LintFinding, LintReport};
 pub use wiki_fs::{
-    initialize_new_wiki, load_wiki_snapshot, read_repo_file_safe, write_wiki_file_safe,
-    InitWikiRequest, RepoFilePayload, WikiPageEntry, WikiSnapshot,
+    collect_repo_files_recursive, initialize_new_wiki, load_wiki_snapshot, read_repo_file_safe,
+    write_wiki_file_safe, InitWikiRequest, RepoFilePayload, WikiPageEntry, WikiSnapshot,
 };
 pub use wiki_resolver::{is_valid_wiki_folder_name, resolve_wiki_root, WikiResolution};
 

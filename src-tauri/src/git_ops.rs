@@ -144,7 +144,7 @@ pub fn changed_files_since_commit(
     let mut cmd = Command::new("git");
     cmd.args(["-C"])
         .arg(repo_path)
-        .args(["diff", "--name-only", &format!("{}..HEAD", resolved)]);
+        .args(["diff", "--name-only", &resolved]);
 
     if !sources.is_empty() {
         cmd.arg("--");
@@ -178,7 +178,7 @@ pub fn file_diff_since_commit(repo_path: &Path, source_commit: &str, rel_path: &
     if commit.is_empty() || commit.eq_ignore_ascii_case("unknown") {
         cmd.args(["HEAD", "--", rel_path]);
     } else {
-        cmd.args([&format!("{}..HEAD", commit), "--", rel_path]);
+        cmd.args([commit, "--", rel_path]);
     }
 
     match cmd.output() {

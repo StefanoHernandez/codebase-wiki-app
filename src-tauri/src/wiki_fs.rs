@@ -35,14 +35,20 @@ pub struct RepoFilePayload {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InitWikiRequest {
     pub folder: String,
     pub language: String,
+    #[serde(alias = "project_division")]
     pub project_division: String,
     pub topics: Vec<String>,
+    #[serde(alias = "sensitive_data")]
     pub sensitive_data: bool,
+    #[serde(alias = "forbidden_terms")]
     pub forbidden_terms: Vec<String>,
+    #[serde(alias = "agent_entry_file")]
     pub agent_entry_file: String,
+    #[serde(alias = "parallel_work")]
     pub parallel_work: bool,
 }
 
@@ -251,7 +257,7 @@ fn collect_wiki_pages_recursive(
     }
 }
 
-fn collect_repo_files_recursive(
+pub fn collect_repo_files_recursive(
     dir: &Path,
     repo_path: &Path,
     files: &mut Vec<String>,
