@@ -1,10 +1,10 @@
-pub mod agent_runner;
 pub mod git_ops;
+pub mod prompts;
 pub mod validator;
 pub mod wiki_fs;
 pub mod wiki_resolver;
 
-pub use agent_runner::{build_workflow_prompt, run_cli_agent_sync};
+pub use prompts::build_workflow_prompt;
 pub use git_ops::{
     changed_files_since_commit, file_diff_since_commit, inspect_git_state, GitState,
 };
@@ -226,13 +226,11 @@ mod tests {
         };
 
         let default_schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
+            .join("../..")
             .join("resources")
             .join("default-schema.md");
         let validator_script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
+            .join("../..")
             .join("resources")
             .join("validate-wiki.py");
 
@@ -312,13 +310,11 @@ mod tests {
         };
 
         let default_schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
+            .join("../..")
             .join("resources")
             .join("default-schema.md");
         let validator_script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
+            .join("../..")
             .join("resources")
             .join("validate-wiki.py");
 
@@ -463,8 +459,7 @@ sources:
         run_cmd(&["commit", "-m", "Second commit"]);
 
         let validator_script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
+            .join("../..")
             .join("resources")
             .join("validate-wiki.py");
 
@@ -477,8 +472,7 @@ sources:
     #[test]
     fn test_build_workflow_prompt() {
         let workflow_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
+            .join("../..")
             .join("resources")
             .join("workflows");
 

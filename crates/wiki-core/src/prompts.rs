@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::process::Command;
 
 pub fn build_workflow_prompt(
     workflow: &str,
@@ -41,45 +40,4 @@ pub fn build_workflow_prompt(
     }
 
     Ok(prompt)
-}
-
-pub fn run_cli_agent_sync(
-    repo_path: &Path,
-    host: &str,
-    prompt: &str,
-) -> Result<String, String> {
-    let output = match host.to_lowercase().as_str() {
-        "claude" => Command::new("claude")
-            .args(["-p", prompt])
-            .current_dir(repo_path)
-            .output(),
-        "codex" => Command::new("codex")
-            .args(["exec", prompt])
-            .current_dir(repo_path)
-            .output(),
-        _ => {
-            return Err(format!(
-                "Unsupported CLI agent host: '{}'. Supported hosts: 'claude', 'codex'.",
-                host
-            ));
-        }
-    };
-
-    match output {
-        Ok(out) => {
-            let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-            let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-            if out.status.success() {
-                Ok(stdout)
-            } else {
-                Err(format!(
-                    "Agent process exited with code {:?}.\nStdout: {}\nStderr: {}",
-                    out.status.code(),
-                    stdout,
-                    stderr
-                ))
-            }
-        }
-        Err(e) => Err(format!("Failed to invoke CLI agent '{}': {}", host, e)),
-    }
 }

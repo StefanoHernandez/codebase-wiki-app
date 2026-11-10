@@ -25,3 +25,5 @@ pnpm-debug.log*
 Thumbs.db
 *.swp
 *.swo
+dist/
+src-tauri/gen/schemas/
