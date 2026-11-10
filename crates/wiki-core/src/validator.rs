@@ -26,8 +26,19 @@ pub fn run_structural_lint(
     wiki_root: &str,
     validator_script: &Path,
 ) -> LintReport {
+    run_structural_lint_with("python3", repo_path, wiki_root, validator_script)
+}
+
+/// Same as `run_structural_lint` but runs the validator with the given Python
+/// executable (e.g. `python` on Windows when `python3` is absent).
+pub fn run_structural_lint_with(
+    python: &str,
+    repo_path: &Path,
+    wiki_root: &str,
+    validator_script: &Path,
+) -> LintReport {
     let target_wiki = repo_path.join(wiki_root);
-    let output = Command::new("python3")
+    let output = Command::new(python)
         .arg(validator_script)
         .arg(&target_wiki)
         .current_dir(repo_path)
@@ -111,5 +122,35 @@ pub fn run_structural_lint(
         findings,
         infos,
         raw_output,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_run_structural_lint_parses_report() {
+        let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/validate-wiki.py");
+        let has_python = Command::new("python3")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if !has_python || !script.is_file() {
+            println!("note: skipping lint test (python3 or validator script missing)");
+            return;
+        }
+        let repo = std::env::temp_dir().join(format!("wiki_lint_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&repo);
+        fs::create_dir_all(repo.join("wiki")).unwrap();
+        fs::write(repo.join("wiki/SCHEMA.md"), "# Schema\n").unwrap();
+        fs::write(repo.join("wiki/topic.md"), "# Topic\n").unwrap();
+
+        let report = run_structural_lint(&repo, "wiki", &script);
+        let _ = fs::remove_dir_all(&repo);
+        assert!(report.exit_code >= 0, "validator did not run: {}", report.raw_output);
+        let _: &Vec<LintFinding> = &report.findings;
     }
 }

@@ -7,9 +7,10 @@ pub mod wiki_resolver;
 
 pub use prompts::build_workflow_prompt;
 pub use git_ops::{
-    changed_files_since_commit, file_diff_since_commit, inspect_git_state, GitState,
+    changed_files_since_commit, file_diff_since_commit, git_user_name, inspect_git_state,
+    is_git_repo, GitState,
 };
-pub use validator::{run_structural_lint, LintFinding, LintReport};
+pub use validator::{run_structural_lint, run_structural_lint_with, LintFinding, LintReport};
 pub use watcher::{watch_repo, WatchHandle};
 pub use wiki_fs::{
     collect_repo_files_recursive, load_wiki_snapshot, read_repo_file_safe,

@@ -12,6 +12,29 @@ pub struct GitState {
     pub handoff_commits_behind: u32,
 }
 
+/// True when `repo_path` is a directory inside a git work tree.
+pub fn is_git_repo(repo_path: &Path) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(repo_path)
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .output()
+        .map(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "true")
+        .unwrap_or(false)
+}
+
+/// `git config user.name` of the repo, if set.
+pub fn git_user_name(repo_path: &Path) -> Option<String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo_path)
+        .args(["config", "user.name"])
+        .output()
+        .ok()?;
+    let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (out.status.success() && !name.is_empty()).then_some(name)
+}
+
 pub fn inspect_git_state(repo_path: &Path, handoff_rel_path: Option<&str>) -> GitState {
     let head_sha = Command::new("git")
         .args(["-C"])
