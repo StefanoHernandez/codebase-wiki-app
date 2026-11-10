@@ -5,6 +5,7 @@ import { useToast } from '../components/Toast';
 import { useProject } from '../state/project';
 import { useNav } from '../state/nav';
 import type { AttentionItem, AttentionKind } from '../lib/attention';
+import type { TrackerProposalRow } from '../types/wiki';
 
 const GROUPS: Array<{ kind: AttentionKind; title: string }> = [
   { kind: 'decision-proposed', title: 'Decisioni da approvare' },
@@ -29,7 +30,7 @@ export default function PerTe() {
   const project = useProject();
   const nav = useNav();
   const toast = useToast();
-  const [promoting, setPromoting] = useState<{ index: number; proposal: string } | null>(null);
+  const [promoting, setPromoting] = useState<TrackerProposalRow | null>(null);
   const signable = !project.actorError;
 
   const attention = project.attention;
@@ -48,10 +49,17 @@ export default function PerTe() {
     </button>
   );
 
+  // computeAttention emits one lint item per finding: one row per page, with the count.
+  const lintCounts = new Map<string, number>();
+  for (const a of attention) {
+    if (a.kind === 'lint-error') lintCounts.set(a.target.ref ?? '', (lintCounts.get(a.target.ref ?? '') ?? 0) + 1);
+  }
+  const lintSeen = new Set<string>();
+
   /** Italian copy per kind, from structured data only: the English title/detail of computeAttention is never shown. */
-  const describe = (item: AttentionItem): Row => {
+  const describe = (item: AttentionItem, index: number): Row | null => {
     const ref = item.target.ref ?? '';
-    const key = `${item.kind}:${ref}`;
+    const key = `${item.kind}:${index}`;
     switch (item.kind) {
       case 'decision-proposed': {
         const d = project.decisions.find((x) => x.number === ref);
@@ -80,7 +88,7 @@ export default function PerTe() {
                   className="btn btn-human"
                   aria-disabled={!signable}
                   title={signable ? undefined : SIGN_HINT}
-                  onClick={() => signable && setPromoting({ index, proposal: ref })}
+                  onClick={() => signable && p && setPromoting(p)}
                 >
                   Promuovi a lavoro
                 </button>
@@ -128,13 +136,17 @@ export default function PerTe() {
           actions: open('salute', ref),
         };
       }
-      case 'lint-error':
+      case 'lint-error': {
+        if (lintSeen.has(ref)) return null;
+        lintSeen.add(ref);
+        const n = lintCounts.get(ref) ?? 1;
         return {
           key,
           title: ref,
-          detail: 'Il validatore segnala un problema di struttura in questa pagina.',
+          detail: `${n} ${n === 1 ? 'problema di struttura' : 'problemi di struttura'} in questa pagina.`,
           actions: open('salute', ref),
         };
+      }
     }
   };
 
@@ -142,7 +154,11 @@ export default function PerTe() {
     <section className="view">
       <h1 className="view-title">Per te</h1>
       {GROUPS.map((group) => {
-        const rows = attention.filter((a) => a.kind === group.kind).map(describe);
+        const rows = attention.flatMap((a, i) => {
+          if (a.kind !== group.kind) return [];
+          const row = describe(a, i);
+          return row ? [row] : [];
+        });
         if (rows.length === 0) return null;
         return (
           <section key={group.kind} className="group">
@@ -165,8 +181,7 @@ export default function PerTe() {
       })}
       {promoting && (
         <PromoteDialog
-          proposalIndex={promoting.index}
-          proposal={promoting.proposal}
+          proposal={promoting}
           onClose={() => setPromoting(null)}
           onDone={(id) => {
             setPromoting(null);

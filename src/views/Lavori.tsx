@@ -8,7 +8,7 @@ import { useNav } from '../state/nav';
 import type { TrackerDoneRow, TrackerOpenRow, TrackerProposalRow } from '../types/wiki';
 
 type Pending =
-  | { kind: 'promote'; index: number; proposal: string }
+  | { kind: 'promote'; proposal: TrackerProposalRow }
   | { kind: 'close'; row: TrackerOpenRow }
   | { kind: 'owner'; row: TrackerOpenRow }
   | { kind: 'priority'; row: TrackerOpenRow; column: string };
@@ -153,7 +153,7 @@ export default function Lavori() {
       {p.why && <p className="card-meta-text">{p.why}</p>}
       <div className="card-actions">
         {signButton('Promuovi a lavoro', 'btn-human', () =>
-          setPending({ kind: 'promote', index, proposal: p.proposal }),
+          setPending({ kind: 'promote', proposal: p }),
         )}
       </div>
     </article>
@@ -260,7 +260,6 @@ export default function Lavori() {
 
       {pending?.kind === 'promote' && (
         <PromoteDialog
-          proposalIndex={pending.index}
           proposal={pending.proposal}
           onClose={() => setPending(null)}
           onDone={(id) => finish(`Proposta promossa a ${id}`, id)}

@@ -8,12 +8,18 @@ import {
   promoteProposalToOpen,
   updateOpenRowField,
 } from '../lib/human-actions';
-import type { TrackerOpenRow } from '../types/wiki';
+import { parseTrackerMarkdown } from '../lib/markdown-tables';
+import type { TrackerOpenRow, TrackerProposalRow } from '../types/wiki';
 
 /** Shown on every human action that is disabled because no signing name is set. */
 export const SIGN_HINT = 'Imposta il tuo nome nelle impostazioni per firmare.';
 
 const NOT_READY = 'La wiki non è ancora caricata. Premi Ricarica e riprova.';
+const STALE_PROPOSAL = 'La proposta è cambiata o non c\'è più. Ricarica e riprova.';
+const STALE_ROW = 'Il lavoro non è più aperto. Ricarica.';
+
+/** A write refused because the tracker changed after the dialog opened: shown as is, nothing is written. */
+class StaleError extends Error {}
 
 /** Local calendar date as YYYY-MM-DD (the date the person signs, not UTC). */
 export function localIsoDate(d = new Date()): string {
@@ -76,7 +82,9 @@ function useSigned(onDone: (id: string) => void) {
     try {
       onDone(await write(files));
     } catch (e) {
-      setError(errorText(e));
+      if (e instanceof StaleError) setError(e.message);
+      else if (e instanceof Error && /not found in open tracker/.test(e.message)) setError(STALE_ROW);
+      else setError(errorText(e));
       setBusy(false);
     }
   };
@@ -89,7 +97,7 @@ function Note({ children }: { children: ReactNode }) {
 }
 
 /** Promuovi a lavoro: a proposal becomes an Open row with the next free ID. */
-export function PromoteDialog({ proposalIndex, proposal, onClose, onDone }: Handlers & { proposalIndex: number; proposal: string }) {
+export function PromoteDialog({ proposal, onClose, onDone }: Handlers & { proposal: TrackerProposalRow }) {
   const { project, error, busy, run } = useSigned(onDone);
   const [owner, setOwner] = useState(project.actor);
   const [doneWhen, setDoneWhen] = useState('');
@@ -105,6 +113,11 @@ export function PromoteDialog({ proposalIndex, proposal, onClose, onDone }: Hand
             ? 'Scrivi come verificherai il lavoro.'
             : null,
       async (files) => {
+        // Match the proposal the person saw; the tracker may have changed since the dialog opened.
+        const proposalIndex = parseTrackerMarkdown(files.trackerMarkdown).proposals.findIndex(
+          (p) => p.proposal === proposal.proposal && p.by === proposal.by && p.date === proposal.date,
+        );
+        if (proposalIndex === -1) throw new StaleError(STALE_PROPOSAL);
         const r = promoteProposalToOpen({
           trackerMarkdown: files.trackerMarkdown,
           logMarkdown: files.logMarkdown,
@@ -135,7 +148,7 @@ export function PromoteDialog({ proposalIndex, proposal, onClose, onDone }: Hand
       onCancel={onClose}
     >
       <Note>
-        Proposta: {proposal}. Diventa un lavoro aperto con il prossimo ID. Lo firmi tu come {project.actor}.
+        Proposta: {proposal.proposal}. Diventa un lavoro aperto con il prossimo ID. Lo firmi tu come {project.actor}.
       </Note>
       <Field label="Responsabile">
         <input value={owner} onChange={(e) => setOwner(e.target.value)} />
