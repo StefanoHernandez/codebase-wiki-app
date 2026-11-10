@@ -1,0 +1,61 @@
+.handoff-freshness {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  margin-bottom: 24px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+.handoff-freshness--stale {
+  border-color: var(--drift);
+  color: var(--drift);
+}
+.handoff-section {
+  margin-bottom: 28px;
+}
+.handoff-section h2 {
+  margin-bottom: 10px;
+  font-size: var(--text-md);
+}
+.handoff-state {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-top: 1px solid var(--rule);
+}
+.handoff-state li {
+  display: flex;
+  gap: 8px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--text-sm);
+}
+.handoff-state strong {
+  flex-shrink: 0;
+  min-width: 10em;
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+.handoff-task-id {
+  display: inline-flex;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.handoff-cmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.handoff-cmd code {
+  flex: 1;
+  min-width: 0;
+}
+.handoff-bullets {
+  list-style: disc;
+  padding-left: 1.25rem;
+  margin: 0;
+}

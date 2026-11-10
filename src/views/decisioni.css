@@ -1,0 +1,113 @@
+.decisioni-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  gap: 24px;
+  align-items: start;
+}
+.decisioni-list {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  max-height: calc(100vh - 200px);
+  overflow: auto;
+}
+.decisioni-group-title {
+  margin: 0;
+  padding: 10px 12px 6px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+.decisioni-group-title--human {
+  color: var(--human);
+}
+.decisioni-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-top: 1px solid var(--rule);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+  font: inherit;
+}
+.decisioni-row:hover {
+  background: var(--surface-sunk);
+}
+.decisioni-row.is-selected {
+  background: var(--human-wash);
+}
+.decisioni-row.stamp {
+  animation: decision-stamp 0.3s ease-out;
+}
+@keyframes decision-stamp {
+  from {
+    background: var(--human-wash);
+  }
+  to {
+    background: transparent;
+  }
+}
+.decisioni-row-num {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+.decisioni-row-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.decisioni-detail {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  padding: 16px 20px 24px;
+  max-width: 72ch;
+}
+.decisioni-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--text-sm);
+}
+.decisioni-meta dt {
+  display: inline;
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+.decisioni-meta dt::after {
+  content: ': ';
+}
+.decisioni-meta dd {
+  display: inline;
+  margin: 0;
+}
+.decisioni-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+  max-width: 72ch;
+}
+@media (max-width: 800px) {
+  .decisioni-layout {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .decisioni-row.stamp {
+    animation: none;
+  }
+}
