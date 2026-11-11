@@ -1,5 +1,9 @@
 //! Local code + wiki index (paths, store, search).
 
+#[cfg(feature = "download")]
+pub mod models;
+#[cfg(feature = "embed")]
+pub mod embed;
 pub mod catalog;
 pub mod chunk;
 pub mod files;
