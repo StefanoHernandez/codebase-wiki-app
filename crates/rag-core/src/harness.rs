@@ -43,8 +43,33 @@ pub fn codex_config_path(home: &Path) -> PathBuf {
     home.join(".codex").join("config.toml")
 }
 
+/// Cursor's app and `cursor-agent` read the same file.
 pub fn cursor_config_path(home: &Path) -> PathBuf {
     home.join(".cursor").join("mcp.json")
+}
+
+/// The chat in Claude Desktop (not the Code tab, which reads Claude Code's config).
+/// `config_dir`: ~/.config on Linux, ~/Library/Application Support on macOS, %APPDATA% on Windows.
+pub fn claude_desktop_config_path(home: &Path) -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| home.join(".config"))
+        .join("Claude")
+        .join("claude_desktop_config.json")
+}
+
+/// Antigravity's app and `agy` CLI share it (`agy mcp add` writes here).
+pub fn antigravity_config_path(home: &Path) -> PathBuf {
+    home.join(".gemini").join("config").join("mcp_config.json")
+}
+
+/// OpenCode uses XDG paths on every OS (`opencode mcp add --global` writes here).
+pub fn opencode_config_path(home: &Path) -> PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".config"))
+        .join("opencode")
+        .join("opencode.json")
 }
 
 fn home_dir() -> PathBuf {
@@ -114,21 +139,37 @@ pub fn propose_codex_disconnect(existing: &str) -> Result<String, String> {
     Ok(doc.to_string())
 }
 
-pub fn propose_cursor_patch(existing: &str, command: &Path) -> Result<String, String> {
-    let mut root: Value = if existing.trim().is_empty() {
-        json!({})
-    } else {
-        serde_json::from_str(existing).map_err(|e| format!("JSON non valido: {e}"))?
-    };
-    let servers = root
-        .as_object_mut()
-        .ok_or("root non oggetto")?
-        .entry("mcpServers")
-        .or_insert(json!({}));
-    if !servers.is_object() {
-        return Err("mcpServers non è un oggetto".into());
+fn parse_json_root(existing: &str) -> Result<Value, String> {
+    if existing.trim().is_empty() {
+        return Ok(json!({}));
     }
-    servers.as_object_mut().unwrap().insert(
+    let root: Value = serde_json::from_str(existing).map_err(|e| format!("JSON non valido: {e}"))?;
+    if !root.is_object() {
+        return Err("il file non contiene un oggetto JSON".into());
+    }
+    Ok(root)
+}
+
+/// The object at `path` inside `root`, created when missing; refused when something else is there.
+fn json_object_at<'a>(root: &'a mut Value, path: &[&str]) -> Result<&'a mut serde_json::Map<String, Value>, String> {
+    let mut cur = root;
+    for key in path {
+        cur = cur
+            .as_object_mut()
+            .ok_or_else(|| format!("{key}: il contenitore non è un oggetto"))?
+            .entry(key.to_string())
+            .or_insert(json!({}));
+        if !cur.is_object() {
+            return Err(format!("{key} non è un oggetto"));
+        }
+    }
+    Ok(cur.as_object_mut().expect("checked"))
+}
+
+/// `{"mcpServers": {...}}`: Cursor, Claude Desktop, Antigravity.
+pub fn propose_cursor_patch(existing: &str, command: &Path) -> Result<String, String> {
+    let mut root = parse_json_root(existing)?;
+    json_object_at(&mut root, &["mcpServers"])?.insert(
         SERVER_KEY.into(),
         json!({
             "command": command.to_string_lossy(),
@@ -139,9 +180,35 @@ pub fn propose_cursor_patch(existing: &str, command: &Path) -> Result<String, St
 }
 
 pub fn propose_cursor_disconnect(existing: &str) -> Result<String, String> {
-    let mut root: Value = serde_json::from_str(existing).map_err(|e| format!("JSON non valido: {e}"))?;
+    let mut root = parse_json_root(existing)?;
     if let Some(servers) = root.get_mut("mcpServers").and_then(|v| v.as_object_mut()) {
         servers.remove(SERVER_KEY);
+    }
+    serde_json::to_string_pretty(&root).map_err(|e| e.to_string())
+}
+
+/// `{"mcp": {"servers": {name: {"type": "local", "command": [bin, "serve"]}}}}`, as written by
+/// `opencode mcp add --global`.
+pub fn propose_opencode_patch(existing: &str, command: &Path) -> Result<String, String> {
+    let mut root = parse_json_root(existing)?;
+    json_object_at(&mut root, &["mcp", "servers"])?.insert(
+        SERVER_KEY.into(),
+        json!({
+            "type": "local",
+            "command": [command.to_string_lossy(), "serve"],
+        }),
+    );
+    serde_json::to_string_pretty(&root).map_err(|e| e.to_string())
+}
+
+pub fn propose_opencode_disconnect(existing: &str) -> Result<String, String> {
+    let mut root = parse_json_root(existing)?;
+    if let Some(mcp) = root.get_mut("mcp").and_then(|v| v.as_object_mut()) {
+        // Older OpenCode configs keep servers directly under `mcp`.
+        mcp.remove(SERVER_KEY);
+        if let Some(servers) = mcp.get_mut("servers").and_then(|v| v.as_object_mut()) {
+            servers.remove(SERVER_KEY);
+        }
     }
     serde_json::to_string_pretty(&root).map_err(|e| e.to_string())
 }
@@ -172,18 +239,6 @@ pub fn claude_on_path() -> bool {
         .unwrap_or(false)
 }
 
-pub fn antigravity_block(command: &Path) -> String {
-    serde_json::to_string_pretty(&json!({
-        "mcpServers": {
-            SERVER_KEY: {
-                "command": command.to_string_lossy(),
-                "args": ["serve"]
-            }
-        }
-    }))
-    .unwrap_or_default()
-}
-
 fn codex_command_in_toml(text: &str) -> Option<String> {
     let doc = text.parse::<DocumentMut>().ok()?;
     doc.get("mcp_servers")?
@@ -202,6 +257,13 @@ fn cursor_command_in_json(text: &str) -> Option<String> {
         .map(String::from)
 }
 
+fn opencode_command_in_json(text: &str) -> Option<String> {
+    let root: Value = serde_json::from_str(text).ok()?;
+    let mcp = root.get("mcp")?;
+    let entry = mcp.get("servers").and_then(|s| s.get(SERVER_KEY)).or_else(|| mcp.get(SERVER_KEY))?;
+    entry.get("command")?.get(0)?.as_str().map(String::from)
+}
+
 fn classify(command: Option<String>) -> HarnessLink {
     let current = bin_path().to_string_lossy().to_string();
     match command {
@@ -211,59 +273,111 @@ fn classify(command: Option<String>) -> HarnessLink {
     }
 }
 
-pub fn harness_state() -> Vec<HarnessRow> {
-    let home = home_dir();
-    let codex_path = codex_config_path(&home);
-    let cursor_path = cursor_config_path(&home);
-    let codex_before = fs::read_to_string(&codex_path).unwrap_or_default();
-    let cursor_before = fs::read_to_string(&cursor_path).unwrap_or_default();
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Format {
+    McpServers,
+    CodexToml,
+    OpenCode,
+}
+
+/// Agents configured by editing one file. Tools that share a file (an app and its CLI) are one
+/// row, so the server is never written twice.
+struct FileTarget {
+    id: &'static str,
+    label: &'static str,
+    format: Format,
+    path: PathBuf,
+    hint: Option<&'static str>,
+}
+
+fn file_targets(home: &Path) -> Vec<FileTarget> {
     vec![
-        HarnessRow {
-            id: "codex",
-            label: "Codex",
-            status: classify(codex_command_in_toml(&codex_before)),
-            config_path: codex_path.display().to_string(),
-            hint: None,
+        FileTarget {
+            id: "claude-desktop",
+            label: "Claude Desktop (chat)",
+            format: Format::McpServers,
+            path: claude_desktop_config_path(home),
+            hint: Some("Riavvia Claude Desktop. Nei piani Team serve il permesso di un Owner."),
         },
-        HarnessRow {
+        FileTarget {
             id: "cursor",
-            label: "Cursor",
-            status: classify(cursor_command_in_json(&cursor_before)),
-            config_path: cursor_path.display().to_string(),
-            hint: Some("Se Cursor non trova il repo, aggiungi \"--repo\", \"${workspaceFolder}\" negli args.".into()),
+            label: "Cursor (app e cursor-agent)",
+            format: Format::McpServers,
+            path: cursor_config_path(home),
+            hint: Some("Se Cursor non trova il repo, aggiungi \"--repo\", \"${workspaceFolder}\" negli args."),
         },
-        HarnessRow {
-            id: "claude",
-            label: "Claude Code",
-            // `claude mcp add --scope user` stores the server in ~/.claude.json (read only here).
-            status: classify(
-                fs::read_to_string(home.join(".claude.json"))
-                    .ok()
-                    .and_then(|t| cursor_command_in_json(&t)),
-            ),
-            config_path: "scope user (claude mcp)".into(),
+        FileTarget {
+            id: "codex",
+            label: "Codex (CLI e app)",
+            format: Format::CodexToml,
+            path: codex_config_path(home),
             hint: None,
         },
-        HarnessRow {
+        FileTarget {
             id: "antigravity",
-            label: "Antigravity",
-            status: HarnessLink::Absent,
-            config_path: "Manage MCP servers → View raw config".into(),
-            hint: Some("Incollalo in Manage MCP servers → View raw config.".into()),
+            label: "Antigravity (app e agy)",
+            format: Format::McpServers,
+            path: antigravity_config_path(home),
+            hint: Some("Riavvia Antigravity o la sessione agy."),
+        },
+        FileTarget {
+            id: "opencode",
+            label: "OpenCode",
+            format: Format::OpenCode,
+            path: opencode_config_path(home),
+            hint: None,
         },
     ]
-    .into_iter()
-    .map(|mut row| {
-        if row.id == "claude" {
-            row.hint = Some(if claude_on_path() {
-                "Esegui il comando mostrato o usa Copia.".into()
-            } else {
-                "Installa Claude Code CLI o copia il comando manualmente.".into()
-            });
-        }
-        row
-    })
-    .collect()
+}
+
+fn command_in(format: Format, text: &str) -> Option<String> {
+    match format {
+        Format::McpServers => cursor_command_in_json(text),
+        Format::CodexToml => codex_command_in_toml(text),
+        Format::OpenCode => opencode_command_in_json(text),
+    }
+}
+
+fn propose(format: Format, before: &str, bin: &Path, action: HarnessAction) -> Result<String, String> {
+    if action == HarnessAction::Disconnect && before.trim().is_empty() {
+        return Ok(String::new());
+    }
+    match (format, action) {
+        (Format::McpServers, HarnessAction::Disconnect) => propose_cursor_disconnect(before),
+        (Format::McpServers, _) => propose_cursor_patch(before, bin),
+        (Format::CodexToml, HarnessAction::Disconnect) => propose_codex_disconnect(before),
+        (Format::CodexToml, _) => propose_codex_patch(before, bin),
+        (Format::OpenCode, HarnessAction::Disconnect) => propose_opencode_disconnect(before),
+        (Format::OpenCode, _) => propose_opencode_patch(before, bin),
+    }
+}
+
+pub fn harness_state() -> Vec<HarnessRow> {
+    let home = home_dir();
+    let mut rows = vec![HarnessRow {
+        id: "claude",
+        label: "Claude Code (CLI e scheda Code)",
+        // `claude mcp add --scope user` stores the server in ~/.claude.json (read only here).
+        status: classify(
+            fs::read_to_string(home.join(".claude.json"))
+                .ok()
+                .and_then(|t| cursor_command_in_json(&t)),
+        ),
+        config_path: "scope user (claude mcp)".into(),
+        hint: Some(if claude_on_path() {
+            "Esegui il comando mostrato o usa Copia.".into()
+        } else {
+            "Installa Claude Code CLI o copia il comando manualmente.".into()
+        }),
+    }];
+    rows.extend(file_targets(&home).into_iter().map(|t| HarnessRow {
+        id: t.id,
+        label: t.label,
+        status: classify(fs::read_to_string(&t.path).ok().and_then(|text| command_in(t.format, &text))),
+        config_path: t.path.display().to_string(),
+        hint: t.hint.map(String::from),
+    }));
+    rows
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -286,40 +400,8 @@ fn read_config_text(path: &Path) -> Result<String, String> {
 pub fn harness_preview(harness: &str, action: HarnessAction) -> Result<HarnessPreview, String> {
     let home = home_dir();
     let bin = bin_path();
-    match harness {
-        "codex" => {
-            let path = codex_config_path(&home);
-            let before = read_config_text(&path)?;
-            let after = match action {
-                HarnessAction::Disconnect => propose_codex_disconnect(&before)?,
-                HarnessAction::Connect | HarnessAction::Update => propose_codex_patch(&before, &bin)?,
-            };
-            Ok(HarnessPreview {
-                path: path.display().to_string(),
-                before,
-                after,
-            })
-        }
-        "cursor" => {
-            let path = cursor_config_path(&home);
-            let before = read_config_text(&path)?;
-            let after = match action {
-                HarnessAction::Disconnect => {
-                    if before.trim().is_empty() {
-                        propose_cursor_disconnect("{}")?
-                    } else {
-                        propose_cursor_disconnect(&before)?
-                    }
-                }
-                HarnessAction::Connect | HarnessAction::Update => propose_cursor_patch(&before, &bin)?,
-            };
-            Ok(HarnessPreview {
-                path: path.display().to_string(),
-                before,
-                after,
-            })
-        }
-        "claude" => Ok(HarnessPreview {
+    if harness == "claude" {
+        return Ok(HarnessPreview {
             path: "claude mcp (scope user)".into(),
             before: String::new(),
             after: if action == HarnessAction::Disconnect {
@@ -327,54 +409,62 @@ pub fn harness_preview(harness: &str, action: HarnessAction) -> Result<HarnessPr
             } else {
                 claude_command(&bin)
             },
-        }),
-        "antigravity" => Ok(HarnessPreview {
-            path: "antigravity raw".into(),
-            before: String::new(),
-            after: antigravity_block(&bin),
-        }),
-        other => Err(format!("harness sconosciuto: {other}")),
+        });
     }
+    let target = file_targets(&home)
+        .into_iter()
+        .find(|t| t.id == harness)
+        .ok_or_else(|| format!("harness sconosciuto: {harness}"))?;
+    if target.format == Format::OpenCode && !target.path.exists() && target.path.with_extension("jsonc").exists() {
+        return Err(format!(
+            "OpenCode usa opencode.jsonc (con commenti): esegui `opencode mcp add --global {SERVER_KEY} -- {} serve`",
+            bin.display()
+        ));
+    }
+    let before = read_config_text(&target.path)?;
+    let after = propose(target.format, &before, &bin, action)?;
+    Ok(HarnessPreview {
+        path: target.path.display().to_string(),
+        before,
+        after,
+    })
 }
 
 pub fn harness_apply(harness: &str, action: HarnessAction) -> Result<(), String> {
-    match harness {
-        "codex" | "cursor" => {
-            let preview = harness_preview(harness, action)?;
-            safe_write(Path::new(&preview.path), &preview.after)
+    if harness != "claude" {
+        let preview = harness_preview(harness, action)?;
+        if preview.after == preview.before {
+            return Ok(());
         }
-        "claude" => {
-            if action == HarnessAction::Disconnect {
-                if !claude_on_path() {
-                    return Err("claude non è nel PATH".into());
-                }
-                let status = Command::new("claude")
-                    .args(["mcp", "remove", "--scope", "user", SERVER_KEY])
-                    .status()
-                    .map_err(|e| e.to_string())?;
-                if status.success() {
-                    Ok(())
-                } else {
-                    Err("claude mcp remove fallito".into())
-                }
-            } else if claude_on_path() {
-                let bin = bin_path();
-                let json = claude_mcp_json(&bin);
-                let status = Command::new("claude")
-                    .args(["mcp", "add-json", "--scope", "user", SERVER_KEY, &json])
-                    .status()
-                    .map_err(|e| e.to_string())?;
-                if status.success() {
-                    Ok(())
-                } else {
-                    Err("claude mcp add-json fallito".into())
-                }
-            } else {
-                Err("claude non è nel PATH; usa Copia".into())
-            }
+        return safe_write(Path::new(&preview.path), &preview.after);
+    }
+    if action == HarnessAction::Disconnect {
+        if !claude_on_path() {
+            return Err("claude non è nel PATH".into());
         }
-        "antigravity" => Err("Antigravity: incolla il JSON manualmente".into()),
-        other => Err(format!("harness sconosciuto: {other}")),
+        let status = Command::new("claude")
+            .args(["mcp", "remove", "--scope", "user", SERVER_KEY])
+            .status()
+            .map_err(|e| e.to_string())?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err("claude mcp remove fallito".into())
+        }
+    } else if claude_on_path() {
+        let bin = bin_path();
+        let json = claude_mcp_json(&bin);
+        let status = Command::new("claude")
+            .args(["mcp", "add-json", "--scope", "user", SERVER_KEY, &json])
+            .status()
+            .map_err(|e| e.to_string())?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err("claude mcp add-json fallito".into())
+        }
+    } else {
+        Err("claude non è nel PATH; usa Copia".into())
     }
 }
 
@@ -442,6 +532,71 @@ mod tests {
         .unwrap();
         let cmd = cursor_command_in_json(&fs::read_to_string(&cursor).unwrap()).unwrap();
         assert_eq!(classify(Some(cmd)), HarnessLink::Outdated);
+    }
+
+    #[test]
+    fn opencode_patch_matches_opencode_mcp_add() {
+        // Shape written by `opencode mcp add --global` (OpenCode 2026-11).
+        let out = propose_opencode_patch(r#"{"theme":"system"}"#, Path::new("/x/codebase-wiki-mcp")).unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["theme"], "system");
+        assert_eq!(v["mcp"]["servers"][SERVER_KEY]["type"], "local");
+        assert_eq!(v["mcp"]["servers"][SERVER_KEY]["command"], json!(["/x/codebase-wiki-mcp", "serve"]));
+        assert_eq!(opencode_command_in_json(&out).as_deref(), Some("/x/codebase-wiki-mcp"));
+        let off = propose_opencode_disconnect(&out).unwrap();
+        assert_eq!(opencode_command_in_json(&off), None);
+        assert!(off.contains("\"theme\""));
+    }
+
+    #[test]
+    fn opencode_reads_legacy_layout() {
+        let legacy = r#"{"mcp":{"codebase-wiki":{"type":"local","command":["/old/bin","serve"]}}}"#;
+        assert_eq!(opencode_command_in_json(legacy).as_deref(), Some("/old/bin"));
+        assert_eq!(opencode_command_in_json(&propose_opencode_disconnect(legacy).unwrap()), None);
+    }
+
+    #[test]
+    fn mcp_servers_patch_on_empty_file_matches_agy_mcp_add() {
+        // Antigravity ships an empty mcp_config.json; `agy mcp add` writes {"mcpServers": {...}}.
+        let out = propose_cursor_patch("", Path::new("/x/codebase-wiki-mcp")).unwrap();
+        assert_eq!(cursor_command_in_json(&out).as_deref(), Some("/x/codebase-wiki-mcp"));
+    }
+
+    #[test]
+    fn mcp_servers_patch_keeps_key_order_and_other_settings() {
+        let input = r#"{"preferences":{"a":1},"coworkUserFilesPath":"/x"}"#;
+        let out = propose_cursor_patch(input, Path::new("/bin/mcp")).unwrap();
+        let p = out.find("preferences").unwrap();
+        assert!(p < out.find("coworkUserFilesPath").unwrap() && out.find("coworkUserFilesPath").unwrap() < out.find("mcpServers").unwrap());
+    }
+
+    #[test]
+    fn disconnect_on_missing_file_writes_nothing() {
+        assert_eq!(propose(Format::OpenCode, "", Path::new("/b"), HarnessAction::Disconnect).unwrap(), "");
+        assert_eq!(propose(Format::McpServers, "  \n", Path::new("/b"), HarnessAction::Disconnect).unwrap(), "");
+    }
+
+    #[test]
+    fn non_object_container_refused() {
+        assert!(propose_cursor_patch(r#"{"mcpServers":[]}"#, Path::new("/b")).is_err());
+        assert!(propose_opencode_patch(r#"{"mcp":{"servers":"x"}}"#, Path::new("/b")).is_err());
+        assert!(propose_cursor_patch("[]", Path::new("/b")).is_err());
+    }
+
+    #[test]
+    fn every_target_has_a_distinct_id_and_file() {
+        let home = Path::new("/home/u");
+        let t = file_targets(home);
+        let mut ids: Vec<_> = t.iter().map(|t| t.id).collect();
+        ids.push("claude");
+        let n = ids.len();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), n);
+        let mut paths: Vec<_> = t.iter().map(|t| t.path.clone()).collect();
+        paths.sort();
+        paths.dedup();
+        assert_eq!(paths.len(), t.len());
     }
 
     #[test]

@@ -14,7 +14,6 @@ type HarnessRow = { id: string; label: string; status: 'connected' | 'outdated' 
 type HarnessDlg = { id: string; label: string; action: string; path: string; before: string; after: string };
 
 const DEFAULT_MODEL = 'multilingual-e5-small';
-const COPY_ONLY = new Set(['antigravity']);
 const LINK_LABEL: Record<HarnessRow['status'], string> = {
   connected: 'Collegato',
   outdated: 'Da aggiornare',
@@ -354,12 +353,6 @@ function Agenti() {
 
   const confirm = async () => {
     if (!dlg) return;
-    if (COPY_ONLY.has(dlg.id)) {
-      await copyText(dlg.after);
-      toast('Configurazione copiata');
-      setDlg(null);
-      return;
-    }
     setBusy(true);
     try {
       await invoke('rag_harness_apply', { harness: dlg.id, action: dlg.action });
@@ -379,7 +372,10 @@ function Agenti() {
   return (
     <section className="group">
       <h2 className="group-title">Collega agli agenti (MCP)</h2>
-      <p className="muted">Dà a Claude Code, Codex e Cursor gli strumenti search_code e search_wiki sull'indice locale.</p>
+      <p className="muted">
+        Dà agli agenti gli strumenti search_code e search_wiki sull'indice locale. Dove app e CLI leggono lo stesso
+        file basta un collegamento per entrambe; riavvia l'agente dopo aver collegato.
+      </p>
       <table className="table">
         <tbody>
           {harness.map((row) => (
@@ -389,13 +385,7 @@ function Agenti() {
               <td className="muted">{row.hint}</td>
               <td className="ricerca-actions">
                 <button type="button" className="btn" onClick={() => void open(row)}>
-                  {COPY_ONLY.has(row.id)
-                    ? 'Mostra configurazione'
-                    : row.status === 'connected'
-                      ? 'Scollega'
-                      : row.status === 'outdated'
-                        ? 'Aggiorna'
-                        : 'Collega'}
+                  {row.status === 'connected' ? 'Scollega' : row.status === 'outdated' ? 'Aggiorna' : 'Collega'}
                 </button>
               </td>
             </tr>
@@ -407,7 +397,7 @@ function Agenti() {
       <Dialog
         open={!!dlg}
         title={dlg ? `${verb} ${dlg.label}` : ''}
-        confirmLabel={dlg && COPY_ONLY.has(dlg.id) ? 'Copia' : dlg?.id === 'claude' ? 'Esegui' : 'Conferma'}
+        confirmLabel={dlg?.id === 'claude' ? 'Esegui' : 'Conferma'}
         busy={busy}
         onCancel={() => setDlg(null)}
         onConfirm={() => void confirm()}
@@ -415,14 +405,12 @@ function Agenti() {
         {dlg && (
           <>
             <p className="dialog-note mono">{dlg.path}</p>
-            {dlg.id === 'claude' || COPY_ONLY.has(dlg.id) ? (
+            {dlg.id === 'claude' ? (
               <>
                 <pre className="ricerca-snippet">{dlg.after}</pre>
-                {dlg.id === 'claude' && (
-                  <button type="button" className="btn btn-quiet" onClick={() => void copyText(dlg.after).then(() => toast('Comando copiato'))}>
-                    Copia comando
-                  </button>
-                )}
+                <button type="button" className="btn btn-quiet" onClick={() => void copyText(dlg.after).then(() => toast('Comando copiato'))}>
+                  Copia comando
+                </button>
               </>
             ) : (
               <div className="ricerca-diff">
