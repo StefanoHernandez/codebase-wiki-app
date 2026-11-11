@@ -39,3 +39,8 @@ confidence: high
 - What: revisione della UI dagli screenshot di Stefano. Testi aggiornati (la wiki non è indicizzata, note dei modelli provati, "1 collegato"); Markdown inline reso in Per te e Lavori; il blu pieno resta al bottone di conferma che firma, nelle liste diventa un bordo; "Copia prompt /wiki-sync" non è più blu; numero di decisione non ripetuto; messaggio dell'handoff indietro più chiaro; righe di pagine da ricontrollare cliccabili; spaziatura e bottone disattivato in Ricerca. Firma ad-hoc del pacchetto macOS e versione 0.3.1.
 - Evidence: `npm test` → 130 pass; `cargo test --workspace` → verde; `npm run tauri build -- --bundles app` → `codesign --verify --deep --strict` ok
 - IDs: T1
+
+## 2026-11-12 · Release 0.3.1 · agent
+- What: tag `v0.3.1`, CI verde, release pubblicata con 7 pacchetti su richiesta di Stefano.
+- Evidence: run GitHub Actions 43117157795 → test e tre build success @979d5a7
+- IDs: T9
