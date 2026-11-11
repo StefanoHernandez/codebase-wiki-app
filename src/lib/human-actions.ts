@@ -1,4 +1,4 @@
-import { parseFrontmatter, updateFrontmatterFields } from './frontmatter.ts';
+import { parseFrontmatter, parseMapBody, toAttribution } from './frontmatter.ts';
 import {
   parseTrackerMarkdown,
   computeNextTrackerId,
@@ -59,6 +59,50 @@ const DONE_KEYS: Record<string, keyof TrackerDoneRow | 'extra'> = {
   'criteria met': 'criteriaMet',
   evidence: 'evidence',
 };
+
+const OPEN_PROPS: (keyof TrackerOpenRow)[] = [
+  'id',
+  'status',
+  'goal',
+  'doneWhen',
+  'owner',
+  'nextVerification',
+  'evidence',
+];
+const DONE_PROPS: (keyof TrackerDoneRow)[] = ['id', 'status', 'goal', 'closed', 'criteriaMet', 'evidence'];
+
+function headersMatchCanonical(header: string[], columns: readonly string[]): boolean {
+  return columns.every((c) => header.some((h) => h.trim().toLowerCase() === c.toLowerCase()));
+}
+
+function canonicalOpenFieldIndex(field: string): number | undefined {
+  const wanted = field.trim().toLowerCase();
+  for (let i = 0; i < OPEN_COLUMNS.length; i++) {
+    const col = OPEN_COLUMNS[i]!.toLowerCase();
+    const key = OPEN_KEYS[col];
+    if (col === wanted || key === wanted) return i;
+  }
+  return undefined;
+}
+
+function openColumnKey(
+  header: string[],
+  index: number,
+): keyof TrackerOpenRow | 'extra' {
+  if (headersMatchCanonical(header, OPEN_COLUMNS)) {
+    const key = OPEN_KEYS[header[index]!.trim().toLowerCase()];
+    return key ?? 'extra';
+  }
+  return index < OPEN_PROPS.length ? OPEN_PROPS[index]! : 'extra';
+}
+
+function doneColumnKey(header: string[], index: number): keyof TrackerDoneRow | 'extra' {
+  if (headersMatchCanonical(header, DONE_COLUMNS)) {
+    const key = DONE_KEYS[header[index]!.trim().toLowerCase()];
+    return key ?? 'extra';
+  }
+  return index < DONE_PROPS.length ? DONE_PROPS[index]! : 'extra';
+}
 
 export function validateHumanActor(person: string): void {
   if (!person || typeof person !== 'string' || !person.trim()) {
@@ -219,13 +263,13 @@ function openValueForHeader(
   row: TrackerOpenRow,
   overrides: Partial<TrackerOpenRow> & { id?: string; status?: string },
 ): string[] {
-  return header.map((h) => {
-    const key = OPEN_KEYS[h.trim().toLowerCase()];
-    if (key && key !== 'extra' && Object.hasOwn(overrides, key)) {
+  return header.map((h, i) => {
+    const key = openColumnKey(header, i);
+    if (key !== 'extra' && Object.hasOwn(overrides, key)) {
       return String(overrides[key as keyof typeof overrides] ?? '');
     }
-    if (key && key !== 'extra') return String(row[key] ?? '');
-    if (Object.hasOwn(overrides.extra ?? {}, h)) return overrides.extra![h];
+    if (key !== 'extra') return String(row[key] ?? '');
+    if (Object.hasOwn(overrides.extra ?? {}, h)) return overrides.extra![h]!;
     return row.extra[h] ?? '';
   });
 }
@@ -235,11 +279,11 @@ function doneValueForHeader(
   row: TrackerDoneRow,
   openExtra: Record<string, string>,
 ): string[] {
-  return header.map((h) => {
-    const key = DONE_KEYS[h.trim().toLowerCase()];
-    if (key && key !== 'extra') return String(row[key] ?? '');
+  return header.map((h, i) => {
+    const key = doneColumnKey(header, i);
+    if (key !== 'extra') return String(row[key] ?? '');
     const fromOpen = Object.keys(openExtra).find((k) => k.trim().toLowerCase() === h.trim().toLowerCase());
-    if (fromOpen !== undefined) return openExtra[fromOpen];
+    if (fromOpen !== undefined) return openExtra[fromOpen]!;
     return row.extra[h] ?? '';
   });
 }
@@ -255,34 +299,13 @@ function openRowFromCells(header: string[], cells: string[]): TrackerOpenRow {
     evidence: '',
     extra: {},
   };
-  const lower = header.map((h) => h.trim().toLowerCase());
-  const named = OPEN_COLUMNS.every((c) => lower.includes(c.toLowerCase()));
   header.forEach((h, i) => {
     const value = (cells[i] ?? '').trim();
-    const lk = h.trim().toLowerCase();
-    if (named) {
-      const key = OPEN_KEYS[lk];
-      if (key === 'id') row.id = value;
-      else if (key === 'status') row.status = value as TrackerOpenRow['status'];
-      else if (key === 'goal') row.goal = value;
-      else if (key === 'doneWhen') row.doneWhen = value;
-      else if (key === 'owner') row.owner = value;
-      else if (key === 'nextVerification') row.nextVerification = value;
-      else if (key === 'evidence') row.evidence = value;
-      else row.extra[h] = value;
-    } else {
-      const pos = OPEN_COLUMNS.map((c) => c.toLowerCase()).indexOf(lk);
-      if (pos >= 0) {
-        const prop = ['id', 'status', 'goal', 'doneWhen', 'owner', 'nextVerification', 'evidence'][pos];
-        if (prop === 'status') row.status = value as TrackerOpenRow['status'];
-        else if (prop === 'id') row.id = value;
-        else if (prop === 'goal') row.goal = value;
-        else if (prop === 'doneWhen') row.doneWhen = value;
-        else if (prop === 'owner') row.owner = value;
-        else if (prop === 'nextVerification') row.nextVerification = value;
-        else if (prop === 'evidence') row.evidence = value;
-      } else row.extra[h] = value;
-    }
+    const key = openColumnKey(header, i);
+    if (key === 'extra') row.extra[h] = value;
+    else if (key === 'status') row.status = value as TrackerOpenRow['status'];
+    else if (key === 'id') row.id = value;
+    else row[key] = value;
   });
   return row;
 }
@@ -321,9 +344,7 @@ export function promoteProposalToOpen(params: {
   const pIdx = proposalColIndex(propTable.header, 'proposal');
   const proposalText = (proposalCells[pIdx] ?? '').trim();
 
-  const namedOpen = OPEN_COLUMNS.every((c) =>
-    openTable.header.some((h) => h.trim().toLowerCase() === c.toLowerCase()),
-  );
+  const namedOpen = headersMatchCanonical(openTable.header, OPEN_COLUMNS);
   const template: TrackerOpenRow = {
     id: assignedId,
     status: '⚪',
@@ -334,15 +355,13 @@ export function promoteProposalToOpen(params: {
     evidence: `promoted by ${person} ${params.dateIso}`,
     extra: {},
   };
-  if (!namedOpen) {
-    openTable.header.forEach((h, i) => {
+  openTable.header.forEach((h, i) => {
+    if (namedOpen) {
       if (!OPEN_KEYS[h.trim().toLowerCase()]) template.extra[h] = '';
-    });
-  } else {
-    openTable.header.forEach((h) => {
-      if (!OPEN_KEYS[h.trim().toLowerCase()]) template.extra[h] = '';
-    });
-  }
+    } else if (i >= OPEN_COLUMNS.length) {
+      template.extra[h] = '';
+    }
+  });
 
   const newCells = openValueForHeader(openTable.header, template, template);
 
@@ -435,7 +454,6 @@ export function updateOpenRowField(params: {
   value: string;
 }): { trackerMarkdown: string } {
   let doc = parseDoc(params.trackerMarkdown);
-  const tracker = parseTrackerMarkdown(params.trackerMarkdown);
   const { table } = findOpenTable(doc);
   const rowMatch = findUniqueById(table, params.id);
   assertRowWidth(table, rowMatch, params.id);
@@ -444,12 +462,16 @@ export function updateOpenRowField(params: {
   if (wanted === 'id' || wanted === 'status') {
     throw new Error(`Column '${params.field}' cannot be edited here`);
   }
-  const header = tracker.openHeader.find((h) => h.trim().toLowerCase() === wanted);
-  if (!header) {
-    throw new Error(`Column '${params.field}' not found in the Open table`);
-  }
 
-  const col = table.header.findIndex((h) => h.trim().toLowerCase() === wanted);
+  const named = headersMatchCanonical(table.header, OPEN_COLUMNS);
+  let col: number;
+  if (named) {
+    col = table.header.findIndex((h) => h.trim().toLowerCase() === wanted);
+  } else {
+    const positional = canonicalOpenFieldIndex(params.field);
+    if (positional !== undefined) col = positional;
+    else col = table.header.findIndex((h) => h.trim().toLowerCase() === wanted);
+  }
   if (col === -1) throw new Error(`Column '${params.field}' not found in the Open table`);
 
   const cells = rowMatch.cells.slice();
@@ -500,8 +522,24 @@ function decideDecision(
     title = headingMatch ? headingMatch[1].trim() : 'Decision';
   }
 
-  const withStatus = updateFrontmatterFields(params.decisionMarkdown, { status: verdict });
-  let doc = parseDoc(withStatus);
+  let doc = parseDoc(params.decisionMarkdown);
+  const fmEnd = doc.lines.indexOf('---', 1);
+  if (doc.lines[0] !== '---' || fmEnd === -1) {
+    throw new Error('Decision page has no frontmatter');
+  }
+  const lines = doc.lines.slice();
+  let statusLine = -1;
+  for (let i = 1; i < fmEnd; i++) {
+    if (/^status:/.test(lines[i]!)) {
+      statusLine = i;
+      lines[i] = `status: ${verdict}`;
+      break;
+    }
+  }
+  if (statusLine === -1) {
+    lines.splice(fmEnd, 0, `status: ${verdict}`);
+  }
+  doc = { ...doc, lines };
   doc = appendUnderApproval(doc, `${verdict}: ${person}, ${where}, ${params.dateIso}`);
 
   const logMarkdown = appendLogEntry({
@@ -544,15 +582,107 @@ function formatAttribution(a: Attribution): string {
   return `{ by: ${a.by}, at: ${normalizeAtIso(a.at)}${a.commit ? `, commit: ${a.commit}` : ''} }`;
 }
 
-function setVerifiedFrontmatter(doc: Doc, entries: Attribution[]): Doc {
+function splitFlowMaps(inner: string): string[] {
+  const entries: string[] = [];
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < inner.length; i++) {
+    const c = inner[i];
+    if (c === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === '}') {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        entries.push(inner.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  return entries;
+}
+
+function flowMapsOnVerifiedLine(line: string): string[] {
+  const value = line.replace(/^verified:\s*/, '').trim();
+  if (!value) return [];
+  if (value.startsWith('[')) {
+    const close = value.lastIndexOf(']');
+  if (close < 0) {
+      throw new Error('Il frontmatter verified non è leggibile: correggilo a mano nel file.');
+    }
+    return splitFlowMaps(value.slice(1, close));
+  }
+  if (value.startsWith('{')) return [value];
+  return [];
+}
+
+function verifiedRegionEnd(lines: string[], start: number, fmEnd: number): number {
+  let end = start + 1;
+  while (end < fmEnd) {
+    const line = lines[end]!;
+    if (/^\s*-\s/.test(line)) {
+      end++;
+      while (end < fmEnd && /^\s{2,}\S/.test(lines[end]!) && !/^\s*-\s/.test(lines[end]!)) {
+        end++;
+      }
+      continue;
+    }
+    if (/^[a-zA-Z0-9_-]+:/.test(line)) break;
+    break;
+  }
+  return end;
+}
+
+function blockEntryToFlow(entryLines: string[]): string {
+  const first = entryLines[0]!.replace(/^\s*-\s+/, '').trim();
+  if (first.startsWith('{')) return first;
+  const map: Record<string, string> = {};
+  const head = first.match(/^([a-zA-Z0-9_-]+):\s*(.*)$/);
+  if (head) map[head[1]] = head[2].trim();
+  for (let i = 1; i < entryLines.length; i++) {
+    const cont = entryLines[i]!.match(/^\s+([a-zA-Z0-9_-]+):\s*(.*)$/);
+    if (cont) map[cont[1]] = cont[2].trim();
+  }
+  const parsed = toAttribution(map);
+  if (!parsed) {
+    throw new Error('Il frontmatter verified non è leggibile: correggilo a mano nel file.');
+  }
+  return formatAttribution(parsed);
+}
+
+function readVerifiedVerbatim(lines: string[], fmEnd: number): string[] {
+  const start = lines.findIndex((l, i) => i > 0 && i < fmEnd && /^verified:/.test(l));
+  if (start === -1) return [];
+
+  const inline = flowMapsOnVerifiedLine(lines[start]!);
+  if (inline.length > 0) return inline;
+
+  const regionEnd = verifiedRegionEnd(lines, start, fmEnd);
+  const entries: string[] = [];
+  let i = start + 1;
+  while (i < regionEnd) {
+    if (!/^\s*-\s/.test(lines[i]!)) break;
+    const block: string[] = [lines[i]!];
+    i++;
+    while (i < regionEnd && /^\s{2,}\S/.test(lines[i]!) && !/^\s*-\s/.test(lines[i]!)) {
+      block.push(lines[i]!);
+      i++;
+    }
+    entries.push(blockEntryToFlow(block));
+  }
+  return entries;
+}
+
+function setVerifiedFrontmatter(doc: Doc, newEntry: Attribution): Doc {
   const lines = doc.lines;
   const end = lines.indexOf('---', 1);
   if (lines[0] !== '---' || end === -1) {
     throw new Error('Page has no frontmatter to record a review in');
   }
 
-  const value =
-    entries.length === 1 ? formatAttribution(entries[0]) : `[${entries.map(formatAttribution).join(', ')}]`;
+  const existing = readVerifiedVerbatim(lines, end);
+  const merged = [...existing, formatAttribution(newEntry)];
+  const value = merged.length === 1 ? merged[0]! : `[${merged.join(', ')}]`;
   const block = `verified: ${value}`;
 
   const start = lines.findIndex((l, i) => i > 0 && i < end && /^verified:/.test(l));
@@ -560,8 +690,7 @@ function setVerifiedFrontmatter(doc: Doc, entries: Attribution[]): Doc {
   if (start === -1) {
     newLines.splice(end, 0, block);
   } else {
-    let stop = start + 1;
-    while (stop < end && /^\s+/.test(newLines[stop]!)) stop++;
+    const stop = verifiedRegionEnd(newLines, start, end);
     newLines.splice(start, stop - start, block);
   }
   return { ...doc, lines: newLines };
@@ -587,7 +716,7 @@ export function markPageReviewed(params: {
   if (commit) entry.commit = commit;
 
   let doc = parseDoc(params.pageMarkdown);
-  doc = setVerifiedFrontmatter(doc, [...page.verified, entry]);
+  doc = setVerifiedFrontmatter(doc, entry);
   const title = page.fields.title || 'page';
   const logMarkdown = appendLogEntry({
     logMarkdown: params.logMarkdown,

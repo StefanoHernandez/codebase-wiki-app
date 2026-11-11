@@ -7,6 +7,8 @@ import {
   findSection,
   findTable,
   setCells,
+  changedLineIndices,
+  assertUnchangedLines,
   StaleError,
 } from '../src/lib/md-edit.ts';
 import {
@@ -24,6 +26,15 @@ title: Log
 ---
 # Log
 `;
+
+function lineIndex(doc: string, needle: string | RegExp): number {
+  const lines = parseDoc(doc).lines;
+  const idx = lines.findIndex((l) =>
+    typeof needle === 'string' ? l.includes(needle) : needle.test(l),
+  );
+  assert.ok(idx >= 0, `line not found: ${String(needle)}`);
+  return idx;
+}
 
 function promoteKey(tracker: string, proposal = 'Add graph filter', by = 'stefano', date = '2026-11-10') {
   return promoteProposalToOpen({
@@ -65,6 +76,10 @@ title: Tracker
   assert.equal(parseTrackerMarkdown(after).proposals.length, 0);
   assert.match(after, /\| T2 \| ⚪ \| Nuova feature \|/);
   assert.match(after, /\| Extra \|/);
+  assert.match(after, /\| T1 \| 🟡 \| Keep \| ok \| a \| b \| c \| x \|/);
+  const proposalLine = lineIndex(before, 'Nuova feature');
+  const openInsert = lineIndex(after, '| T2 |');
+  assertUnchangedLines(before, after, new Set(changedLineIndices(before, after).concat([proposalLine, openInsert])));
 });
 
 test('regression 2a: editing T2 leaves T1 line with escaped pipe in backticks unchanged', () => {
@@ -82,10 +97,14 @@ title: Tracker
 | T2 | ⚪ | Other | ok | old | x | e |
 `;
   const res = updateOpenRowField({ trackerMarkdown: before, id: 'T2', field: 'owner', value: 'Mario' });
+  const t1 = lineIndex(before, 'T1');
+  const t2 = lineIndex(before, '| T2 |');
+  assertUnchangedLines(before, res.trackerMarkdown, new Set([t2]));
   assert.equal(
     res.trackerMarkdown.split('\n').find((l) => l.includes('T1'))!.trim(),
     before.split('\n').find((l) => l.includes('T1'))!.trim(),
   );
+  assert.match(res.trackerMarkdown, /T2.*Mario/);
 });
 
 test('regression 2b: unescaped pipe on T1 blocks edit; T2 still edits', () => {
@@ -104,8 +123,11 @@ title: Tracker
 `;
   const ok = updateOpenRowField({ trackerMarkdown: before, id: 'T2', field: 'owner', value: 'Mario' });
   assert.match(ok.trackerMarkdown, /T2.*Mario/);
+  const t2 = lineIndex(before, '| T2 |');
+  assertUnchangedLines(before, ok.trackerMarkdown, new Set([t2]));
   assert.throws(
     () => updateOpenRowField({ trackerMarkdown: before, id: 'T1', field: 'owner', value: 'X' }),
+    /non protetta/,
   );
 });
 
@@ -139,6 +161,17 @@ title: Tracker
   assert.match(after, /```markdown[\s\S]*\| FAKE \|/);
   assert.match(after, /^\| T2 \| ⚪ \| Ship it \|/m);
   assert.doesNotMatch(after.replace(/```[\s\S]*?```/g, ''), /\| FAKE \|/);
+  const parsed = parseTrackerMarkdown(after);
+  assert.equal(parsed.open.length, 2);
+  assert.deepEqual(
+    parsed.open.map((r) => r.id),
+    ['T1', 'T2'],
+  );
+  const fenceLines = parseDoc(before)
+    .lines.map((l, i) => (/^```/.test(l.trim()) || l.includes('| FAKE |') ? i : -1))
+    .filter((i) => i >= 0);
+  const allowed = new Set([...changedLineIndices(before, after), ...fenceLines]);
+  assertUnchangedLines(before, after, allowed);
 });
 
 test('regression 4: Approvazione + wiki marker: accept appends, no duplicate section', () => {
@@ -166,6 +199,9 @@ proposed: codex on 2026-11-09.
     .filter((l) => l.startsWith('## ') && /approval|approvazione/i.test(l));
   assert.equal(approvalHeadings.length, 1);
   assert.match(res.decisionMarkdown, /accepted: Stefano, review, 2026-11-10/);
+  const statusLine = lineIndex(decision, 'status: proposed');
+  const approvalAppend = lineIndex(res.decisionMarkdown, 'accepted: Stefano');
+  assertUnchangedLines(decision, res.decisionMarkdown, new Set([statusLine, approvalAppend]));
 });
 
 test('regression 5: custom delimiter alignment survives field edit', () => {
@@ -184,6 +220,8 @@ title: Tracker
   const res = updateOpenRowField({ trackerMarkdown: before, id: 'T1', field: 'goal', value: 'Ship' });
   const delim = res.trackerMarkdown.split('\n').find((l) => l.includes(':---'))!;
   assert.equal(delim.trim(), '| :--- | ---: | :--- |');
+  const goalLine = lineIndex(before, '| T1 |');
+  assertUnchangedLines(before, res.trackerMarkdown, new Set([goalLine]));
 });
 
 test('regression 6: personId from name with comma and space', () => {
@@ -231,6 +269,91 @@ test('regression 7: CRLF and BOM preserved through promote', () => {
   assert.equal(doc.eol, '\r\n');
   assert.equal(doc.bom, true);
   assert.equal(doc.finalNewline, true);
+  assertUnchangedLines(before, after, new Set(changedLineIndices(before, after)));
+
+  const decisionBody =
+    '---\r\ntype: Decision\r\ntitle: D\r\nstatus: proposed\r\n---\r\n\r\n# D\r\n\r\n## Approval\r\nproposed: x.\r\n';
+  const decisionBefore = '\uFEFF' + decisionBody;
+  const decisionRes = acceptDecisionHuman({
+    decisionMarkdown: decisionBefore,
+    logMarkdown: '',
+    person: 'Stefano',
+    whereContext: 'review',
+    dateIso: '2026-11-10',
+  });
+  assert.ok(decisionRes.decisionMarkdown.startsWith('\uFEFF'));
+  assert.ok(decisionRes.decisionMarkdown.includes('\r\n'));
+  assert.equal(parseDoc(decisionRes.decisionMarkdown).eol, '\r\n');
+});
+
+test('translated Open headers: promote, update field, and close preserve cells', () => {
+  const before = `---
+title: Tracker
+---
+# Tracker
+
+## Proposte
+<!-- wiki:proposals -->
+
+| Proposta | Da | Data | Perche |
+| --- | --- | --- | --- |
+| Nuova | stefano | 2026-11-10 | sì |
+
+## Aperti
+<!-- wiki:open -->
+
+| ID | Stato | Obiettivo | Fatto quando | Responsabile | Prossima verifica | Prove | Priorità |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| T1 | 🟡 | Keep | ok | a | b | c | alta |
+
+## Completati
+<!-- wiki:done -->
+
+| ID | Stato | Obiettivo | Chiuso | Criteri | Prove |
+| --- | --- | --- | --- | --- | --- |
+`;
+
+  const promoted = promoteProposalToOpen({
+    trackerMarkdown: before,
+    logMarkdown: LOG,
+    proposalText: 'Nuova',
+    proposalBy: 'stefano',
+    proposalDate: '2026-11-10',
+    person: 'Stefano',
+    owner: 'Mario',
+    doneWhen: 'Fatto',
+    nextVerification: 'npm test',
+    dateIso: '2026-11-10',
+  });
+  assert.match(
+    promoted.trackerMarkdown,
+    /^\| T2 \| ⚪ \| Nuova \| Fatto \| Mario \| npm test \| promoted by Stefano 2026-11-10 \|/m,
+  );
+  assert.match(promoted.trackerMarkdown, /\| T1 \| 🟡 \| Keep \| ok \| a \| b \| c \| alta \|/);
+  assertUnchangedLines(before, promoted.trackerMarkdown, new Set(changedLineIndices(before, promoted.trackerMarkdown)));
+
+  const edited = updateOpenRowField({
+    trackerMarkdown: promoted.trackerMarkdown,
+    id: 'T2',
+    field: 'owner',
+    value: 'Luigi',
+  });
+  assert.match(edited.trackerMarkdown, /^\| T2 \| ⚪ \| Nuova \| Fatto \| Luigi \|/m);
+
+  const closed = closeTrackerItemHumanUnproven({
+    trackerMarkdown: edited.trackerMarkdown,
+    logMarkdown: promoted.logMarkdown,
+    taskId: 'T2',
+    person: 'Stefano',
+    notProvenReason: 'non dimostrato',
+    closureSource: 'chat',
+    dateIso: '2026-11-10',
+  });
+  assert.match(
+    closed.trackerMarkdown,
+    /^\| T2 \| ⚫ \| Nuova \| 2026-11-10 \| closed by Stefano 2026-11-10; not proven: non dimostrato \| chat \|/m,
+  );
+  assert.doesNotMatch(closed.trackerMarkdown, /^\| T2 \|.*\| Luigi/m);
 });
 
 test('md-edit: parseDoc and renderDoc round-trip', () => {
@@ -299,4 +422,61 @@ test('setCells only escapes changed cells', () => {
   const doc = parseDoc('| a | `b|c` |\n');
   const next = setCells(doc, 0, ['a', 'new|val']);
   assert.match(renderDoc(next), /new\\|val/);
+});
+
+test('markPageReviewed preserves block verified entries and removes orphan lines', () => {
+  const pageCol0 = `---
+title: Block0
+verified:
+- by: human:old
+  at: 2026-01-01T00:00:00Z
+---
+# Block0
+`;
+  const res0 = markPageReviewed({
+    pageMarkdown: pageCol0,
+    logMarkdown: '',
+    person: 'Stefano',
+    atIso: '2026-11-10T12:00:00Z',
+    commit: 'abc',
+  });
+  assert.equal(res0.pageMarkdown.match(/^verified:/gm)!.length, 1);
+  assert.doesNotMatch(res0.pageMarkdown, /^- by: human:old/m);
+  assert.match(
+    res0.pageMarkdown,
+    /^verified: \[\{ by: human:old, at: 2026-01-01T00:00:00Z \}, \{ by: human:stefano, at: 2026-11-10T12:00:00Z, commit: abc \}\]$/m,
+  );
+
+  const pageIndented = `---
+title: BlockInd
+verified:
+  - by: human:mario
+    at: 2026-02-01T00:00:00Z
+---
+# BlockInd
+`;
+  const res1 = markPageReviewed({
+    pageMarkdown: pageIndented,
+    logMarkdown: '',
+    person: 'Stefano',
+    atIso: '2026-11-11T12:00:00Z',
+    commit: 'def',
+  });
+  assert.equal(res1.pageMarkdown.match(/^verified:/gm)!.length, 1);
+  assert.match(res1.pageMarkdown, /human:mario/);
+
+  const quotedFlow = `---
+title: Q
+verified: [{ by: "agent/weird", at: 2026-01-01T00:00:00Z }]
+---
+# Q
+`;
+  const res2 = markPageReviewed({
+    pageMarkdown: quotedFlow,
+    logMarkdown: '',
+    person: 'Stefano',
+    atIso: '2026-11-12T12:00:00Z',
+    commit: 'ghi',
+  });
+  assert.match(res2.pageMarkdown, /"agent\/weird"/);
 });

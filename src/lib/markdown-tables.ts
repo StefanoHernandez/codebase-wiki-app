@@ -6,6 +6,7 @@ import type {
   HandoffData,
   BatonRow,
 } from '../types/wiki.ts';
+import { parseDoc, findSection, findTable, type TableLoc } from './md-edit.ts';
 
 export const OPEN_COLUMNS = ['ID', 'Status', 'Goal', 'Done when', 'Owner', 'Next verification', 'Evidence'];
 export const PROPOSAL_COLUMNS = ['Proposal', 'By', 'Date', 'Why'];
@@ -148,30 +149,36 @@ interface RawTrackerRecord {
  * header is used when writing back.
  */
 function readTrackerRecords(
-  lines: string[] | null,
+  table: TableLoc | null,
   canonical: string[],
   keys: Record<string, string>,
   positional: string[],
   legacy?: string[]
 ): { header: string[]; rows: RawTrackerRecord[] } {
-  const table = lines ? extractTableFromLines(lines) : null;
   if (!table) return { header: canonical, rows: [] };
 
   const lower = table.header.map((h) => h.trim().toLowerCase());
   const named = canonical.every((col) => lower.includes(col.toLowerCase()));
   const useLegacy = !named && legacy !== undefined && table.header.length === legacy.length;
-  const header = named ? table.header : canonical;
+  const header = table.header;
   const positionalKeys = useLegacy ? legacy! : positional;
 
-  const rows = table.rows.map((cells) => {
+  const rows = table.rows.map((row) => {
+    const cells = row.cells;
     const fields: Record<string, string> = {};
     const extra: Record<string, string> = {};
     table.header.forEach((h, i) => {
       const value = (cells[i] ?? '').trim();
-      const key = named ? (Object.hasOwn(keys, lower[i]) ? keys[lower[i]] : undefined) : positionalKeys[i];
+      const key = named
+        ? Object.hasOwn(keys, lower[i]!)
+          ? keys[lower[i]!]
+          : undefined
+        : i < positionalKeys.length
+          ? positionalKeys[i]
+          : undefined;
       if (key) {
         fields[key] = value;
-      } else if (named) {
+      } else {
         extra[h] = value;
       }
     });
@@ -180,28 +187,33 @@ function readTrackerRecords(
   return { header, rows };
 }
 
+function sectionTable(doc: ReturnType<typeof parseDoc>, marker: string, headings: string[]): TableLoc | null {
+  const section = findSection(doc, marker, headings);
+  if (!section) return null;
+  return findTable(doc, section);
+}
+
 export function parseTrackerMarkdown(markdown: string): TrackerData {
-  const normalized = markdown.replace(/\r\n/g, '\n');
-  const lines = normalized.split('\n');
+  const doc = parseDoc(markdown);
 
   const open = readTrackerRecords(
-    findSectionLines(lines, 'open', 'Open')?.lines ?? null,
+    sectionTable(doc, 'open', ['Open']),
     OPEN_COLUMNS,
     OPEN_KEYS,
-    ['id', 'status', 'goal', 'doneWhen', 'owner', 'nextVerification', 'evidence']
+    ['id', 'status', 'goal', 'doneWhen', 'owner', 'nextVerification', 'evidence'],
   );
   const proposals = readTrackerRecords(
-    findSectionLines(lines, 'proposals', 'Proposals')?.lines ?? null,
+    sectionTable(doc, 'proposals', ['Proposals']),
     PROPOSAL_COLUMNS,
     PROPOSAL_KEYS,
-    ['proposal', 'by', 'date', 'why']
+    ['proposal', 'by', 'date', 'why'],
   );
   const done = readTrackerRecords(
-    findSectionLines(lines, 'done', 'Done')?.lines ?? null,
+    sectionTable(doc, 'done', ['Done']),
     DONE_COLUMNS,
     DONE_KEYS,
     ['id', 'status', 'goal', 'closed', 'criteriaMet', 'evidence'],
-    ['id', 'goal', 'closed', 'criteriaMet', 'evidence'] // legacy: no Status column (proven 🟢 only)
+    ['id', 'goal', 'closed', 'criteriaMet', 'evidence'], // legacy: no Status column (proven 🟢 only)
   );
 
   return {
@@ -244,14 +256,15 @@ export function parseTrackerMarkdown(markdown: string): TrackerData {
 }
 
 export function parseHandoffMarkdown(markdown: string): HandoffData {
-  const normalized = markdown.replace(/\r\n/g, '\n');
-  const lines = normalized.split('\n');
+  const doc = parseDoc(markdown);
+  const lines = doc.lines;
 
   // State bullets
   const stateBullets: Record<string, string> = {};
-  const stateSection = findSectionLines(lines, 'state', 'Current Work State');
+  const stateSection = findSection(doc, 'state', ['Current Work State']);
   if (stateSection) {
-    for (const line of stateSection.lines) {
+    for (let i = stateSection.start; i < stateSection.end; i++) {
+      const line = lines[i]!;
       const match = line.match(/^\s*-\s+([^:]+):\s*(.*)$/);
       if (match) {
         stateBullets[match[1].trim()] = match[2].trim();
@@ -262,17 +275,19 @@ export function parseHandoffMarkdown(markdown: string): HandoffData {
   // Baton
   const baton: BatonRow[] = [];
   let noOpenWork = false;
-  const batonSection = findSectionLines(lines, 'baton', 'Baton For Next Coding Agent');
+  const batonSection = findSection(doc, 'baton', ['Baton For Next Coding Agent']);
   if (batonSection) {
-    for (const line of batonSection.lines) {
+    for (let i = batonSection.start; i < batonSection.end; i++) {
+      const line = lines[i]!;
       if (line.trim().toLowerCase() === 'no open work.') {
         noOpenWork = true;
       }
     }
 
-    const table = extractTableFromLines(batonSection.lines);
-    if (table) {
-      const { header, rows } = table;
+    const located = findTable(doc, batonSection);
+    if (located) {
+      const header = located.header;
+      const rows = located.rows.map((r) => r.cells);
       const lowerHeader = header.map((h) => h.toLowerCase());
       const hasNamed = BATON_COLUMNS.every((col) => lowerHeader.includes(col.toLowerCase()));
 
@@ -305,11 +320,12 @@ export function parseHandoffMarkdown(markdown: string): HandoffData {
 
   // Blockers
   const blockers: Array<Record<string, string>> = [];
-  const blockersSection = findSectionLines(lines, 'blockers', 'Blockers');
+  const blockersSection = findSection(doc, 'blockers', ['Blockers']);
   if (blockersSection) {
-    const table = extractTableFromLines(blockersSection.lines);
-    if (table) {
-      const { header, rows } = table;
+    const located = findTable(doc, blockersSection);
+    if (located) {
+      const header = located.header;
+      const rows = located.rows.map((r) => r.cells);
       for (const row of rows) {
         const item: Record<string, string> = {};
         for (let i = 0; i < header.length; i++) {

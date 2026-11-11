@@ -11,7 +11,7 @@ function stripQuotes(value: string): string {
   return trimmed;
 }
 
-function parseMapBody(text: string): Record<string, string> {
+export function parseMapBody(text: string): Record<string, string> {
   const trimmed = text.trim();
   const map: Record<string, string> = {};
   const isInline = trimmed.startsWith('{');
@@ -24,7 +24,7 @@ function parseMapBody(text: string): Record<string, string> {
   return map;
 }
 
-function toAttribution(map: Record<string, string> | null): Attribution | undefined {
+export function toAttribution(map: Record<string, string> | null): Attribution | undefined {
   if (!map || !map.by) return undefined;
   const attribution: Attribution = { by: map.by, at: map.at ?? '' };
   if (map.commit) attribution.commit = map.commit;
