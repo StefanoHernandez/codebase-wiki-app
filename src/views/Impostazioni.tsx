@@ -221,13 +221,18 @@ function Modelli() {
             <tr key={row.id}>
               <td>
                 <span className="mono">{row.id}</span>
-                {activeModel === row.id && <span className="badge badge-ok ricerca-badge">attivo</span>}
+                {activeModel === row.id &&
+                  (row.installed ? (
+                    <span className="badge badge-ok ricerca-badge">attivo</span>
+                  ) : (
+                    <span className="badge badge-drift ricerca-badge">scelto, da scaricare</span>
+                  ))}
                 {!row.tested && <span className="badge ricerca-badge">non provato</span>}
                 {row.note && <div className="muted">{row.note}</div>}
               </td>
               <td>{row.languages}</td>
               <td>{row.sizeMb > 0 ? `${row.sizeMb} MB` : '—'}</td>
-              <td className="ricerca-actions">{activeModel !== row.id && action(row, () => void useModel(row.id))}</td>
+              <td className="ricerca-actions">{(activeModel !== row.id || !row.installed) && action(row, () => void useModel(row.id))}</td>
             </tr>
           ))}
         </tbody>
