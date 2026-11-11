@@ -1,11 +1,5 @@
-import { parseFrontmatter, parseMapBody, toAttribution } from './frontmatter.ts';
-import {
-  parseTrackerMarkdown,
-  computeNextTrackerId,
-  OPEN_COLUMNS,
-  PROPOSAL_COLUMNS,
-  DONE_COLUMNS,
-} from './markdown-tables.ts';
+import { parseFrontmatter } from './frontmatter.ts';
+import { computeNextTrackerId, OPEN_COLUMNS, PROPOSAL_COLUMNS, DONE_COLUMNS } from './markdown-tables.ts';
 import type { Attribution, TrackerDoneRow, TrackerOpenRow } from '../types/wiki.ts';
 import { todayLocal } from './dates.ts';
 import {
@@ -71,8 +65,27 @@ const OPEN_PROPS: (keyof TrackerOpenRow)[] = [
 ];
 const DONE_PROPS: (keyof TrackerDoneRow)[] = ['id', 'status', 'goal', 'closed', 'criteriaMet', 'evidence'];
 
-function headersMatchCanonical(header: string[], columns: readonly string[]): boolean {
-  return columns.every((c) => header.some((h) => h.trim().toLowerCase() === c.toLowerCase()));
+const UNSUPPORTED_COLUMNS =
+  'Le colonne della tabella non corrispondono al formato della wiki: correggile o aggiorna la wiki con /wiki-init --adopt.';
+
+/**
+ * Same rule as the plugin validator: a header with every documented English column is read by name
+ * (any order, extras kept). A translated header (no documented English name except the fixed `ID`)
+ * with at least the documented number of columns is read by position, extras after. Anything else
+ * (a partly English or incomplete header) is refused instead of guessed.
+ */
+function columnMode(header: string[], columns: readonly string[]): 'named' | 'positional' | null {
+  const lower = header.map((h) => h.trim().toLowerCase());
+  if (columns.every((c) => lower.includes(c.toLowerCase()))) return 'named';
+  const english = columns.slice(1).some((c) => lower.includes(c.toLowerCase()));
+  if (!english && header.length >= columns.length) return 'positional';
+  return null;
+}
+
+function requireColumnMode(header: string[], columns: readonly string[]): 'named' | 'positional' {
+  const mode = columnMode(header, columns);
+  if (!mode) throw new Error(UNSUPPORTED_COLUMNS);
+  return mode;
 }
 
 function canonicalOpenFieldIndex(field: string): number | undefined {
@@ -89,7 +102,7 @@ function openColumnKey(
   header: string[],
   index: number,
 ): keyof TrackerOpenRow | 'extra' {
-  if (headersMatchCanonical(header, OPEN_COLUMNS)) {
+  if (requireColumnMode(header, OPEN_COLUMNS) === 'named') {
     const key = OPEN_KEYS[header[index]!.trim().toLowerCase()];
     return key ?? 'extra';
   }
@@ -97,7 +110,7 @@ function openColumnKey(
 }
 
 function doneColumnKey(header: string[], index: number): keyof TrackerDoneRow | 'extra' {
-  if (headersMatchCanonical(header, DONE_COLUMNS)) {
+  if (requireColumnMode(header, DONE_COLUMNS) === 'named') {
     const key = DONE_KEYS[header[index]!.trim().toLowerCase()];
     return key ?? 'extra';
   }
@@ -159,6 +172,8 @@ export function appendLogEntry(params: {
     `- Evidence: ${params.evidence}`,
     `- IDs: ${params.ids.length > 0 ? params.ids.join(', ') : 'none'}`,
   ];
+  // An empty log becomes exactly one entry ending with a newline.
+  if (!params.logMarkdown.replace(/^\uFEFF/, '').trim()) return `${entryLines.join('\n')}\n`;
   const doc = parseDoc(params.logMarkdown);
 
   if (order === 'oldest-first') {
@@ -344,7 +359,7 @@ export function promoteProposalToOpen(params: {
   const pIdx = proposalColIndex(propTable.header, 'proposal');
   const proposalText = (proposalCells[pIdx] ?? '').trim();
 
-  const namedOpen = headersMatchCanonical(openTable.header, OPEN_COLUMNS);
+  const namedOpen = requireColumnMode(openTable.header, OPEN_COLUMNS) === 'named';
   const template: TrackerOpenRow = {
     id: assignedId,
     status: '⚪',
@@ -405,8 +420,16 @@ export function closeTrackerItemHumanUnproven(params: {
   }
 
   let doc = parseDoc(params.trackerMarkdown);
-  const tracker = parseTrackerMarkdown(params.trackerMarkdown);
   const { table: openTable } = findOpenTable(doc);
+  const { table: doneBefore } = findDoneTable(doc);
+  const doneLower = doneBefore.header.map((h) => h.trim().toLowerCase());
+  if (columnMode(doneBefore.header, DONE_COLUMNS) === null && doneLower.includes('goal') && !doneLower.includes('status')) {
+    throw new Error(
+      'La tabella Done non ha la colonna Status: una chiusura ⚫ non si può registrare. Aggiorna la wiki con /wiki-init --adopt.',
+    );
+  }
+  requireColumnMode(doneBefore.header, DONE_COLUMNS);
+  requireColumnMode(openTable.header, OPEN_COLUMNS);
   const openMatch = findUniqueById(openTable, params.taskId);
   assertRowWidth(openTable, openMatch, params.taskId);
 
@@ -415,7 +438,7 @@ export function closeTrackerItemHumanUnproven(params: {
   const reason = params.notProvenReason.trim();
 
   const closedExtra: Record<string, string> = {};
-  for (const header of tracker.doneHeader) {
+  for (const header of doneBefore.header) {
     const source = Object.keys(openRow.extra).find((k) => k.trim().toLowerCase() === header.trim().toLowerCase());
     if (source !== undefined) closedExtra[header] = openRow.extra[source];
   }
@@ -463,7 +486,7 @@ export function updateOpenRowField(params: {
     throw new Error(`Column '${params.field}' cannot be edited here`);
   }
 
-  const named = headersMatchCanonical(table.header, OPEN_COLUMNS);
+  const named = requireColumnMode(table.header, OPEN_COLUMNS) === 'named';
   let col: number;
   if (named) {
     col = table.header.findIndex((h) => h.trim().toLowerCase() === wanted);
@@ -636,18 +659,21 @@ function verifiedRegionEnd(lines: string[], start: number, fmEnd: number): numbe
 function blockEntryToFlow(entryLines: string[]): string {
   const first = entryLines[0]!.replace(/^\s*-\s+/, '').trim();
   if (first.startsWith('{')) return first;
+  const unreadable = () => new Error('Il frontmatter verified non è leggibile: correggilo a mano nel file.');
   const map: Record<string, string> = {};
-  const head = first.match(/^([a-zA-Z0-9_-]+):\s*(.*)$/);
-  if (head) map[head[1]] = head[2].trim();
-  for (let i = 1; i < entryLines.length; i++) {
-    const cont = entryLines[i]!.match(/^\s+([a-zA-Z0-9_-]+):\s*(.*)$/);
-    if (cont) map[cont[1]] = cont[2].trim();
-  }
-  const parsed = toAttribution(map);
-  if (!parsed) {
-    throw new Error('Il frontmatter verified non è leggibile: correggilo a mano nel file.');
-  }
-  return formatAttribution(parsed);
+  const add = (match: RegExpMatchArray | null) => {
+    if (!match) throw unreadable();
+    const key = match[1]!;
+    // Only the documented keys convert to one flow line; anything else is left for a person to fix,
+    // so no key is ever dropped silently.
+    if (!['by', 'at', 'commit'].includes(key) || Object.hasOwn(map, key)) throw unreadable();
+    map[key] = match[2]!.trim();
+  };
+  add(first.match(/^([a-zA-Z0-9_-]+):\s*(.*)$/));
+  for (let i = 1; i < entryLines.length; i++) add(entryLines[i]!.match(/^\s+([a-zA-Z0-9_-]+):\s*(.*)$/));
+  if (!map.by || !map.at) throw unreadable();
+  // Values stay verbatim (quotes included); only the layout changes.
+  return `{ by: ${map.by}, at: ${map.at}${map.commit ? `, commit: ${map.commit}` : ''} }`;
 }
 
 function readVerifiedVerbatim(lines: string[], fmEnd: number): string[] {

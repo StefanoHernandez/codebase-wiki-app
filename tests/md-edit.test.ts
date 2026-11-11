@@ -248,13 +248,14 @@ title: Tracker
 ## Open
 <!-- wiki:open -->
 
-| ID | Status | Goal |
-| :--- | ---: | :--- |
-| T1 | 🟡 | Build |
+| ID | Status | Goal | Done when | Owner | Next verification | Evidence |
+| :--- | ---: | :--- | --- | :---: | --- | --- |
+| T1 | 🟡 | Build | ok | a | b | c |
 `;
   const res = updateOpenRowField({ trackerMarkdown: before, id: 'T1', field: 'goal', value: 'Ship' });
   const delim = res.trackerMarkdown.split('\n').find((l) => l.includes(':---'))!;
-  assert.equal(delim.trim(), '| :--- | ---: | :--- |');
+  assert.equal(delim.trim(), '| :--- | ---: | :--- | --- | :---: | --- | --- |');
+  assert.match(res.trackerMarkdown, /^\| T1 \| 🟡 \| Ship \| ok \| a \| b \| c \|$/m);
   const goalLine = lineIndex(before, '| T1 |');
   assertUnchangedLines(before, res.trackerMarkdown, new Set([goalLine]));
 });

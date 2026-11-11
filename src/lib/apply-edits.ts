@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-
 export const LOG_UNREADABLE = 'Il log non è leggibile: nessuna modifica scritta.';
 
 export interface FileEdit {
@@ -17,8 +15,10 @@ export interface WikiWritePayload {
 
 export type WriteBatchFn = (files: WikiWritePayload[]) => Promise<void>;
 
-function wikiContentSha256(content: string): string {
-  return createHash('sha256').update(content, 'utf8').digest('hex');
+/** SHA-256 hex of the UTF-8 text. Web Crypto: available in the Tauri webview and in Node ≥ 19. */
+export async function wikiContentSha256(content: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(content));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 let actDisk: Record<string, string> | null = null;
@@ -51,7 +51,7 @@ export async function applyEdits(
     try {
       const text = await read(rel);
       disk[rel] = text;
-      readSha[rel] = wikiContentSha256(text);
+      readSha[rel] = await wikiContentSha256(text);
     } catch (e) {
       if (rel === logRelPath) {
         throw new Error(LOG_UNREADABLE);

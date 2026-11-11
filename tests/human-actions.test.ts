@@ -15,6 +15,7 @@ import {
   appendLogEntry,
 } from '../src/lib/human-actions.ts';
 import { todayLocal } from '../src/lib/dates.ts';
+import { resolvePythonForValidator } from './helpers/fixture.ts';
 
 const SAMPLE_TRACKER = `---
 type: Project
@@ -774,7 +775,7 @@ None.
 
     // Validate using validate-wiki.py
     const validatorScript = path.resolve(process.cwd(), 'resources', 'validate-wiki.py');
-    const result = execFileSync('python3', [validatorScript, wikiDir], { encoding: 'utf-8' });
+    const result = execFileSync(resolvePythonForValidator(), [validatorScript, wikiDir], { encoding: 'utf-8' });
     assert.match(result, /wiki structural validation passed/);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });

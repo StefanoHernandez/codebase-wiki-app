@@ -235,8 +235,10 @@ pub fn write_wiki_files_safe(
     let mut pending = Vec::with_capacity(plans.len());
     for (content, plan) in plans {
         if let Some(parent) = plan.target_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create parent directories: {}", e))?;
+            if let Err(e) = fs::create_dir_all(parent) {
+                remove_pending_temps(&pending);
+                return Err(format!("Failed to create parent directories: {}", e));
+            }
         }
 
         let tmp_path = plan.tmp_path.clone();
@@ -251,6 +253,8 @@ pub fn write_wiki_files_safe(
         })();
 
         if let Err(e) = write_result {
+            // The temp file of this plan may exist (created, then the write failed): remove it too.
+            let _ = fs::remove_file(&tmp_path);
             remove_pending_temps(&pending);
             return Err(e);
         }
@@ -259,7 +263,13 @@ pub fn write_wiki_files_safe(
     }
 
     for p in &pending {
-        let actual = current_target_sha256(&p.target_path)?;
+        let actual = match current_target_sha256(&p.target_path) {
+            Ok(sha) => sha,
+            Err(e) => {
+                remove_pending_temps(&pending);
+                return Err(e);
+            }
+        };
         if actual != p.expected_sha256 {
             remove_pending_temps(&pending);
             return Err(SHA_MISMATCH_MSG.into());
@@ -483,6 +493,38 @@ mod tests {
         .unwrap_err();
         assert_eq!(err, SHA_MISMATCH_MSG);
         assert_eq!(fs::read_to_string(wiki.join("a.md")).unwrap(), "on-disk");
+        assert!(tmp_leftovers(&wiki).is_empty());
+    }
+
+    #[test]
+    fn batch_unreadable_target_aborts_without_tmp() {
+        let td = TestDir::new("batch_unreadable");
+        let repo = td.path();
+        let wiki = repo.join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        fs::write(wiki.join("a.md"), "ok").unwrap();
+        // Not UTF-8: the pre-rename hash cannot be computed, so the batch must stop cleanly.
+        fs::write(wiki.join("b.md"), [0xff, 0xfe, 0x00]).unwrap();
+
+        let err = write_wiki_files_safe(
+            repo,
+            "wiki",
+            &[
+                WikiFileWrite {
+                    rel_path: "a.md".into(),
+                    content: "new a".into(),
+                    expected_sha256: wiki_content_sha256("ok"),
+                },
+                WikiFileWrite {
+                    rel_path: "b.md".into(),
+                    content: "new b".into(),
+                    expected_sha256: wiki_content_sha256(""),
+                },
+            ],
+        )
+        .unwrap_err();
+        assert!(err.contains("before write"), "{err}");
+        assert_eq!(fs::read_to_string(wiki.join("a.md")).unwrap(), "ok");
         assert!(tmp_leftovers(&wiki).is_empty());
     }
 
