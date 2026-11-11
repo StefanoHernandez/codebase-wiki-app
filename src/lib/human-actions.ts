@@ -117,16 +117,30 @@ function doneColumnKey(header: string[], index: number): keyof TrackerDoneRow | 
   return index < DONE_PROPS.length ? DONE_PROPS[index]! : 'extra';
 }
 
+// Mirrors validate-wiki.py 0.13.0 `AGENT_NAMES`, `PRODUCT_CLOSER` and `invalid_black_closer`.
+const AGENT_NAMES = new Set([
+  'agent', 'the agent', 'coding agent', 'ai', 'assistant', 'bot', 'claude', 'claude code',
+  'codex', 'cursor', 'cursor agent', 'copilot', 'github copilot', 'gemini', 'chatgpt', 'gpt',
+  'antigravity', 'composer', 'ai agent', 'claude-code',
+]);
+const PRODUCT_CLOSER =
+  /^(claude|gpt|gemini|codex|copilot|cursor|composer|antigravity)(?:[-\s]?(?:code|opus|sonnet|haiku|fable|pro|flash|agent|\d[\w.]*))?$/i;
+
+function isAgentName(name: string): boolean {
+  const lower = name.trim().toLowerCase();
+  return lower.startsWith('process:') || lower.includes('/') || AGENT_NAMES.has(lower) || PRODUCT_CLOSER.test(lower);
+}
+
 export function validateHumanActor(person: string): void {
   if (!person || typeof person !== 'string' || !person.trim()) {
-    throw new Error('Human authority required: person must be a non-empty human name');
+    throw new Error('Serve il nome di una persona.');
   }
   const trimmed = person.trim();
   if (/^<.*>$/.test(trimmed)) {
-    throw new Error(`Human authority required: person cannot be a placeholder ('${trimmed}')`);
+    throw new Error(`Il nome non può essere un segnaposto ('${trimmed}').`);
   }
-  if (DISALLOWED_ACTORS.has(trimmed.toLowerCase())) {
-    throw new Error(`Human authority required: '${trimmed}' is not an authorized human person`);
+  if (DISALLOWED_ACTORS.has(trimmed.toLowerCase()) || isAgentName(trimmed)) {
+    throw new Error(`'${trimmed}' non è una persona: firma con il tuo nome (niente agenti, process: o /).`);
   }
 }
 
@@ -143,15 +157,20 @@ export function validateNotProvenReason(reason: string): void {
   }
 }
 
-/** Lowercase id for `human:<id>`: only [a-z0-9._-], other runs become a single dash. */
+/** Lowercase id for `human:<id>`: accents dropped, only [a-z0-9._-], other runs become a single dash,
+ *  starting with a letter or digit (validator ACTOR_ID). */
 export function personId(person: string): string {
   return person
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-')
     .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .replace(/^[^a-z0-9]+|-+$/g, '');
 }
+
+export type LogOrder = 'oldest-first' | 'newest-first';
 
 const DATE_LOG_HEADING = /^## \d{4}-\d{2}-\d{2}\b/;
 
@@ -163,7 +182,7 @@ export function appendLogEntry(params: {
   what: string;
   evidence: string;
   ids: string[];
-  order?: 'oldest-first' | 'newest-first';
+  order?: LogOrder;
 }): string {
   const order = params.order ?? 'oldest-first';
   const entryLines = [
@@ -335,6 +354,7 @@ export function promoteProposalToOpen(params: {
   doneWhen: string;
   nextVerification: string;
   dateIso: string;
+  logOrder?: LogOrder;
 }): { trackerMarkdown: string; logMarkdown: string; assignedId: string } {
   validateHumanActor(params.person);
   if (!params.owner?.trim()) throw new Error('owner must be specified');
@@ -395,6 +415,7 @@ export function promoteProposalToOpen(params: {
     what: `${person} promoted proposal "${proposalText}" to ${assignedId}`,
     evidence: `promoted by ${person} ${params.dateIso}`,
     ids: [assignedId],
+    order: params.logOrder,
   });
 
   return {
@@ -412,6 +433,7 @@ export function closeTrackerItemHumanUnproven(params: {
   notProvenReason: string;
   closureSource: string;
   dateIso: string;
+  logOrder?: LogOrder;
 }): { trackerMarkdown: string; logMarkdown: string } {
   validateHumanActor(params.person);
   validateNotProvenReason(params.notProvenReason);
@@ -465,6 +487,7 @@ export function closeTrackerItemHumanUnproven(params: {
     what: `${person} closed ${openRow.id} without proof: ${reason}`,
     evidence: params.closureSource.trim(),
     ids: [openRow.id],
+    order: params.logOrder,
   });
 
   return { trackerMarkdown: renderDoc(doc), logMarkdown };
@@ -522,6 +545,7 @@ function decideDecision(
     person: string;
     whereContext: string;
     dateIso: string;
+    logOrder?: LogOrder;
   },
   verdict: 'accepted' | 'rejected',
 ): { decisionMarkdown: string; logMarkdown: string } {
@@ -572,6 +596,7 @@ function decideDecision(
     what: `${person} ${verdict} decision ${title}`,
     evidence: where,
     ids: [],
+    order: params.logOrder,
   });
 
   return { decisionMarkdown: renderDoc(doc), logMarkdown };
@@ -583,6 +608,7 @@ export function acceptDecisionHuman(params: {
   person: string;
   whereContext: string;
   dateIso: string;
+  logOrder?: LogOrder;
 }): { decisionMarkdown: string; logMarkdown: string } {
   return decideDecision(params, 'accepted');
 }
@@ -593,6 +619,7 @@ export function rejectDecisionHuman(params: {
   person: string;
   whereContext: string;
   dateIso: string;
+  logOrder?: LogOrder;
 }): { decisionMarkdown: string; logMarkdown: string } {
   return decideDecision(params, 'rejected');
 }
@@ -728,13 +755,14 @@ export function markPageReviewed(params: {
   person: string;
   atIso: string;
   commit: string;
+  logOrder?: LogOrder;
 }): { pageMarkdown: string; logMarkdown: string } {
   validateHumanActor(params.person);
   const person = params.person.trim();
   const commit = params.commit.trim();
   const id = personId(person);
   if (!id) {
-    throw new Error('Human authority required: person name yields an empty id');
+    throw new Error('Il nome non produce un id valido per human:<id>: usa lettere o cifre.');
   }
   const page = parseFrontmatter(params.pageMarkdown);
 
@@ -751,6 +779,7 @@ export function markPageReviewed(params: {
     what: `${person} marked page "${title}" reviewed`,
     evidence: commit ? `commit ${commit}` : 'human review',
     ids: [],
+    order: params.logOrder,
   });
 
   return { pageMarkdown: renderDoc(doc), logMarkdown };

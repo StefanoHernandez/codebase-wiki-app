@@ -153,6 +153,7 @@ export function PromoteDialog({ proposal, onClose, onDone }: Handlers & { propos
                 doneWhen,
                 nextVerification,
                 dateIso: todayLocal(),
+                logOrder: project.schema?.logOrder,
               });
               assignedId = r.assignedId;
               logOut = r.logMarkdown;
@@ -223,6 +224,7 @@ export function CloseDialog({ row, onClose, onDone }: Handlers & { row: TrackerO
                 notProvenReason: notProven,
                 closureSource: source,
                 dateIso: todayLocal(),
+                logOrder: project.schema?.logOrder,
               });
               logOut = r.logMarkdown;
               return r.trackerMarkdown;
@@ -297,6 +299,7 @@ export function FieldDialog({
               what: `${project.actor} set ${column.toLowerCase()} of ${row.id} to ${value.trim()}`,
               evidence: `changed by ${project.actor} ${date}`,
               ids: [row.id],
+              order: project.schema?.logOrder,
             });
             return next.trackerMarkdown;
           },

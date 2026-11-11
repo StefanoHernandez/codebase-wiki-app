@@ -45,6 +45,8 @@ export interface SchemaConfig {
   projectDivision: string;
   sensitiveData: boolean;
   agentEntryFile: string;
+  /** SCHEMA Project profile `Log order`; default oldest-first. */
+  logOrder: 'oldest-first' | 'newest-first';
   coreMap: Record<string, string>;
   budgets: SchemaBudgets;
   topics: SchemaTopic[];

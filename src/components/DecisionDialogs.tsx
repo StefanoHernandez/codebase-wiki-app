@@ -103,6 +103,7 @@ export function DecideDialog({ decision, verdict, onClose, onDone }: DecideDialo
                 person: project.actor,
                 whereContext: where.trim(),
                 dateIso: date,
+                logOrder: project.schema?.logOrder,
               });
               logOut = result.logMarkdown;
               return result.decisionMarkdown;

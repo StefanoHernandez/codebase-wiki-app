@@ -158,6 +158,7 @@ export function parseSchemaMarkdown(markdown: string): SchemaConfig {
   let projectDivision = 'none';
   let sensitiveData = false;
   let agentEntryFile = 'none';
+  let logOrder: SchemaConfig['logOrder'] = 'oldest-first';
 
   const profileLines = findSection(sections, ['project profile']);
   if (profileLines.length > 0) {
@@ -165,7 +166,12 @@ export function parseSchemaMarkdown(markdown: string): SchemaConfig {
       if (row.length < 2) continue;
       const key = row[0].toLowerCase().trim();
       const val = row[1];
-      if (key === 'language') {
+      // Same cleanup as validate-wiki.py `profile`: `*` and backticks around the setting.
+      if (row[0].replace(/[*`]/g, '').trim().toLowerCase() === 'log order') {
+        const order = val.replace(/`/g, '').trim().toLowerCase();
+        if (order === 'newest first') logOrder = 'newest-first';
+        else if (order === 'oldest first') logOrder = 'oldest-first';
+      } else if (key === 'language') {
         language = cleanSettingValue(val) || 'English';
       } else if (key === 'project division') {
         projectDivision = cleanSettingValue(val) || 'none';
@@ -230,6 +236,7 @@ export function parseSchemaMarkdown(markdown: string): SchemaConfig {
     projectDivision,
     sensitiveData,
     agentEntryFile,
+    logOrder,
     coreMap,
     budgets,
     topics,

@@ -46,6 +46,7 @@ function useReviewSigned(pageRelPath: string, onDone: () => void) {
               person: project.actor,
               atIso,
               commit: head,
+              logOrder: project.schema?.logOrder,
             });
             logOut = r.logMarkdown;
             return r.pageMarkdown;

@@ -208,7 +208,7 @@ test('closeTrackerItemHumanUnproven enforces human authority and records closure
     closureSource: 'team meeting 2026-11-10',
     dateIso: '2026-11-10',
   };
-  assert.throws(() => closeTrackerItemHumanUnproven({ ...base, person: 'coding agent' }), /human/i);
+  assert.throws(() => closeTrackerItemHumanUnproven({ ...base, person: 'coding agent' }), /non è una persona/);
   assert.throws(() => closeTrackerItemHumanUnproven({ ...base, person: 'Stefano', closureSource: ' ' }), /closure/i);
 
   const res = closeTrackerItemHumanUnproven({ ...base, person: 'Stefano' });
