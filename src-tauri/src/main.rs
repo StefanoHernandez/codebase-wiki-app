@@ -17,9 +17,11 @@ fn main() {
         .manage(Mutex::new(None::<WatchHandle>))
         .manage(Arc::new(rag_jobs::RagJobs::new()))
         .setup(|_app| {
-            if let Err(e) = rag_sidecar::install_mcp_binary() {
-                eprintln!("MCP binary: {e}");
-            }
+            std::thread::spawn(|| {
+                if let Err(e) = rag_sidecar::install_mcp_binary() {
+                    eprintln!("MCP binary: {e}");
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

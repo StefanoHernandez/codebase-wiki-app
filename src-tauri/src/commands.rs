@@ -624,7 +624,15 @@ pub async fn rag_status(repo: String) -> Result<serde_json::Value, String> {
     blocking(move || {
         let bin = rag_bin()?;
         let stdout = run_sidecar_output(&bin, &["status", "--repo", &repo, "--json"])?;
-        serde_json::from_slice(&stdout).map_err(|e| e.to_string())
+        let mut v: serde_json::Value =
+            serde_json::from_slice(&stdout).map_err(|e| e.to_string())?;
+        if let Some(obj) = v.as_object_mut() {
+            obj.insert(
+                "stale_install".into(),
+                crate::rag_sidecar::stale_install().into(),
+            );
+        }
+        Ok(v)
     })
     .await
 }

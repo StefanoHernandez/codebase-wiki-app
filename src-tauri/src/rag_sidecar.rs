@@ -2,8 +2,15 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use rag_core::{bin_path, ensure_data_dirs};
+
+static STALE_INSTALL: AtomicBool = AtomicBool::new(false);
+
+pub fn stale_install() -> bool {
+    STALE_INSTALL.load(Ordering::Relaxed)
+}
 
 pub fn rag_sidecar_path() -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -20,6 +27,7 @@ pub fn rag_sidecar_path() -> Result<PathBuf, String> {
 }
 
 pub fn install_mcp_binary() -> Result<(), String> {
+    STALE_INSTALL.store(false, Ordering::Relaxed);
     ensure_data_dirs()?;
     let dest = bin_path();
     let sidecar = rag_sidecar_path()?;
@@ -33,16 +41,29 @@ pub fn install_mcp_binary() -> Result<(), String> {
         return Ok(());
     }
     let tmp = dest.with_extension("part");
+    if tmp.is_file() {
+        let _ = fs::remove_file(&tmp);
+    }
     fs::copy(&sidecar, &tmp).map_err(|e| e.to_string())?;
-    fs::rename(&tmp, &dest).map_err(|e| e.to_string())?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&dest).map_err(|e| e.to_string())?.permissions();
+        let mut perms = fs::metadata(&tmp).map_err(|e| e.to_string())?.permissions();
         perms.set_mode(0o755);
-        fs::set_permissions(&dest, perms).map_err(|e| e.to_string())?;
+        fs::set_permissions(&tmp, perms).map_err(|e| e.to_string())?;
     }
-    Ok(())
+    match fs::rename(&tmp, &dest) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let _ = fs::remove_file(&tmp);
+            #[cfg(windows)]
+            if dest.is_file() {
+                STALE_INSTALL.store(true, Ordering::Relaxed);
+                return Ok(());
+            }
+            Err(e.to_string())
+        }
+    }
 }
 
 fn sidecar_version(path: &Path) -> Option<String> {
