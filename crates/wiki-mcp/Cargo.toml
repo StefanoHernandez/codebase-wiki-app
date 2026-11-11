@@ -9,8 +9,9 @@ name = "codebase-wiki-mcp"
 path = "src/main.rs"
 
 [features]
-default = []
-embed = ["rag-core/embed"]
+default = ["download"]
+download = ["rag-core/download"]
+embed = ["rag-core/embed", "download"]
 
 [dependencies]
 rag-core = { path = "../rag-core" }
