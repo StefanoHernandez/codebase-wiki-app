@@ -126,10 +126,23 @@ fn models_cmd(args: &[String]) {
                 std::process::exit(1);
             }
         }
-        #[cfg(feature = "embed")]
-        Some("search") => {
-            eprintln!("models search: implementato in B12");
-            std::process::exit(1);
+        Some("search") if args.len() >= 4 => {
+            let q = args[3..].join(" ");
+            match rag_core::models::hf_search(&q) {
+                Ok(hits) => {
+                    if json {
+                        println!("{}", serde_json::to_string(&hits).unwrap());
+                    } else {
+                        for h in hits {
+                            println!("{} ({})", h.id, h.downloads);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
+            }
         }
         _ => {
             eprintln!("usage: models list|pull <id>");

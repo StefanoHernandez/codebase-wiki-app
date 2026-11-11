@@ -85,6 +85,39 @@ pub fn is_installed(spec: &ModelSpec) -> bool {
     model_dir(spec.id).join(".complete").is_file()
 }
 
+#[cfg(feature = "download")]
+pub fn hf_search(query: &str) -> Result<Vec<HfModelHit>, String> {
+    let base = std::env::var("HF_ENDPOINT")
+        .unwrap_or_else(|_| "https://huggingface.co".to_string());
+    let enc: String = query
+        .bytes()
+        .map(|b| format!("%{b:02X}"))
+        .collect();
+    let url = format!(
+        "{}/api/models?library=onnx&pipeline_tag=feature-extraction&search={enc}&sort=downloads&limit=20",
+        base.trim_end_matches('/')
+    );
+    let resp = ureq::get(&url).call().map_err(|e| e.to_string())?;
+    let v: serde_json::Value = serde_json::from_reader(resp.into_reader()).map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    if let Some(arr) = v.as_array() {
+        for m in arr {
+            out.push(HfModelHit {
+                id: m.get("id").and_then(|x| x.as_str()).unwrap_or("").into(),
+                downloads: m.get("downloads").and_then(|x| x.as_u64()).unwrap_or(0),
+            });
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(feature = "download")]
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct HfModelHit {
+    pub id: String,
+    pub downloads: u64,
+}
+
 #[cfg(test)]
 #[cfg(feature = "download")]
 mod tests {
