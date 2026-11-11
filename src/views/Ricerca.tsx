@@ -1,94 +1,131 @@
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { useProject } from '../state/project';
-import { formatIndexState, reduceRagProgress, type IndexStatus } from '../lib/rag-format';
+import { useRag } from '../state/rag';
+import { formatIndexState, type IndexStatus } from '../lib/rag-format';
+import { SidePanel } from '../components/SidePanel';
 
-type CatalogRow = { id: string; languages: string; sizeMb: number; note: string; tested: boolean };
+type CatalogRow = {
+  id: string;
+  languages: string;
+  sizeMb: number;
+  note: string;
+  tested: boolean;
+  installed: boolean;
+};
+
+type SearchHit = {
+  path: string;
+  startLine: number;
+  endLine: number;
+  snippet: string;
+  score: number;
+};
+
+const DEFAULT_MODEL = 'multilingual-e5-small';
 
 export default function Ricerca() {
   const project = useProject();
+  const rag = useRag();
   const repo = project.snapshot?.repoPath ?? null;
+  const wikiRoot = project.snapshot?.wikiRoot ?? null;
   const [status, setStatus] = useState<IndexStatus | null>(null);
-  const [indexing, setIndexing] = useState(false);
-  const [progress, setProgress] = useState<string>('');
+  const [catalog, setCatalog] = useState<CatalogRow[]>([]);
   const [query, setQuery] = useState('');
   const [wiki, setWiki] = useState(false);
-  const [preview, setPreview] = useState('');
-  const [installed, setInstalled] = useState<string[]>([]);
+  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [panel, setPanel] = useState<{ path: string; markdown: string } | null>(null);
+
+  const job = rag.jobFor(repo);
 
   const refresh = useCallback(async () => {
     if (!repo) return;
     try {
-      const s = (await invoke('rag_status', { repo })) as IndexStatus & Record<string, unknown>;
-      setStatus({
-        model: String(s.model ?? ''),
-        files: Number(s.files ?? 0),
-        chunks: Number(s.chunks ?? 0),
-        indexedHead: (s.indexedHead as string) ?? (s.indexed_head as string) ?? null,
-        head: (s.head as string) ?? null,
-        changedSinceIndex: Number(s.changedSinceIndex ?? s.changed_since_index ?? 0),
-      });
+      const s = (await invoke('rag_status', { repo })) as Record<string, unknown>;
+      setStatus(rag.parseStatus(s));
     } catch {
       setStatus(null);
     }
     try {
-      const m = (await invoke('rag_models')) as { installed?: string[] };
-      setInstalled(m.installed ?? []);
+      const m = (await invoke('rag_models')) as {
+        catalog?: Array<Record<string, unknown>>;
+      };
+      const rows =
+        m.catalog?.map((row) => ({
+          id: String(row.id ?? ''),
+          languages: String(row.languages ?? ''),
+          sizeMb: Number(row.size_mb ?? row.sizeMb ?? 0),
+          note: String(row.note ?? ''),
+          tested: row.tested === true,
+          installed: row.installed === true,
+        })) ?? [];
+      setCatalog(rows);
     } catch {
-      setInstalled([]);
+      setCatalog([]);
     }
-  }, [repo]);
+  }, [repo, rag]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  useEffect(() => {
-    const un = listen<string>('rag://progress', (e) => {
-      const next = reduceRagProgress(null, e.payload);
-      if (next) {
-        setProgress(`${next.phase}: ${next.done}/${next.total}`);
-      }
-      if (e.payload.includes('"event":"done"')) {
-        setIndexing(false);
-        void refresh();
-      }
-    });
-    return () => {
-      void un.then((f) => f());
-    };
-  }, [refresh]);
+  const activeModel = status?.model || DEFAULT_MODEL;
 
   const startIndex = async () => {
     if (!repo) return;
-    setIndexing(true);
-    setProgress('');
+    rag.noteIndexStart(repo);
     await invoke('rag_index_start', { repo });
   };
 
   const cancelIndex = async () => {
-    await invoke('rag_index_cancel');
-    setIndexing(false);
+    if (!repo) return;
+    await invoke('rag_index_cancel', { repo });
+  };
+
+  const useModel = async (id: string) => {
+    if (status?.indexedModel && status.indexedModel !== id) {
+      if (!window.confirm("L'indice verrà ricostruito con il nuovo modello.")) return;
+    }
+    await invoke('rag_set_model', { id });
+    void refresh();
   };
 
   const pullModel = async (id: string) => {
-    await invoke('rag_set_model', { id });
-    // Model pull via sidecar would be a dedicated command; use CLI externally for now.
-    void refresh();
+    if (!repo) return;
+    rag.noteDownloadStart(repo, id);
+    await invoke('rag_model_pull', { id });
   };
 
   const runPreview = async () => {
     if (!repo || !query.trim()) return;
-    const out = await invoke<string>('rag_preview', { repo, query, wiki });
-    setPreview(out);
+    setPreviewLoading(true);
+    setSearchError(null);
+    setHits([]);
+    try {
+      const out = (await invoke('rag_preview', { repo, query, wiki })) as SearchHit[];
+      setHits(out);
+    } catch (e) {
+      setSearchError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPreviewLoading(false);
+    }
   };
 
-  const catalog: CatalogRow[] = [
-    { id: 'multilingual-e5-small', languages: 'multilingue', sizeMb: 120, note: 'Default', tested: true },
-    { id: 'bge-small-en-v1.5', languages: 'EN', sizeMb: 130, note: 'Veloce', tested: true },
-    { id: 'all-MiniLM-L6-v2', languages: 'EN', sizeMb: 90, note: 'Piccolo', tested: true },
-  ];
+  const openHit = async (hit: SearchHit) => {
+    if (!repo || !wikiRoot) return;
+    const normRoot = wikiRoot.replace(/\\/g, '/').replace(/\/+$/, '');
+    const normPath = hit.path.replace(/\\/g, '/');
+    if (!normPath.startsWith(`${normRoot}/`) && normPath !== normRoot) return;
+    const rel = normPath.startsWith(`${normRoot}/`) ? normPath.slice(normRoot.length + 1) : normPath;
+    try {
+      const markdown = await invoke<string>('read_wiki_file', { repo, relPath: rel });
+      setPanel({ path: rel, markdown });
+    } catch {
+      setSearchError('Impossibile aprire la pagina wiki.');
+    }
+  };
 
   if (!repo) {
     return <p className="empty">Apri un progetto per usare la ricerca locale.</p>;
@@ -97,18 +134,39 @@ export default function Ricerca() {
   return (
     <div className="view ricerca-view">
       <h1 className="view-title">Ricerca</h1>
+      {status?.staleInstall ? (
+        <p className="hint">Chiudi gli agenti collegati e riapri l'app per aggiornare il server MCP.</p>
+      ) : null}
       <section className="card">
         <h2>Stato indice</h2>
         <p>{formatIndexState(status)}</p>
+        <label className="grafo-toggle">
+          <input
+            type="checkbox"
+            checked={rag.autoIndex}
+            onChange={(e) => rag.setAutoIndex(e.target.checked)}
+          />
+          Indicizza automaticamente
+        </label>
         <div className="btn-row">
-          <button type="button" className="btn btn-primary" disabled={indexing} onClick={() => void startIndex()}>
+          <button type="button" className="btn btn-primary" disabled={job.running} onClick={() => void startIndex()}>
             Indicizza
           </button>
-          <button type="button" className="btn" disabled={!indexing} onClick={() => void cancelIndex()}>
+          <button type="button" className="btn" disabled={!job.running} onClick={() => void cancelIndex()}>
             Annulla
           </button>
         </div>
-        {progress ? <p className="hint">{progress}</p> : null}
+        {job.progress ? (
+          <progress value={job.progress.done} max={job.progress.total || 1}>
+            {job.progress.phase}
+          </progress>
+        ) : null}
+        {job.progress ? (
+          <p className="hint">
+            {job.progress.phase}: {job.progress.done}/{job.progress.total}
+          </p>
+        ) : null}
+        {job.error ? <p className="error">{job.error}</p> : null}
       </section>
       <section className="card">
         <h2>Modello</h2>
@@ -126,18 +184,24 @@ export default function Ricerca() {
               <tr key={row.id}>
                 <td>
                   {row.id}
-                  {status?.model === row.id ? ' (attivo)' : ''}
+                  {activeModel === row.id ? ' (attivo)' : ''}
                   {!row.tested ? ' — non provato' : ''}
+                  {row.note ? ` — ${row.note}` : ''}
                 </td>
                 <td>{row.languages}</td>
                 <td>{row.sizeMb} MB</td>
                 <td>
-                  {installed.includes(row.id) ? (
-                    <button type="button" className="btn" onClick={() => void pullModel(row.id)}>
+                  {row.installed ? (
+                    <button type="button" className="btn" onClick={() => void useModel(row.id)}>
                       Usa questo
                     </button>
                   ) : (
-                    <button type="button" className="btn" disabled title="Scarica dal terminale: models pull">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={job.downloading}
+                      onClick={() => void pullModel(row.id)}
+                    >
                       Scarica
                     </button>
                   )}
@@ -155,18 +219,34 @@ export default function Ricerca() {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Dove è definito…"
         />
-        <label>
-          <input type="checkbox" checked={wiki} onChange={(e) => setWiki(e.target.checked)} /> Wiki
-        </label>
-        <button type="button" className="btn btn-primary" onClick={() => void runPreview()}>
+        <div className="segmented">
+          <button type="button" aria-pressed={!wiki} onClick={() => setWiki(false)}>
+            Codice
+          </button>
+          <button type="button" aria-pressed={wiki} onClick={() => setWiki(true)}>
+            Documentazione
+          </button>
+        </div>
+        <button type="button" className="btn btn-primary" disabled={previewLoading} onClick={() => void runPreview()}>
           Cerca
         </button>
-        {preview ? <pre className="preview-out">{preview}</pre> : null}
+        {searchError ? <p className="error">{searchError}</p> : null}
+        <ul className="search-hits">
+          {hits.map((h) => (
+            <li key={`${h.path}:${h.startLine}`}>
+              <button type="button" className="linklike" onClick={() => void openHit(h)}>
+                {h.path}:{h.startLine}-{h.endLine}
+              </button>
+              <pre className="preview-out">{h.snippet}</pre>
+            </li>
+          ))}
+        </ul>
       </section>
-      <section className="card">
-        <h2>Collega agli agenti</h2>
-        <p className="hint">Configura MCP da terminale o dalla prossima iterazione della UI Collega.</p>
-      </section>
+      {panel ? (
+        <SidePanel title={panel.path} onClose={() => setPanel(null)}>
+          <pre className="preview-out">{panel.markdown}</pre>
+        </SidePanel>
+      ) : null}
     </div>
   );
 }

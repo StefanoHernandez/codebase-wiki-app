@@ -16,6 +16,6 @@ export const SECTIONS: Array<{ id: SectionId; label: string; View: ComponentType
   { id: 'decisioni', label: 'Decisioni', View: Decisioni },
   { id: 'handoff', label: 'Handoff', View: Handoff },
   { id: 'salute', label: 'Salute', View: Salute },
-  { id: 'ricerca', label: 'Ricerca', View: Ricerca },
   { id: 'grafo', label: 'Grafo', View: Grafo },
+  { id: 'ricerca', label: 'Ricerca', View: Ricerca },
 ];
