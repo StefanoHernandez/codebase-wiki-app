@@ -251,7 +251,9 @@ pub fn choose_python(
     version: impl Fn(&Path) -> Option<(u32, u32)>,
 ) -> Option<PathBuf> {
     for path in candidates {
-        let (major, minor) = version(path)?;
+        let Some((major, minor)) = version(path) else {
+            continue;
+        };
         if python_meets_minimum(major, minor) {
             return Some(path.clone());
         }
@@ -646,5 +648,41 @@ mod tests {
             None
         );
         assert_eq!(choose_python(&candidates, |_| None), None);
+    }
+
+    #[test]
+    fn choose_python_skips_unversioned_then_picks_valid() {
+        let candidates = vec![
+            PathBuf::from("/missing/settings/python3"),
+            PathBuf::from("/opt/python3.11"),
+        ];
+        let chosen = choose_python(&candidates, |p| {
+            if p.ends_with("settings/python3") {
+                None
+            } else if p.ends_with("python3.11") {
+                Some((3, 11))
+            } else {
+                None
+            }
+        });
+        assert_eq!(chosen, Some(PathBuf::from("/opt/python3.11")));
+    }
+
+    #[test]
+    fn choose_python_skips_failing_version_probe_then_picks_valid() {
+        let candidates = vec![
+            PathBuf::from("/broken/python3"),
+            PathBuf::from("/opt/python3.12"),
+        ];
+        let chosen = choose_python(&candidates, |p| {
+            if p.ends_with("broken/python3") {
+                None
+            } else if p.ends_with("python3.12") {
+                Some((3, 12))
+            } else {
+                None
+            }
+        });
+        assert_eq!(chosen, Some(PathBuf::from("/opt/python3.12")));
     }
 }
