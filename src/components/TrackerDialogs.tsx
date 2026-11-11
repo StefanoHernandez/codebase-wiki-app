@@ -1,6 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { Dialog, Field } from './Dialog';
+import { useToast } from './Toast';
+import { copyText, workflowPrompt } from '../api';
 import { useProject, type ProjectState } from '../state/project';
+import { handoffLag, type HandoffLagAction } from '../lib/handoff-lag';
 import { DEFAULT_CORE_MAP } from '../lib/schema-parser';
 import { peer } from '../lib/apply-edits';
 import {
@@ -88,6 +91,33 @@ function Note({ children }: { children: ReactNode }) {
   return <p className="dialog-note">{children}</p>;
 }
 
+function HandoffLagNotice({ action }: { action: HandoffLagAction }) {
+  const project = useProject();
+  const toast = useToast();
+  const warning = handoffLag(project.handoff, action);
+  if (!warning) return null;
+
+  const copySync = async () => {
+    const repo = project.current;
+    if (!repo) return;
+    try {
+      await copyText(await workflowPrompt(repo, 'wiki-sync'));
+      toast('Prompt copiato');
+    } catch {
+      toast('Non riesco a copiare il prompt');
+    }
+  };
+
+  return (
+    <div className="handoff-freshness handoff-freshness--stale">
+      <p className="handoff-freshness-text">{warning}</p>
+      <button type="button" className="btn btn-human" onClick={() => void copySync()} disabled={!project.current}>
+        Copia prompt /wiki-sync
+      </button>
+    </div>
+  );
+}
+
 /** Promuovi a lavoro: a proposal becomes an Open row with the next free ID. */
 export function PromoteDialog({ proposal, onClose, onDone }: Handlers & { proposal: TrackerProposalRow }) {
   const { project, error, busy, run } = useSigned(onDone);
@@ -157,6 +187,7 @@ export function PromoteDialog({ proposal, onClose, onDone }: Handlers & { propos
       <Note>
         Proposta: {proposal.proposal}. Diventa un lavoro aperto con il prossimo ID. Lo firmi tu come {project.actor}.
       </Note>
+      <HandoffLagNotice action={{ kind: 'promote' }} />
       <Field label="Responsabile">
         <input value={owner} onChange={(e) => setOwner(e.target.value)} />
       </Field>
@@ -226,6 +257,7 @@ export function CloseDialog({ row, onClose, onDone }: Handlers & { row: TrackerO
         Chiudere a mano registra che sei tu a chiudere {row.goal} senza prova. Il lavoro esce dai lavori aperti come
         ⚫ e non diventa verificato.
       </Note>
+      <HandoffLagNotice action={{ kind: 'close', taskId: row.id }} />
       <Field label="Cosa non è provato">
         <input value={notProven} onChange={(e) => setNotProven(e.target.value)} />
       </Field>
