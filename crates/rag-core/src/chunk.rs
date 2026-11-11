@@ -45,6 +45,18 @@ fn code_language(ext: &str) -> Option<tree_sitter::Language> {
         "js" | "jsx" | "mjs" | "cjs" => Some(tree_sitter_javascript::LANGUAGE.into()),
         "py" => Some(tree_sitter_python::LANGUAGE.into()),
         "go" => Some(tree_sitter_go::LANGUAGE.into()),
+        "java" => Some(tree_sitter_java::LANGUAGE.into()),
+        "c" => Some(tree_sitter_c::LANGUAGE.into()),
+        // `.h` is parsed as C++: a superset for headers, and most headers in mixed repos are C++.
+        "h" | "hh" | "hpp" | "hxx" | "cc" | "cpp" | "cxx" => Some(tree_sitter_cpp::LANGUAGE.into()),
+        "cs" => Some(tree_sitter_c_sharp::LANGUAGE.into()),
+        "kt" | "kts" => Some(tree_sitter_kotlin_ng::LANGUAGE.into()),
+        "swift" => Some(tree_sitter_swift::LANGUAGE.into()),
+        "php" => Some(tree_sitter_php::LANGUAGE_PHP.into()),
+        "rb" => Some(tree_sitter_ruby::LANGUAGE.into()),
+        "sh" | "bash" | "zsh" => Some(tree_sitter_bash::LANGUAGE.into()),
+        "scala" | "sc" => Some(tree_sitter_scala::LANGUAGE.into()),
+        "lua" => Some(tree_sitter_lua::LANGUAGE.into()),
         _ => None,
     }
 }
@@ -75,17 +87,34 @@ fn markdown_breadcrumb(text: &str, at: usize) -> Vec<String> {
 }
 
 fn symbol_name(node: tree_sitter::Node, src: &str) -> Option<String> {
-    const KINDS: [&str; 10] =
-        ["function", "method", "class", "impl", "trait", "struct", "enum", "interface", "mod_item", "type_spec"];
+    const KINDS: [&str; 14] = [
+        "function", "method", "class", "impl", "trait", "struct", "enum", "interface", "mod_item", "type_spec",
+        "namespace", "module", "object", "constructor",
+    ];
     let kind = node.kind();
-    if !KINDS.iter().any(|k| kind.contains(k)) {
+    // Calls and references (`function_call`, `struct foo x;`) are not definitions.
+    if kind.contains("call") || !KINDS.iter().any(|k| kind.contains(k)) {
+        return None;
+    }
+    if kind.ends_with("_specifier") && node.child_by_field_name("body").is_none() {
         return None;
     }
     let name = node
         .child_by_field_name("name")
-        .or_else(|| (kind == "impl_item").then(|| node.child_by_field_name("type")).flatten())?;
+        .or_else(|| (kind == "impl_item").then(|| node.child_by_field_name("type")).flatten())
+        .or_else(|| innermost_declarator(node))?;
     let s = src.get(name.byte_range())?;
     Some(s.chars().take(40).collect())
+}
+
+/// C/C++ `function_definition` has no `name`: it sits at the end of the declarator chain
+/// (`*foo(int)` → `foo`, `Store::open` stays qualified).
+fn innermost_declarator(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
+    let mut d = node.child_by_field_name("declarator")?;
+    while let Some(inner) = d.child_by_field_name("declarator") {
+        d = inner;
+    }
+    Some(d)
 }
 
 /// The widest node starting where `n` starts (`line_comment`, not its `///` marker token).
@@ -301,6 +330,33 @@ mod tests {
         let tree = parser.parse(&src, None).unwrap();
         let at = src.find("/// Opens").unwrap();
         assert_eq!(code_symbols(&tree, &src, at, src.len()), ["Store", "open_writer"]);
+    }
+
+    #[test]
+    fn enclosing_symbols_in_common_languages() {
+        // (extension, source, marker inside the innermost symbol, expected breadcrumb)
+        let cases: [(&str, &str, &str, &[&str]); 13] = [
+            ("java", "package a;\nclass Store {\n  void open() {\n    int MARK = 1;\n  }\n}\n", "MARK", &["Store", "open"]),
+            ("c", "static int *open_db(int n) {\n  int MARK = n;\n  return 0;\n}\n", "MARK", &["open_db"]),
+            ("cpp", "namespace rag {\nclass Store {\n  void open() {\n    int MARK = 1;\n  }\n};\n}\n", "MARK", &["rag", "Store", "open"]),
+            ("cpp", "void Store::open() {\n  int MARK = 1;\n}\n", "MARK", &["Store::open"]),
+            ("cs", "namespace Rag {\n  class Store {\n    void Open() {\n      var MARK = 1;\n    }\n  }\n}\n", "MARK", &["Rag", "Store", "Open"]),
+            ("kt", "class Store {\n  fun open() {\n    val MARK = 1\n  }\n}\n", "MARK", &["Store", "open"]),
+            ("swift", "class Store {\n  func open() {\n    let MARK = 1\n  }\n}\n", "MARK", &["Store", "open"]),
+            ("php", "<?php\nclass Store {\n  function open() {\n    $MARK = 1;\n  }\n}\n", "$MARK", &["Store", "open"]),
+            ("rb", "module Rag\n  class Store\n    def open\n      MARK = 1\n    end\n  end\nend\n", "MARK", &["Rag", "Store", "open"]),
+            ("sh", "open_db() {\n  MARK=1\n}\n", "MARK", &["open_db"]),
+            ("scala", "object Rag {\n  class Store {\n    def open(): Unit = {\n      val MARK = 1\n    }\n  }\n}\n", "MARK", &["Rag", "Store", "open"]),
+            ("lua", "local function open_db()\n  local MARK = 1\nend\n", "MARK", &["open_db"]),
+            ("lua", "function open_db()\n  print(MARK)\nend\n", "MARK", &["open_db"]),
+        ];
+        for (ext, src, mark, want) in cases {
+            let mut parser = tree_sitter::Parser::new();
+            parser.set_language(&code_language(ext).unwrap()).unwrap();
+            let tree = parser.parse(src, None).unwrap();
+            let at = src.find(mark).unwrap();
+            assert_eq!(code_symbols(&tree, src, at, src.len()), want, "{ext}: {src}");
+        }
     }
 
     #[test]
