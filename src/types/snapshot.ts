@@ -38,10 +38,33 @@ export interface LintFinding {
   message: string;
 }
 
+/** What the current wiki format still needs (validator `upgrade`). Never a finding. */
+export interface LintUpgrade {
+  wikiRelPath?: string | null;
+  line?: number | null;
+  code: string;
+  message: string;
+  /** 'adopt' (run /wiki-init --adopt) or 'update-plugin'. */
+  fix: string;
+}
+
+export interface LintInfo {
+  wikiRelPath?: string | null;
+  line?: number | null;
+  code: string;
+  message: string;
+}
+
+/** validate-wiki.py `--json` document (0.13.0+). `error` set → the validator did not run; lists are empty. */
 export interface LintReport {
   exitCode: number;
+  validator?: string | null;
+  format?: string | null;
+  wiki?: string | null;
+  error?: string | null;
   findings: LintFinding[];
-  infos: string[];
+  upgrades: LintUpgrade[];
+  infos: LintInfo[];
   rawOutput: string;
 }
 

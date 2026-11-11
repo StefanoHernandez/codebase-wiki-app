@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime
 import fnmatch
+import json
 import re
 import string
 import sys
@@ -38,11 +39,77 @@ BATON_COLUMNS = ["Order", "Task", "Start files", "Done when", "Verification comm
 OPEN_COLUMNS = ["ID", "Status", "Goal", "Done when", "Owner", "Next verification", "Evidence"]
 DONE_COLUMNS = ["ID", "Status", "Goal", "Closed", "Criteria met", "Evidence"]
 UNRESOLVED = {"", "unknown", "pending", "todo", "tbd", "n/a", "na", "none"}
+HTML_TAGS = "br|sub|sup|kbd|code|em|strong|b|i|u|s|del|ins|mark|span|details|summary"
+# A placeholder is <text> that is not an autolink and not an HTML element (self-closing or with attributes).
+PLACEHOLDER = re.compile(
+    rf"(?<!\w)<(?!/?(?:{HTML_TAGS})\b(?:\s+[\w-]+=|\s*/?>))"
+    rf"(?![A-Za-z][A-Za-z0-9+.-]{{1,31}}:[^\s<>]*>)(?![^\s<>@]+@[^\s<>]+>)[^<>]+>")
+PRODUCT_CLOSER = re.compile(
+    r"^(claude|gpt|gemini|codex|copilot|cursor|composer|antigravity)"
+    r"(?:[-\s]?(?:code|opus|sonnet|haiku|fable|pro|flash|agent|\d[\w.]*))?$",
+    re.I)
+# The validator is installed on its own, so it carries both numbers.
+# VERSION is the plugin release; it equals canonical/codebase/VERSION.
+VERSION = "0.13.0"
+# FORMAT_VERSION is the wiki format this validator checks. Raise it only when a
+# release adds an `upgrade:` check or changes a structure tools read.
+FORMAT_VERSION = "0.12.0"
+SCHEMA_SECTIONS = ["Project profile", "Conventions", "Evidence", "Confidentiality", "Budgets",
+                   "Log format", "Topics", "Page frontmatter"]
+DECISION_STATUS = re.compile(r"(proposed|accepted|rejected|superseded by \d{4})")
+AGENT_NAMES = {"agent", "the agent", "coding agent", "ai", "assistant", "bot", "claude", "claude code",
+               "codex", "cursor", "cursor agent", "copilot", "github copilot", "gemini", "chatgpt", "gpt",
+               "antigravity", "composer"}
+ACTOR_ID = r"[A-Za-z0-9][A-Za-z0-9._-]*"
+GENERATED_BY = re.compile(rf"(?:human|process):{ACTOR_ID}|[a-z0-9-]+/\S+")
+VERIFIED_BY = re.compile(rf"(?:human|process):{ACTOR_ID}")
+DATETIME = re.compile(r"(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?Z")
+OWNERS_COLUMNS = ["Topic", "Owner page"]
+RISK_COLUMNS = ["ID", "Risk", "Severity", "Trigger", "Mitigation", "Owner", "IDs"]
+RISK_SEVERITY = {"critical", "high", "medium", "low"}
+
+
+def version_tuple(value: str) -> tuple[int, ...] | None:
+    return tuple(int(p) for p in value.split(".")) if re.fullmatch(r"\d+(?:\.\d+){2}", value) else None
+
+
+def columns_match(header: list[str], expected: list[str]) -> bool:
+    """English column names must be exact and in order; a translated header only keeps the count."""
+    return header == expected if set(header) & set(expected) else len(header) == len(expected)
+
+
+def invalid_black_closer(name: str) -> bool:
+    lower = name.strip().lower()
+    if lower.startswith("process:"):
+        return True
+    if lower in ("ai agent", "claude-code"):
+        return True
+    if PRODUCT_CLOSER.fullmatch(lower):
+        return True
+    return lower in AGENT_NAMES or "/" in lower
 
 
 def unresolved(value: str) -> bool:
     value = value.strip().strip("`").strip()
-    return value.lower() in UNRESOLVED or bool(re.search(r"<[^>]+>", value))
+    return value.lower() in UNRESOLVED or bool(PLACEHOLDER.search(value))
+
+
+def flow_maps(value: str) -> list[dict[str, str]] | None:
+    """Read `{ k: v, … }` or `[{ … }, { … }]` written on one line; None for anything else."""
+    bodies = re.findall(r"\{([^{}]*)\}", value)
+    shape = re.sub(r"\{[^{}]*\}", "{}", value).replace(" ", "")
+    if not bodies or not re.fullmatch(r"\{\}|\[\{\}(?:,\{\})*\]", shape):
+        return None
+    maps = []
+    for body in bodies:
+        entry: dict[str, str] = {}
+        for part in body.split(","):
+            key, sep, item = part.partition(":")
+            if not sep or key.strip() in entry:
+                return None
+            entry[key.strip()] = item.strip().strip("\"'")
+        maps.append(entry)
+    return maps
 
 
 def iso_date(value: str) -> bool:
@@ -139,6 +206,15 @@ def inline_destinations(line: str) -> list[str]:
 
 
 @dataclass
+class Note:
+    path: Path | None
+    line: int | None
+    message: str
+    code: str = ""
+    fix: str = ""  # upgrades only: "adopt" or "update-plugin"
+
+
+@dataclass
 class Page:
     path: Path
     lines: list[str]
@@ -152,15 +228,61 @@ class Validator:
         self.wiki = wiki.resolve()
         # Sources belong to the target repository, never the installed package.
         self.repo = next((p for p in self.wiki.parents if (p / ".git").exists()), self.wiki.parent)
-        self.findings: list[str] = []
-        self.infos: list[str] = []
+        self.findings: list[Note] = []
+        self.infos: list[Note] = []
+        # What is still missing for the current format: reported, never a finding.
+        self.upgrades: list[Note] = []
+        self.tracker_ids: set[str] | None = None
         self.pages: dict[Path, Page] = {}
 
     def error(self, path: Path, line: int, message: str):
-        self.findings.append(f"{path}:{line}: {message}")
+        self.findings.append(Note(path, line, message))
+
+    def upgrade(self, path: Path, line: int, code: str, message: str, fix: bool = True):
+        self.upgrades.append(Note(path, line, message, code, "adopt" if fix else "update-plugin"))
+
+    def info(self, code: str, message: str, path: Path | None = None, line: int | None = None):
+        self.infos.append(Note(path, line, message, code))
+
+    def root(self) -> str:
+        try:
+            return self.wiki.relative_to(self.repo).as_posix()
+        except ValueError:
+            return str(self.wiki)
+
+    def rel(self, path: Path | None) -> str | None:
+        if path is None:
+            return None
+        try:
+            return path.relative_to(self.wiki).as_posix()
+        except ValueError:
+            return str(path)
+
+    def report(self, code: int) -> dict:
+        def row(note: Note, *extra: str) -> dict:
+            out = {"path": self.rel(note.path), "line": note.line}
+            out.update({key: getattr(note, key) for key in extra})
+            out["message"] = note.message
+            return out
+        return {"validator": VERSION, "format": FORMAT_VERSION, "wiki": self.root(), "exit": code, "error": None,
+                "findings": [row(n) for n in self.findings],
+                "upgrades": [dict(row(n, "code"), fix=n.fix) for n in self.upgrades],
+                "infos": [row(n, "code") for n in self.infos]}
+
+    def load(self, path: Path):
+        try:
+            self.read_page(path)
+        except (OSError, UnicodeError):
+            self.error(path, 1, "cannot read page (unreadable or not UTF-8)")
+
+    @staticmethod
+    def marked(page: Page, marker: str) -> bool:
+        return any(line.strip() == f"<!-- wiki:{marker} -->" for line in page.lines)
 
     def read_page(self, path: Path) -> Page:
         lines = path.read_text(encoding="utf-8-sig").splitlines()
+        if lines and lines[0].startswith("\ufeff"):
+            lines[0] = lines[0].lstrip("\ufeff")
         fields: dict[str, str | list[str]] = {}
         locations: dict[str, int] = {}
         end = 0
@@ -202,6 +324,45 @@ class Validator:
                 return value[1:-1].strip()
         return value
 
+    def attribution(self, page: Page, key: str):
+        if key not in page.fields:
+            return
+        verified = key == "verified"
+        raw = str(page.fields[key]).strip()
+        maps = flow_maps(raw)
+        if not verified and maps is not None:
+            shape = re.sub(r"\{[^{}]*\}", "{}", raw).replace(" ", "")
+            if shape != "{}":
+                maps = None
+        by = VERIFIED_BY if verified else GENERATED_BY
+        allowed = {"by", "at", "commit"} if verified else {"by", "at"}
+
+        def good(entry: dict[str, str]) -> bool:
+            at = DATETIME.fullmatch(entry.get("at", ""))
+            return (set(entry) <= allowed and by.fullmatch(entry.get("by", "")) is not None
+                    and at is not None and iso_date(at[1])
+                    and ("commit" not in entry or re.fullmatch(r"[0-9a-f]{7,40}", entry["commit"]) is not None))
+
+        if maps is None or (not verified and len(maps) != 1) or not all(good(entry) for entry in maps):
+            self.error(page.path, page.locations.get(key, 1),
+                       "verified must be { by: human:<id> or process:<id>, at: <ISO 8601 UTC datetime with Z>[, commit: <sha>] } on one line, or a [ … ] list of them"
+                       if verified else
+                       "generated must be { by: <actor>, at: <ISO 8601 UTC datetime with Z> }")
+
+    def profile(self, schema: Page):
+        for number, line in self.section(schema, "project-profile", "Project profile", required=False):
+            if not line.strip().startswith("|"):
+                continue
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) < 2:
+                continue
+            setting = cells[0].strip("*").strip("`").strip().lower()
+            if setting != "log order":
+                continue
+            value = cells[1].strip("`").strip()
+            if value not in ("oldest first", "newest first"):
+                self.error(schema.path, number, "Log order must be `oldest first` or `newest first`")
+
     def frontmatter(self, page: Page):
         # One root finding already identifies missing/unterminated metadata.
         # Links and role-specific checks still run on this page's body.
@@ -220,6 +381,8 @@ class Validator:
             self.error(page.path, page.locations.get("updated", 1), "updated must be a real ISO date YYYY-MM-DD")
         if page.fields.get("confidence") not in ("high", "medium", "low"):
             self.error(page.path, page.locations.get("confidence", 1), "confidence must be high, medium, or low")
+        for key in ("generated", "verified"):
+            self.attribution(page, key)
         if "sources" not in page.fields and schema:
             return
         sources = page.fields.get("sources")
@@ -291,7 +454,7 @@ class Validator:
         section = self.section(schema, "core-map", "Core map", required=False)
         if not section:
             # A present but empty map must not masquerade as a v1 wiki.
-            if "## Core map" in schema.lines or "<!-- wiki:core-map -->" in schema.lines:
+            if any(l.strip() in ("## Core map", "<!-- wiki:core-map -->") for l in schema.lines):
                 self.error(schema.path, 1, "Core map is empty")
                 return {}
             mapping = DEFAULTS.copy()
@@ -385,7 +548,7 @@ class Validator:
             line = re.sub(r"(`+).*?\1", "", line)
             links = inline_destinations(line)
             # Standard reference definitions are checked too; no arbitrary Markdown extensions.
-            reference = re.match(r"^ {0,3}\[[^\]]+\]:\s*(<[^>]+>|\S+)", line)
+            reference = re.match(r"^ {0,3}\[(?!\^)[^\]]+\]:\s*(<[^>]+>|\S+)", line)
             if reference:
                 links.append(reference[1].strip("<>"))
             for link in links:
@@ -401,6 +564,7 @@ class Validator:
         ids = set()
         open_ids = set()
         open_readable = True
+        ids_readable = True
         for kind, heading in TRACKER.items():
             before = len(self.findings)
             section = self.section(page, kind, heading)
@@ -412,32 +576,41 @@ class Validator:
                     self.error(page.path, 1, f"missing {kind} tracker table")
                 if kind == "open":
                     open_readable = False
+                if kind == "done":
+                    ids_readable = False
                 continue
             header = rows[0][1]
             if kind == "proposals":
                 for number, cells in rows[1:]:
-                    if any(re.search(r"\bT\d+\b|[🟢⚫🟡⚪🔴]", cell) for cell in cells):
+                    if re.fullmatch(r"T[1-9]\d*", cells[0]) or any(cell in ("🟢", "⚫", "🟡", "⚪", "🔴") for cell in cells):
                         self.error(page.path, number, "proposal must not define an activity ID or status icon")
                 continue
             columns = OPEN_COLUMNS if kind == "open" else DONE_COLUMNS
             legacy = kind == "done" and "Status" not in header and len(header) == 5
             if legacy:
                 columns = [c for c in columns if c != "Status"]
+                # Legacy rows stay valid; only a new ⚫ closure has nowhere to go.
+                self.upgrade(page.path, rows[0][0], "done-status-missing", "Done table has no Status column; ⚫ closures cannot be recorded")
             # Marked translated tables keep the documented column order.
             if all(c in header for c in columns):
                 positions = {c: header.index(c) for c in columns}
-            elif len(header) == len(columns) and any(line.strip() == f"<!-- wiki:{kind} -->" for line in page.lines):
+            elif len(header) >= len(columns) and any(line.strip() == f"<!-- wiki:{kind} -->" for line in page.lines):
                 positions = {c: i for i, c in enumerate(columns)}
             else:
                 self.error(page.path, rows[0][0], f"unsupported {kind} tracker columns")
                 if kind == "open":
                     open_readable = False
+                ids_readable = False
                 continue
             for number, cells in rows[1:]:
                 if len(cells) != len(header):
-                    self.error(page.path, number, f"{kind} tracker row does not match its header")
+                    msg = f"{kind} tracker row does not match its header"
+                    if len(cells) > len(header):
+                        msg += r" (a literal | inside a cell is written \|)"
+                    self.error(page.path, number, msg)
                     if kind == "open":
                         open_readable = False
+                    ids_readable = False
                     continue
                 row = {c: cells[i] for c, i in positions.items()}
                 activity = row["ID"]
@@ -445,6 +618,7 @@ class Validator:
                     self.error(page.path, number, "tracker ID must be T followed by a positive integer")
                     if kind == "open":
                         open_readable = False
+                    ids_readable = False
                 if activity in ids:
                     self.error(page.path, number, f"duplicate tracker ID {activity}")
                 ids.add(activity)
@@ -464,12 +638,102 @@ class Validator:
                 if status == "🟢" and any(explicit_unproven(row[column]) for column in ("Criteria met", "Evidence")):
                     self.error(page.path, number, "green row contains an explicit unproven claim in criteria or evidence")
                 if status == "⚫":
-                    closure = re.fullmatch(r"closed by (.+?) (\d{4}-\d{2}-\d{2}); not proven: (.+)", row["Criteria met"])
-                    if not closure or unresolved(closure[1]) or unresolved(closure[3]) or closure[1].lower() in ("agent", "coding agent", "ai"):
+                    closure = re.fullmatch(r"closed by (.+?) (\d{4}-\d{2}-\d{2}); not proven: (.+)", row["Criteria met"], re.I)
+                    if not closure or unresolved(closure[1]) or unresolved(closure[3]) \
+                            or invalid_black_closer(closure[1]):
                         self.error(page.path, number, "black row needs 'closed by <person> YYYY-MM-DD; not proven: <what>' and human closure evidence")
                     elif not iso_date(closure[2]):
                         self.error(page.path, number, "black row has invalid closure date")
+        if open_readable and ids_readable:
+            self.tracker_ids = ids
         return open_ids if open_readable else None
+
+    def format_upgrades(self, schema: Page, paths: dict[str, Path], has_core_map: bool):
+        """Report what a wiki still needs for the current format, without failing it."""
+        declared = schema.fields.get("format_version")
+        line = schema.locations.get("format_version", 1)
+        if not isinstance(declared, str) or not declared:
+            self.upgrade(schema.path, 1, "format-version-missing", "format_version missing")
+        elif version_tuple(declared) is None:
+            self.upgrade(schema.path, line, "format-version-invalid", "format_version must be X.Y.Z")
+        elif version_tuple(declared) < version_tuple(FORMAT_VERSION):
+            self.upgrade(schema.path, line, "format-version-older", f"format_version {declared} is older than {FORMAT_VERSION}")
+        elif version_tuple(declared) > version_tuple(FORMAT_VERSION):
+            self.upgrade(schema.path, line, "format-version-newer", f"format_version {declared} is newer than this plugin ({FORMAT_VERSION}); update the plugin", fix=False)
+            # An older plugin must not propose edits to a newer wiki.
+            return
+        if not has_core_map:
+            self.upgrade(schema.path, 1, "core-map-missing", "Core map missing (v1 wiki)")
+        for name in SCHEMA_SECTIONS:
+            slug = name.lower().replace(" ", "-")
+            if f"## {name}" not in (l.strip() for l in schema.lines) and not self.marked(schema, slug):
+                self.upgrade(schema.path, 1, "schema-section-missing", f"SCHEMA section ## {name} (or <!-- wiki:{slug} -->) missing")
+        decisions = paths.get("decisions")
+        if decisions is not None and decisions.is_file():
+            self.upgrade(schema.path, 1, "decisions-not-folder", "decisions must be a folder of NNNN-<slug>.md files")
+        elif decisions is not None:
+            for path in sorted(decisions.glob("*.md")):
+                page = self.pages.get(path)
+                if not page or not re.fullmatch(r"\d{4}-.+\.md", path.name):
+                    continue
+                status = page.fields.get("status")
+                if not isinstance(status, str) or not status:
+                    self.upgrade(path, 1, "decision-status-missing", "decision status must be in frontmatter (status: proposed | accepted | rejected | superseded by NNNN)")
+                elif not DECISION_STATUS.fullmatch(status):
+                    self.upgrade(path, page.locations.get("status", 1), "decision-status-invalid", "decision status must be proposed, accepted, rejected or superseded by NNNN")
+                if "## Approval" not in (l.strip() for l in page.lines) and not self.marked(page, "approval"):
+                    self.upgrade(path, 1, "decision-approval-missing", "decision has no ## Approval section (or <!-- wiki:approval -->)")
+
+    def cited_ids(self, page: Page, number: int, text: str, what: str):
+        text = re.sub(r"(`+).*?\1", "", text)
+        if self.tracker_ids is None:
+            if re.search(r"\bT[1-9]\d*\b", text):
+                self.error(page.path, number, f"{what} tracker references not checked: tracker IDs are unavailable")
+            return
+        for activity in re.findall(r"\bT[1-9]\d*\b", text):
+            if activity not in self.tracker_ids:
+                self.error(page.path, number, f"{what} cites unknown tracker ID {activity}")
+
+    def owners(self, page: Page):
+        if not self.marked(page, "owners"):
+            return
+        rows = self.table(page, self.section(page, "owners", "How this wiki is organised"))
+        if not rows or not columns_match(rows[0][1], OWNERS_COLUMNS):
+            self.error(page.path, rows[0][0] if rows else 1, "unsupported owners table; expected Topic and Owner page columns")
+            return
+        for number, cells in rows[1:]:
+            if len(cells) != 2 or unresolved(cells[0]) or "](" not in cells[1]:
+                self.error(page.path, number, "owners row needs a topic and an owner page link")
+
+    def next_steps(self, page: Page):
+        if self.marked(page, "next"):
+            for number, line in self.section(page, "next", "Next steps"):
+                self.cited_ids(page, number, line, "Next steps")
+
+    def risk_register(self, page: Page):
+        if not self.marked(page, "risk-register"):
+            return
+        rows = self.table(page, self.section(page, "risk-register", "Register"))
+        if not rows or not columns_match(rows[0][1], RISK_COLUMNS):
+            self.error(page.path, rows[0][0] if rows else 1, "unsupported risk register table; expected " + " | ".join(RISK_COLUMNS))
+            return
+        seen = set()
+        for number, cells in rows[1:]:
+            if len(cells) != len(RISK_COLUMNS):
+                self.error(page.path, number, "risk register row does not match its header")
+                continue
+            risk = dict(zip(RISK_COLUMNS, cells))
+            if not re.fullmatch(r"R[1-9]\d*", risk["ID"]):
+                self.error(page.path, number, "risk ID must be R followed by a positive integer")
+            elif risk["ID"] in seen:
+                self.error(page.path, number, f"duplicate risk ID {risk['ID']}")
+            seen.add(risk["ID"])
+            if risk["Severity"].strip("`") not in RISK_SEVERITY:
+                self.error(page.path, number, "risk severity must be critical, high, medium or low")
+            for column in ("Risk", "Trigger", "Mitigation"):
+                if unresolved(risk[column]):
+                    self.error(page.path, number, f"risk row needs {column.lower()}")
+            self.cited_ids(page, number, risk["IDs"], "risk")
 
     def handoff(self, page: Page, open_ids: set[str] | None):
         if open_ids is None:
@@ -479,7 +743,10 @@ class Validator:
         rows = self.table(page, baton)
         no_work = any(line.strip() == "No open work." for _, line in baton)
         if no_work and open_ids:
-            self.error(page.path, 1, "No open work. contradicts open tracker rows")
+            line = next(number for number, text in baton if text.strip() == "No open work.")
+            self.info("handoff-no-open-work-stale",
+                      "handoff says No open work. but the tracker has open rows; refresh the handoff with /wiki-sync",
+                      page.path, line)
         if no_work and len(rows) > 1:
             self.error(page.path, 1, "No open work. contradicts baton task rows")
         if not rows:
@@ -494,11 +761,19 @@ class Validator:
             self.error(page.path, rows[0][0], "baton table has no task rows")
         for number, cells in rows[1:]:
             if len(cells) != 6:
-                self.error(page.path, number, "baton task needs six cells")
+                msg = "baton task needs six cells"
+                if len(cells) > 6:
+                    msg += r" (a literal | inside a cell is written \|)"
+                self.error(page.path, number, msg)
                 continue
             order, task, start, done, verification, _notes = cells
             activity = re.match(r"^(T[1-9]\d*)\s*-\s*\S", task)
-            if not activity or (open_ids is not None and activity[1] not in open_ids):
+            if activity and open_ids is not None and activity[1] not in open_ids \
+                    and self.tracker_ids is not None and activity[1] in self.tracker_ids:
+                self.info("handoff-baton-id-closed",
+                          f"baton task {activity[1]} is closed in the tracker; refresh the handoff with /wiki-sync",
+                          page.path, number)
+            elif not activity or (open_ids is not None and activity[1] not in open_ids):
                 self.error(page.path, number, "baton task must start with an open tracker ID (T1 - task)")
             if not re.fullmatch(r"[1-9]\d*", order):
                 self.error(page.path, number, "baton order must be a positive integer")
@@ -507,16 +782,20 @@ class Validator:
                     self.error(page.path, number, f"baton task missing {name}")
 
     def run(self):
-        schema = self.read_page(self.wiki / "SCHEMA.md")
+        try:
+            schema = self.read_page(self.wiki / "SCHEMA.md")
+        except (OSError, UnicodeError) as exc:
+            raise ValueError(f"cannot read SCHEMA.md ({type(exc).__name__})") from exc
         paths = self.core_map(schema)
         exclusions = self.excluded(schema, paths)
         self.page_types(schema)
+        self.profile(schema)
         skipped = 0
         # rglob does not follow directory symlinks. A safe adopted Core path
         # still needs its role-specific validation even when reached via one.
         for path in paths.values():
             if path.is_file() and path not in self.pages:
-                self.read_page(path)
+                self.load(path)
         for path in sorted(self.wiki.rglob("*.md")):
             # Never read symlink targets outside the wiki or confidential term files.
             if private_terms_path(path):
@@ -528,9 +807,9 @@ class Validator:
                 skipped += 1
                 continue
             if path not in self.pages:
-                self.read_page(path)
+                self.load(path)
         if skipped:
-            self.infos.append(f"info: {skipped} paths excluded by SCHEMA")
+            self.info("paths-excluded", f"{skipped} paths excluded by SCHEMA")
         for page in self.pages.values():
             self.frontmatter(page)
             self.links(page)
@@ -543,30 +822,66 @@ class Validator:
         handoff = self.pages.get(paths.get("handoff"))
         if handoff:
             self.handoff(handoff, open_ids)
+        if tracker:
+            self.next_steps(tracker)
+        for role, check in (("index", self.owners), ("risks", self.risk_register)):
+            page = self.pages.get(paths.get(role))
+            if page:
+                check(page)
+        decisions = paths.get("decisions")
+        if decisions is not None and decisions.is_dir():
+            numbers: dict[str, Path] = {}
+            for path in sorted(decisions.glob("*.md")):
+                if re.fullmatch(r"\d{4}-.+\.md", path.name):
+                    if path.name[:4] in numbers:
+                        self.error(path, 1, f"duplicate decision number {path.name[:4]} (also {numbers[path.name[:4]].name})")
+                    numbers.setdefault(path.name[:4], path)
+        has_core_map = any(l.strip() in ("## Core map", "<!-- wiki:core-map -->") for l in schema.lines)
+        self.format_upgrades(schema, paths, has_core_map)
         return self.findings
 
 
 def main(argv: list[str]) -> int:
+    if argv[1:] == ["--version"]:
+        print(f"validate-wiki {VERSION} (format {FORMAT_VERSION})")
+        return 0
+    args = argv[1:]
+    as_json = "--json" in args
+    args = [a for a in args if a != "--json"]
+
+    def stop(message: str) -> int:
+        if as_json:
+            print(json.dumps({"validator": VERSION, "format": FORMAT_VERSION, "wiki": None, "exit": 2,
+                              "error": message, "findings": [], "upgrades": [], "infos": []}, ensure_ascii=False))
+        print(message, file=sys.stderr)
+        return 2
+
     if sys.version_info < (3, 10):
-        print("validate-wiki.py requires Python 3.10+; deterministic validation not run", file=sys.stderr)
-        return 2
-    if len(argv) != 2:
-        print("usage: python3 <maintainer>/scripts/validate-wiki.py <wiki-root>", file=sys.stderr)
-        return 2
-    wiki = Path(argv[1])
+        return stop("validate-wiki.py requires Python 3.10+; deterministic validation not run")
+    if len(args) != 1 or args[0].startswith("-"):
+        return stop("usage: python3 <maintainer>/scripts/validate-wiki.py [--json] <wiki-root>")
+    wiki = Path(args[0])
     if not wiki.is_dir() or not (wiki / "SCHEMA.md").is_file() or private_terms_path(wiki / "SCHEMA.md") or not (wiki / "SCHEMA.md").resolve().is_relative_to(wiki.resolve()):
-        print("configuration error: wiki-root needs a readable SCHEMA.md inside it", file=sys.stderr)
-        return 2
+        return stop("configuration error: wiki-root needs a readable SCHEMA.md inside it")
     try:
         validator = Validator(wiki)
-        findings = validator.run()
-    except (OSError, UnicodeError, ValueError) as exc:
-        print(f"configuration error: cannot read documented wiki format ({type(exc).__name__})", file=sys.stderr)
-        return 2
-    for info in validator.infos:
-        print(info)
-    if findings:
-        print("\n".join(findings), file=sys.stderr)
+        validator.run()
+    except ValueError as exc:
+        return stop(f"configuration error: {exc}")
+    except (OSError, UnicodeError) as exc:
+        return stop(f"configuration error: cannot read documented wiki format ({type(exc).__name__})")
+    code = 1 if validator.findings else 0
+    if as_json:
+        print(json.dumps(validator.report(code), ensure_ascii=False))
+        return code
+    for note in validator.infos:
+        print("info: " + (f"{note.path}:{note.line}: " if note.path else "") + note.message)
+    # `upgrade:` lines name what the current format still needs; they never change the exit code.
+    for note in validator.upgrades:
+        fix = f"; run /wiki-init --adopt {validator.root()} with plugin {VERSION}" if note.fix == "adopt" else ""
+        print(f"upgrade: {note.path}:{note.line}: {note.message}{fix}")
+    if code:
+        print("\n".join(f"{n.path}:{n.line}: {n.message}" for n in validator.findings), file=sys.stderr)
         return 1
     print("wiki structural validation passed (semantic claims not checked)")
     return 0

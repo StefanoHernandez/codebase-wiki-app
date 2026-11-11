@@ -149,7 +149,8 @@ export default function Salute() {
           {lastLintAt && <p className="muted">Ultimo controllo: {formatLintWhen(lastLintAt)}</p>}
         </div>
         {lintError && <p className="error-text">{lintError}</p>}
-        {project.lint && findings.length === 0 && !lintError && (
+        {project.lint?.error && <p className="error-text">Il validatore non è partito: {project.lint.error}</p>}
+        {project.lint && !project.lint.error && findings.length === 0 && !lintError && (
           <p className="muted">Nessun problema di struttura.</p>
         )}
         {findings.length > 0 && (

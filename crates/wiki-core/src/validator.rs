@@ -1,24 +1,97 @@
 use std::path::Path;
 use std::process::Command;
-use std::sync::OnceLock;
-use regex::Regex;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// `null` in the validator JSON becomes the type's default (empty path, line 0).
+fn null_default<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(d)?.unwrap_or_default())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct LintFinding {
+    #[serde(alias = "path", deserialize_with = "null_default")]
     pub wiki_rel_path: String,
+    #[serde(default, deserialize_with = "null_default")]
     pub line: u32,
     pub message: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LintUpgrade {
+    #[serde(alias = "path", default)]
+    pub wiki_rel_path: Option<String>,
+    #[serde(default)]
+    pub line: Option<u32>,
+    pub code: String,
+    pub message: String,
+    /// "adopt" or "update-plugin".
+    #[serde(default)]
+    pub fix: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LintInfo {
+    #[serde(alias = "path", default)]
+    pub wiki_rel_path: Option<String>,
+    #[serde(default)]
+    pub line: Option<u32>,
+    pub code: String,
+    pub message: String,
+}
+
+/// The `--json` document of validate-wiki.py 0.13.0, plus the process exit code and raw output.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct LintReport {
+    #[serde(alias = "exit")]
     pub exit_code: i32,
+    #[serde(default)]
+    pub validator: Option<String>,
+    #[serde(default)]
+    pub format: Option<String>,
+    #[serde(default)]
+    pub wiki: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
     pub findings: Vec<LintFinding>,
-    pub infos: Vec<String>,
+    #[serde(default)]
+    pub upgrades: Vec<LintUpgrade>,
+    #[serde(default)]
+    pub infos: Vec<LintInfo>,
+    #[serde(default)]
     pub raw_output: String,
+}
+
+/// Builds the report from the validator's stdout. Anything that is not one JSON
+/// document (a crash, an older script) becomes `error` with empty lists.
+pub fn parse_lint_output(exit_code: i32, stdout: &str, stderr: &str) -> LintReport {
+    let raw_output = [stdout.trim(), stderr.trim()]
+        .iter()
+        .filter(|s| !s.is_empty())
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    match serde_json::from_str::<LintReport>(stdout.trim()) {
+        Ok(report) => LintReport { exit_code, raw_output, ..report },
+        Err(_) => LintReport {
+            exit_code,
+            error: Some(if raw_output.is_empty() {
+                format!("Il validatore non ha prodotto output (codice {exit_code}).")
+            } else {
+                raw_output.clone()
+            }),
+            raw_output,
+            ..LintReport::default()
+        },
+    }
 }
 
 pub fn run_structural_lint(
@@ -48,95 +121,23 @@ pub fn run_structural_lint_with_args(
     wiki_root: &str,
     validator_script: &Path,
 ) -> LintReport {
-    let target_wiki = repo_path.join(wiki_root);
-    let mut cmd = Command::new(python);
-    for a in python_args {
-        cmd.arg(a);
-    }
-    let output = cmd
+    let output = Command::new(python)
+        .args(python_args)
         .arg(validator_script)
-        .arg(&target_wiki)
+        .arg("--json")
+        .arg(repo_path.join(wiki_root))
         .current_dir(repo_path)
         .output();
-
-    let output = match output {
-        Ok(out) => out,
+    match output {
+        Ok(out) => parse_lint_output(
+            out.status.code().unwrap_or(-1),
+            &String::from_utf8_lossy(&out.stdout),
+            &String::from_utf8_lossy(&out.stderr),
+        ),
         Err(e) => {
-            return LintReport {
-                exit_code: -1,
-                findings: Vec::new(),
-                infos: Vec::new(),
-                raw_output: format!("Failed to execute validator: {}", e),
-            };
+            let msg = format!("Impossibile eseguire il validatore: {e}");
+            LintReport { exit_code: -1, error: Some(msg.clone()), raw_output: msg, ..LintReport::default() }
         }
-    };
-
-    let exit_code = output.status.code().unwrap_or(-1);
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    let raw_output = if stderr.is_empty() {
-        stdout.clone()
-    } else if stdout.is_empty() {
-        stderr.clone()
-    } else {
-        format!("{}\n{}", stdout, stderr)
-    };
-
-    static RE: OnceLock<Regex> = OnceLock::new();
-    let re = RE.get_or_init(|| Regex::new(r"^(.+?):(\d+):\s*(.+)$").unwrap());
-
-    let mut infos = Vec::new();
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("info:") {
-            infos.push(trimmed.to_string());
-        }
-    }
-
-    let mut findings = Vec::new();
-    let canon_target = target_wiki.canonicalize().unwrap_or_else(|_| target_wiki.clone());
-
-    for line in stderr.lines().chain(stdout.lines()) {
-        let trimmed = line.trim();
-        if let Some(caps) = re.captures(trimmed) {
-            let raw_path = &caps[1];
-            let line_num: u32 = caps[2].parse().unwrap_or(1);
-            let message = caps[3].trim().to_string();
-
-            let p = Path::new(raw_path);
-            let wiki_rel_path = if let Ok(rel) = p.strip_prefix(&target_wiki) {
-                rel.to_string_lossy().replace('\\', "/")
-            } else if let Ok(canon_p) = p.canonicalize() {
-                if let Ok(rel) = canon_p.strip_prefix(&canon_target) {
-                    rel.to_string_lossy().replace('\\', "/")
-                } else {
-                    raw_path.replace('\\', "/")
-                }
-            } else {
-                let target_str = target_wiki.to_string_lossy();
-                if raw_path.starts_with(target_str.as_ref()) {
-                    raw_path[target_str.len()..]
-                        .trim_start_matches('/')
-                        .trim_start_matches('\\')
-                        .replace('\\', "/")
-                } else {
-                    raw_path.replace('\\', "/")
-                }
-            };
-
-            findings.push(LintFinding {
-                wiki_rel_path,
-                line: line_num,
-                message,
-            });
-        }
-    }
-
-    LintReport {
-        exit_code,
-        findings,
-        infos,
-        raw_output,
     }
 }
 
@@ -146,33 +147,59 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn parses_captured_json_fixture() {
+        let json = include_str!("../../../tests/fixtures/validator-0.13.json");
+        let r = parse_lint_output(1, json, "");
+        assert_eq!(r.error, None);
+        assert_eq!(r.validator.as_deref(), Some("0.13.0"));
+        assert_eq!(r.format.as_deref(), Some("0.12.0"));
+        assert_eq!(r.findings[0], LintFinding { wiki_rel_path: "log.md".into(), line: 5, message: r.findings[0].message.clone() });
+        let up = r.upgrades.iter().find(|u| u.code == "format-version-missing").unwrap();
+        assert_eq!(up.wiki_rel_path.as_deref(), Some("SCHEMA.md"));
+        assert_eq!(up.fix, "adopt");
+        let info = r.infos.iter().find(|i| i.code == "handoff-no-open-work-stale").unwrap();
+        assert_eq!(info.wiki_rel_path.as_deref(), Some("agent/handoff.md"));
+        assert!(r.infos.iter().any(|i| i.wiki_rel_path.is_none() && i.line.is_none()));
+        let out = serde_json::to_value(&r).unwrap();
+        assert!(out.get("exitCode").is_some() && out.get("rawOutput").is_some());
+        assert!(out["findings"][0].get("wikiRelPath").is_some());
+        assert!(out["upgrades"][0].get("wikiRelPath").is_some());
+    }
+
+    #[test]
+    fn error_document_and_non_json_output() {
+        let r = parse_lint_output(2, r#"{"validator":"0.13.0","format":"0.12.0","wiki":null,"exit":2,"error":"requires Python 3.10+","findings":[],"upgrades":[],"infos":[]}"#, "requires Python 3.10+");
+        assert_eq!(r.error.as_deref(), Some("requires Python 3.10+"));
+        assert_eq!(r.exit_code, 2);
+        let r = parse_lint_output(1, "Traceback (most recent call last):\n  boom\n", "");
+        assert_eq!(r.error.as_deref(), Some("Traceback (most recent call last):\n  boom"));
+        assert!(r.findings.is_empty() && r.upgrades.is_empty() && r.infos.is_empty());
+    }
+
+    #[test]
     fn test_run_structural_lint_parses_report() {
         let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/validate-wiki.py");
-        let has_python = Command::new("python3")
-            .arg("--version")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-        if !has_python || !script.is_file() {
-            println!("note: skipping lint test (python3 or validator script missing)");
+        let python = ["/opt/homebrew/bin/python3", "python3"].into_iter().find(|p| {
+            Command::new(p)
+                .args(["-c", "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)"])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        });
+        let Some(python) = python.filter(|_| script.is_file()) else {
+            println!("note: skipping lint test (python 3.10+ or validator script missing)");
             return;
-        }
+        };
         let repo = std::env::temp_dir().join(format!("wiki_lint_{}", std::process::id()));
         let _ = fs::remove_dir_all(&repo);
         fs::create_dir_all(repo.join("wiki")).unwrap();
         fs::write(repo.join("wiki/SCHEMA.md"), "# Schema\n").unwrap();
-        // Missing YAML frontmatter → structural finding from validate-wiki.py.
         fs::write(repo.join("wiki/topic.md"), "# Topic\nbody\n").unwrap();
 
-        let report = run_structural_lint(&repo, "wiki", &script);
+        let report = run_structural_lint_with(python, &repo, "wiki", &script);
         let _ = fs::remove_dir_all(&repo);
-        assert!(report.exit_code != 0 || !report.findings.is_empty(), "expected lint issues");
-        assert!(!report.raw_output.is_empty(), "raw_output must not be empty");
-        let f = report
-            .findings
-            .iter()
-            .find(|f| !f.wiki_rel_path.is_empty())
-            .expect("at least one finding with wiki_rel_path");
-        assert!(!f.message.is_empty());
+        assert_eq!(report.error, None, "{}", report.raw_output);
+        assert_eq!(report.validator.as_deref(), Some("0.13.0"));
+        assert!(report.upgrades.iter().any(|u| u.code == "core-map-missing"));
     }
 }

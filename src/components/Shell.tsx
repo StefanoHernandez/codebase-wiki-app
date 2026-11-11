@@ -53,6 +53,7 @@ export function Shell() {
     try {
       const report = await project.runLint();
       if (!report) return;
+      if (report.error) return toast(`Lint non eseguito: ${report.error}`, 'error');
       const n = report.findings.length;
       toast(n === 0 ? 'Lint eseguito: nessun problema' : `Lint eseguito: ${n} ${n === 1 ? 'problema' : 'problemi'}`);
     } catch (e) {

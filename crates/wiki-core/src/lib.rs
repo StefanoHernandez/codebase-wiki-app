@@ -11,8 +11,8 @@ pub use git_ops::{
     is_git_repo, GitState,
 };
 pub use validator::{
-    run_structural_lint, run_structural_lint_with, run_structural_lint_with_args, LintFinding,
-    LintReport,
+    parse_lint_output, run_structural_lint, run_structural_lint_with, run_structural_lint_with_args,
+    LintFinding, LintInfo, LintReport, LintUpgrade,
 };
 pub use watcher::{watch_repo, WatchHandle};
 pub use wiki_fs::{
@@ -488,8 +488,7 @@ sources:
         let report = LintReport {
             exit_code: 0,
             findings: vec![LintFinding { wiki_rel_path: "x.md".into(), line: 1, message: "m".into() }],
-            infos: vec![],
-            raw_output: String::new(),
+            ..LintReport::default()
         };
         let report = serde_json::to_value(&report).unwrap();
         assert!(report.get("exitCode").is_some() && report.get("rawOutput").is_some());
