@@ -63,6 +63,11 @@ impl RagJobs {
         Ok(())
     }
 
+    pub fn any_index_running(&self) -> bool {
+        let repos: Vec<String> = self.index.lock().unwrap().keys().cloned().collect();
+        repos.iter().any(|r| self.index_running(r))
+    }
+
     pub fn pull_running(&self) -> bool {
         let mut slot = self.pull.lock().unwrap();
         if let Some((_, child)) = slot.as_mut() {

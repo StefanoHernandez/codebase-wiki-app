@@ -188,7 +188,18 @@ function Modelli() {
     }
   };
 
-  const action = (row: CatalogRow, onUse?: () => void) =>
+  const removeModel = async (row: CatalogRow, what: string) => {
+    if (!window.confirm(`Eliminare ${row.id} (${row.sizeMb} MB) dal disco? ${what}`)) return;
+    try {
+      await invoke('rag_model_remove', { id: row.id });
+      toast(`${row.id} eliminato`);
+    } catch (e) {
+      toast(message(e), 'error');
+    }
+    void refresh();
+  };
+
+  const action = (row: CatalogRow, onUse: (() => void) | null, removeNote: string) =>
     dl?.id === row.id ? (
       <progress value={dl.done} max={dl.total || 1} aria-label={`Download ${row.id}`} />
     ) : !row.installed ? (
@@ -196,11 +207,21 @@ function Modelli() {
         Scarica
       </button>
     ) : (
-      onUse && (
-        <button type="button" className="btn" onClick={onUse}>
-          Usa questo
+      <>
+        {onUse && (
+          <button type="button" className="btn" onClick={onUse}>
+            Usa questo
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn btn-quiet"
+          disabled={!!dl || job.running}
+          onClick={() => void removeModel(row, removeNote)}
+        >
+          Elimina
         </button>
-      )
+      </>
     );
 
   return (
@@ -232,7 +253,13 @@ function Modelli() {
               </td>
               <td>{row.languages}</td>
               <td>{row.sizeMb > 0 ? `${row.sizeMb} MB` : '—'}</td>
-              <td className="ricerca-actions">{(activeModel !== row.id || !row.installed) && action(row, () => void useModel(row.id))}</td>
+              <td className="ricerca-actions">{action(
+                  row,
+                  activeModel === row.id ? null : () => void useModel(row.id),
+                  activeModel === row.id
+                    ? 'È il modello attivo: ricerca e MCP non funzioneranno finché non lo riscarichi o ne scegli un altro.'
+                    : 'Potrai riscaricarlo quando vuoi.',
+                )}</td>
             </tr>
           ))}
         </tbody>
@@ -252,7 +279,9 @@ function Modelli() {
                 </td>
                 <td>{reranker.languages}</td>
                 <td>{reranker.sizeMb} MB</td>
-                <td className="ricerca-actions">{action(reranker)}</td>
+                <td className="ricerca-actions">
+                  {action(reranker, null, 'La ricerca continua a funzionare, senza riordinare i risultati.')}
+                </td>
               </tr>
             </tbody>
           </>

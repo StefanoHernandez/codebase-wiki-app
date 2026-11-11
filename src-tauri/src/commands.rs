@@ -687,6 +687,27 @@ pub fn rag_index_delete(
     rag_core::delete_index(&rag_core::index_path(&rag_core::repo_id(&root)))
 }
 
+/// Deletes a downloaded model's files. Its catalog row stays, so it can be downloaded again.
+/// Refused while a download or any index job runs (both read the model directory).
+#[tauri::command]
+pub fn rag_model_remove(
+    id: String,
+    jobs: tauri::State<'_, Arc<crate::rag_jobs::RagJobs>>,
+) -> Result<(), String> {
+    let safe = !id.is_empty() && id != "." && id != ".." && id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
+    if !safe {
+        return Err(format!("id modello non valido: {id}"));
+    }
+    if jobs.pull_running() || jobs.any_index_running() {
+        return Err("Download o indicizzazione in corso: aspetta che finisca".into());
+    }
+    let dir = rag_core::model_dir(&id);
+    if !dir.is_dir() {
+        return Err(format!("{id} non è installato"));
+    }
+    std::fs::remove_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))
+}
+
 #[tauri::command]
 pub async fn rag_model_pull(
     app: AppHandle,

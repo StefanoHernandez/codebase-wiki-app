@@ -51,6 +51,7 @@ fn main() {
             commands::rag_models,
             commands::rag_set_model,
             commands::rag_model_pull,
+            commands::rag_model_remove,
             commands::rag_preview,
             commands::rag_harness_state,
             commands::rag_harness_preview,

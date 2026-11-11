@@ -18,6 +18,9 @@
   text-align: right;
   white-space: nowrap;
 }
+.ricerca-actions .btn + .btn {
+  margin-left: 6px;
+}
 .ricerca-badge {
   margin-left: 6px;
 }
