@@ -114,7 +114,9 @@ test('promoteProposalToOpen assigns next never-reused T<N>, sets owner and evide
   const res = promoteProposalToOpen({
     trackerMarkdown: SAMPLE_TRACKER,
     logMarkdown: SAMPLE_LOG,
-    proposalIndex: 0,
+    proposalText: 'Add graph filter',
+    proposalBy: 'stefano',
+    proposalDate: '2026-11-10',
     person: 'Stefano',
     owner: 'Mario',
     doneWhen: 'Filter toggles source nodes',
@@ -142,7 +144,9 @@ test('extra tracker columns such as Phase survive promote and close', () => {
   const promoted = promoteProposalToOpen({
     trackerMarkdown: PHASE_TRACKER,
     logMarkdown: SAMPLE_LOG,
-    proposalIndex: 0,
+    proposalText: 'Add graph filter',
+    proposalBy: 'stefano',
+    proposalDate: '2026-11-10',
     person: 'Stefano',
     owner: 'Mario',
     doneWhen: 'Filter works',
@@ -292,7 +296,7 @@ test('updateOpenRowField changes owner or an extra column and rejects unknown id
   assert.equal(parsed.open[0].extra.Phase, 'Next');
   assert.equal(parsed.open[0].owner, 'stefano');
 
-  assert.throws(() => updateOpenRowField({ trackerMarkdown: PHASE_TRACKER, id: 'T9', field: 'owner', value: 'x' }), /T9/);
+  assert.throws(() => updateOpenRowField({ trackerMarkdown: PHASE_TRACKER, id: 'T9', field: 'owner', value: 'x' }), /StaleError|file è cambiato|T9/);
   assert.throws(() => updateOpenRowField({ trackerMarkdown: PHASE_TRACKER, id: 'T1', field: 'Priority', value: 'x' }), /Priority/);
 });
 
@@ -629,7 +633,9 @@ proposed: codex on 2026-11-10.
     const res1 = promoteProposalToOpen({
       trackerMarkdown: trackerMd,
       logMarkdown: logMd,
-      proposalIndex: 0,
+      proposalText: 'Add graph filter',
+    proposalBy: 'stefano',
+    proposalDate: '2026-11-10',
       person: 'Stefano',
       owner: 'Stefano',
       doneWhen: 'Filter toggles source nodes',

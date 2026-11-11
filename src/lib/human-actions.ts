@@ -2,12 +2,26 @@ import { parseFrontmatter, updateFrontmatterFields } from './frontmatter.ts';
 import {
   parseTrackerMarkdown,
   computeNextTrackerId,
-  formatTrackerOpenTable,
-  formatTrackerProposalTable,
-  formatTrackerDoneTable,
-  replaceSectionTable,
+  OPEN_COLUMNS,
+  PROPOSAL_COLUMNS,
+  DONE_COLUMNS,
 } from './markdown-tables.ts';
 import type { Attribution, TrackerDoneRow, TrackerOpenRow } from '../types/wiki.ts';
+import {
+  parseDoc,
+  renderDoc,
+  findSection,
+  findTable,
+  setCells,
+  insertRow,
+  removeLine,
+  insertLines,
+  StaleError,
+  type Doc,
+  type TableLoc,
+} from './md-edit.ts';
+
+export { StaleError } from './md-edit.ts';
 
 // Human actions never write `updated:` or `source_commit`: a status change is not a source review.
 
@@ -23,6 +37,26 @@ const DISALLOWED_ACTORS = new Set([
   'na',
   'none',
 ]);
+
+const OPEN_KEYS: Record<string, keyof TrackerOpenRow | 'extra'> = {
+  id: 'id',
+  status: 'status',
+  goal: 'goal',
+  'done when': 'doneWhen',
+  owner: 'owner',
+  'next verification': 'nextVerification',
+  evidence: 'evidence',
+};
+
+const PROPOSAL_COLS = ['proposal', 'by', 'date', 'why'] as const;
+const DONE_KEYS: Record<string, keyof TrackerDoneRow | 'extra'> = {
+  id: 'id',
+  status: 'status',
+  goal: 'goal',
+  closed: 'closed',
+  'criteria met': 'criteriaMet',
+  evidence: 'evidence',
+};
 
 export function validateHumanActor(person: string): void {
   if (!person || typeof person !== 'string' || !person.trim()) {
@@ -50,9 +84,14 @@ export function validateNotProvenReason(reason: string): void {
   }
 }
 
-/** Lowercase person name with spaces as dashes, used in `human:<id>` attributions. */
+/** Lowercase id for `human:<id>`: only [a-z0-9._-], other runs become a single dash. */
 export function personId(person: string): string {
-  return person.trim().toLowerCase().replace(/\s+/g, '-');
+  return person
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 /** Appends one `## date · title · human` entry at the end of the log, separated by one blank line. */
@@ -75,10 +114,157 @@ export function appendLogEntry(params: {
   return previous ? `${previous}\n\n${entry}` : entry;
 }
 
+const PROPOSAL_FIELD_INDEX: Record<(typeof PROPOSAL_COLS)[number], number> = {
+  proposal: 0,
+  by: 1,
+  date: 2,
+  why: 3,
+};
+
+function proposalColIndex(header: string[], field: (typeof PROPOSAL_COLS)[number]): number {
+  const canonical = PROPOSAL_COLUMNS[PROPOSAL_FIELD_INDEX[field]];
+  const named = header.some((h) => h.trim().toLowerCase() === canonical.toLowerCase());
+  if (named) {
+    return header.findIndex((h) => h.trim().toLowerCase() === canonical.toLowerCase());
+  }
+  return PROPOSAL_FIELD_INDEX[field];
+}
+
+function idColumnIndex(header: string[]): number {
+  const idx = header.findIndex((h) => h.trim().toLowerCase() === 'id');
+  return idx >= 0 ? idx : 0;
+}
+
+function assertRowWidth(table: TableLoc, row: { line: number; cells: string[] }, idLabel: string): void {
+  if (row.cells.length > table.header.length) {
+    throw new Error(`La riga ${idLabel} ha una | non protetta: correggila nel file (scrivi \\|)`);
+  }
+}
+
+function findOpenTable(doc: Doc) {
+  const section = findSection(doc, 'open', ['Open']);
+  if (!section) throw new Error('Open tracker section not found');
+  const table = findTable(doc, section);
+  if (!table) throw new Error('Open tracker table not found');
+  return { section, table };
+}
+
+function findProposalTable(doc: Doc) {
+  const section = findSection(doc, 'proposals', ['Proposals']);
+  if (!section) throw new Error('Proposals section not found');
+  const table = findTable(doc, section);
+  if (!table) throw new Error('Proposals table not found');
+  return { section, table };
+}
+
+function findDoneTable(doc: Doc) {
+  const section = findSection(doc, 'done', ['Done']);
+  if (!section) throw new Error('Done section not found');
+  const table = findTable(doc, section);
+  if (!table) throw new Error('Done table not found');
+  return { section, table };
+}
+
+function findUniqueById(table: TableLoc, taskId: string) {
+  const idIdx = idColumnIndex(table.header);
+  const matches = table.rows.filter((r) => (r.cells[idIdx] ?? '').trim() === taskId);
+  if (matches.length !== 1) throw new StaleError();
+  return matches[0];
+}
+
+function findUniqueProposal(table: TableLoc, proposal: string, by: string, date: string) {
+  const pIdx = proposalColIndex(table.header, 'proposal');
+  const bIdx = proposalColIndex(table.header, 'by');
+  const dIdx = proposalColIndex(table.header, 'date');
+  const matches = table.rows.filter(
+    (r) =>
+      (r.cells[pIdx] ?? '').trim() === proposal.trim() &&
+      (r.cells[bIdx] ?? '').trim() === by.trim() &&
+      (r.cells[dIdx] ?? '').trim() === date.trim(),
+  );
+  if (matches.length !== 1) throw new StaleError();
+  return matches[0];
+}
+
+function openValueForHeader(
+  header: string[],
+  row: TrackerOpenRow,
+  overrides: Partial<TrackerOpenRow> & { id?: string; status?: string },
+): string[] {
+  return header.map((h) => {
+    const key = OPEN_KEYS[h.trim().toLowerCase()];
+    if (key && key !== 'extra' && Object.hasOwn(overrides, key)) {
+      return String(overrides[key as keyof typeof overrides] ?? '');
+    }
+    if (key && key !== 'extra') return String(row[key] ?? '');
+    if (Object.hasOwn(overrides.extra ?? {}, h)) return overrides.extra![h];
+    return row.extra[h] ?? '';
+  });
+}
+
+function doneValueForHeader(
+  header: string[],
+  row: TrackerDoneRow,
+  openExtra: Record<string, string>,
+): string[] {
+  return header.map((h) => {
+    const key = DONE_KEYS[h.trim().toLowerCase()];
+    if (key && key !== 'extra') return String(row[key] ?? '');
+    const fromOpen = Object.keys(openExtra).find((k) => k.trim().toLowerCase() === h.trim().toLowerCase());
+    if (fromOpen !== undefined) return openExtra[fromOpen];
+    return row.extra[h] ?? '';
+  });
+}
+
+function openRowFromCells(header: string[], cells: string[]): TrackerOpenRow {
+  const row: TrackerOpenRow = {
+    id: '',
+    status: '⚪',
+    goal: '',
+    doneWhen: '',
+    owner: '',
+    nextVerification: '',
+    evidence: '',
+    extra: {},
+  };
+  const lower = header.map((h) => h.trim().toLowerCase());
+  const named = OPEN_COLUMNS.every((c) => lower.includes(c.toLowerCase()));
+  header.forEach((h, i) => {
+    const value = (cells[i] ?? '').trim();
+    const lk = h.trim().toLowerCase();
+    if (named) {
+      const key = OPEN_KEYS[lk];
+      if (key === 'id') row.id = value;
+      else if (key === 'status') row.status = value as TrackerOpenRow['status'];
+      else if (key === 'goal') row.goal = value;
+      else if (key === 'doneWhen') row.doneWhen = value;
+      else if (key === 'owner') row.owner = value;
+      else if (key === 'nextVerification') row.nextVerification = value;
+      else if (key === 'evidence') row.evidence = value;
+      else row.extra[h] = value;
+    } else {
+      const pos = OPEN_COLUMNS.map((c) => c.toLowerCase()).indexOf(lk);
+      if (pos >= 0) {
+        const prop = ['id', 'status', 'goal', 'doneWhen', 'owner', 'nextVerification', 'evidence'][pos];
+        if (prop === 'status') row.status = value as TrackerOpenRow['status'];
+        else if (prop === 'id') row.id = value;
+        else if (prop === 'goal') row.goal = value;
+        else if (prop === 'doneWhen') row.doneWhen = value;
+        else if (prop === 'owner') row.owner = value;
+        else if (prop === 'nextVerification') row.nextVerification = value;
+        else if (prop === 'evidence') row.evidence = value;
+      } else row.extra[h] = value;
+    }
+  });
+  return row;
+}
+
 export function promoteProposalToOpen(params: {
   trackerMarkdown: string;
   logMarkdown: string;
-  proposalIndex: number;
+  proposalText: string;
+  proposalBy: string;
+  proposalDate: string;
   person: string;
   owner: string;
   doneWhen: string;
@@ -86,65 +272,71 @@ export function promoteProposalToOpen(params: {
   dateIso: string;
 }): { trackerMarkdown: string; logMarkdown: string; assignedId: string } {
   validateHumanActor(params.person);
-  if (!params.owner || !params.owner.trim()) {
-    throw new Error('owner must be specified');
-  }
-  if (!params.doneWhen || !params.doneWhen.trim()) {
-    throw new Error('doneWhen must be specified');
-  }
-  if (!params.nextVerification || !params.nextVerification.trim()) {
-    throw new Error('nextVerification must be specified');
-  }
+  if (!params.owner?.trim()) throw new Error('owner must be specified');
+  if (!params.doneWhen?.trim()) throw new Error('doneWhen must be specified');
+  if (!params.nextVerification?.trim()) throw new Error('nextVerification must be specified');
 
-  const tracker = parseTrackerMarkdown(params.trackerMarkdown);
-  if (params.proposalIndex < 0 || params.proposalIndex >= tracker.proposals.length) {
-    throw new Error(
-      `Proposal index ${params.proposalIndex} out of bounds (0-${tracker.proposals.length - 1})`
-    );
-  }
+  let doc = parseDoc(params.trackerMarkdown);
+  const { table: propTable } = findProposalTable(doc);
+  const proposalRow = findUniqueProposal(
+    propTable,
+    params.proposalText,
+    params.proposalBy,
+    params.proposalDate,
+  );
 
-  const person = params.person.trim();
-  const proposal = tracker.proposals[params.proposalIndex];
+  const { table: openTable } = findOpenTable(doc);
   const assignedId = computeNextTrackerId(params.trackerMarkdown, params.logMarkdown);
+  const person = params.person.trim();
 
-  const newOpenRow: TrackerOpenRow = {
+  const proposalCells = proposalRow.cells;
+  const pIdx = proposalColIndex(propTable.header, 'proposal');
+  const proposalText = (proposalCells[pIdx] ?? '').trim();
+
+  const namedOpen = OPEN_COLUMNS.every((c) =>
+    openTable.header.some((h) => h.trim().toLowerCase() === c.toLowerCase()),
+  );
+  const template: TrackerOpenRow = {
     id: assignedId,
     status: '⚪',
-    goal: proposal.proposal,
+    goal: proposalText,
     doneWhen: params.doneWhen.trim(),
     owner: params.owner.trim(),
     nextVerification: params.nextVerification.trim(),
     evidence: `promoted by ${person} ${params.dateIso}`,
     extra: {},
   };
+  if (!namedOpen) {
+    openTable.header.forEach((h, i) => {
+      if (!OPEN_KEYS[h.trim().toLowerCase()]) template.extra[h] = '';
+    });
+  } else {
+    openTable.header.forEach((h) => {
+      if (!OPEN_KEYS[h.trim().toLowerCase()]) template.extra[h] = '';
+    });
+  }
 
-  const updatedOpen = [...tracker.open, newOpenRow];
-  const updatedProposals = tracker.proposals.filter((_, idx) => idx !== params.proposalIndex);
+  const newCells = openValueForHeader(openTable.header, template, template);
 
-  let updatedTracker = replaceSectionTable(
-    params.trackerMarkdown,
-    'open',
-    'Open',
-    formatTrackerOpenTable(updatedOpen, tracker.openHeader)
-  );
-  updatedTracker = replaceSectionTable(
-    updatedTracker,
-    'proposals',
-    'Proposals',
-    formatTrackerProposalTable(updatedProposals, tracker.proposalsHeader)
-  );
+  doc = removeLine(doc, proposalRow.line);
+  const openAfterRemoval = findOpenTable(doc).table;
+  const insertAfter =
+    openAfterRemoval.rows.length > 0
+      ? openAfterRemoval.rows[openAfterRemoval.rows.length - 1]!.line
+      : openAfterRemoval.delimLine;
+  doc = insertRow(doc, insertAfter, newCells);
 
   const logMarkdown = appendLogEntry({
     logMarkdown: params.logMarkdown,
     date: params.dateIso,
     title: `Promote proposal to ${assignedId}`,
-    what: `${person} promoted proposal "${proposal.proposal}" to ${assignedId}`,
+    what: `${person} promoted proposal "${proposalText}" to ${assignedId}`,
     evidence: `promoted by ${person} ${params.dateIso}`,
     ids: [assignedId],
   });
 
   return {
-    trackerMarkdown: updatedTracker,
+    trackerMarkdown: renderDoc(doc),
     logMarkdown,
     assignedId,
   };
@@ -161,22 +353,20 @@ export function closeTrackerItemHumanUnproven(params: {
 }): { trackerMarkdown: string; logMarkdown: string } {
   validateHumanActor(params.person);
   validateNotProvenReason(params.notProvenReason);
-  if (!params.closureSource || !params.closureSource.trim()) {
+  if (!params.closureSource?.trim()) {
     throw new Error('Closure requires a closureSource (where the person decided: message, meeting, PR...)');
   }
 
+  let doc = parseDoc(params.trackerMarkdown);
   const tracker = parseTrackerMarkdown(params.trackerMarkdown);
-  const openIndex = tracker.open.findIndex((r) => r.id === params.taskId);
-  if (openIndex === -1) {
-    throw new Error(`Task ${params.taskId} not found in open tracker`);
-  }
+  const { table: openTable } = findOpenTable(doc);
+  const openMatch = findUniqueById(openTable, params.taskId);
+  assertRowWidth(openTable, openMatch, params.taskId);
 
+  const openRow = openRowFromCells(openTable.header, openMatch.cells);
   const person = params.person.trim();
   const reason = params.notProvenReason.trim();
-  const openRow = tracker.open[openIndex];
-  const updatedOpen = tracker.open.filter((_, idx) => idx !== openIndex);
 
-  // Copy Open extra values only into Done columns that already exist (headers matched case-insensitively).
   const closedExtra: Record<string, string> = {};
   for (const header of tracker.doneHeader) {
     const source = Object.keys(openRow.extra).find((k) => k.trim().toLowerCase() === header.trim().toLowerCase());
@@ -193,20 +383,10 @@ export function closeTrackerItemHumanUnproven(params: {
     extra: closedExtra,
   };
 
-  const updatedDone = [...tracker.done, closedRow];
-
-  let updatedTracker = replaceSectionTable(
-    params.trackerMarkdown,
-    'open',
-    'Open',
-    formatTrackerOpenTable(updatedOpen, tracker.openHeader)
-  );
-  updatedTracker = replaceSectionTable(
-    updatedTracker,
-    'done',
-    'Done',
-    formatTrackerDoneTable(updatedDone, tracker.doneHeader)
-  );
+  doc = removeLine(doc, openMatch.line);
+  const { table: doneTable } = findDoneTable(doc);
+  const doneCells = doneValueForHeader(doneTable.header, closedRow, openRow.extra);
+  doc = insertRow(doc, doneTable.delimLine, doneCells);
 
   const logMarkdown = appendLogEntry({
     logMarkdown: params.logMarkdown,
@@ -217,24 +397,20 @@ export function closeTrackerItemHumanUnproven(params: {
     ids: [openRow.id],
   });
 
-  return {
-    trackerMarkdown: updatedTracker,
-    logMarkdown,
-  };
+  return { trackerMarkdown: renderDoc(doc), logMarkdown };
 }
 
-/** Sets one editable cell of an Open row: `owner`, `goal`, `done when`, `next verification`, `evidence` or an extra column. */
 export function updateOpenRowField(params: {
   trackerMarkdown: string;
   id: string;
   field: string;
   value: string;
 }): { trackerMarkdown: string } {
+  let doc = parseDoc(params.trackerMarkdown);
   const tracker = parseTrackerMarkdown(params.trackerMarkdown);
-  const row = tracker.open.find((r) => r.id === params.id);
-  if (!row) {
-    throw new Error(`Task ${params.id} not found in open tracker`);
-  }
+  const { table } = findOpenTable(doc);
+  const rowMatch = findUniqueById(table, params.id);
+  assertRowWidth(table, rowMatch, params.id);
 
   const wanted = params.field.trim().toLowerCase();
   if (wanted === 'id' || wanted === 'status') {
@@ -245,46 +421,25 @@ export function updateOpenRowField(params: {
     throw new Error(`Column '${params.field}' not found in the Open table`);
   }
 
-  const value = params.value.trim();
-  const fieldProps: Record<string, 'owner' | 'goal' | 'doneWhen' | 'nextVerification' | 'evidence'> = {
-    owner: 'owner',
-    goal: 'goal',
-    'done when': 'doneWhen',
-    'next verification': 'nextVerification',
-    evidence: 'evidence',
-  };
-  if (Object.hasOwn(fieldProps, wanted)) {
-    row[fieldProps[wanted]] = value;
-  } else {
-    row.extra[header] = value;
-  }
+  const col = table.header.findIndex((h) => h.trim().toLowerCase() === wanted);
+  if (col === -1) throw new Error(`Column '${params.field}' not found in the Open table`);
 
-  return {
-    trackerMarkdown: replaceSectionTable(
-      params.trackerMarkdown,
-      'open',
-      'Open',
-      formatTrackerOpenTable(tracker.open, tracker.openHeader)
-    ),
-  };
+  const cells = rowMatch.cells.slice();
+  while (cells.length < table.header.length) cells.push('');
+  cells[col] = params.value.trim();
+
+  doc = setCells(doc, rowMatch.line, cells);
+  return { trackerMarkdown: renderDoc(doc) };
 }
 
-function appendUnderApproval(markdown: string, line: string): string {
-  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
-  const approvalIdx = lines.findIndex((l) => l.trim().toLowerCase() === '## approval');
-  if (approvalIdx === -1) {
-    return markdown.trimEnd() + `\n\n## Approval\n${line}\n`;
+function appendUnderApproval(doc: Doc, line: string): Doc {
+  const section = findSection(doc, 'approval', ['Approval']);
+  if (!section) {
+    throw new Error('Approval section not found');
   }
-  let nextHeadingIdx = lines.findIndex((l, idx) => idx > approvalIdx && l.trim().startsWith('## '));
-  if (nextHeadingIdx === -1) {
-    nextHeadingIdx = lines.length;
-  }
-  let lastContent = nextHeadingIdx - 1;
-  while (lastContent > approvalIdx && !lines[lastContent].trim()) {
-    lastContent--;
-  }
-  lines.splice(lastContent + 1, 0, line);
-  return lines.join('\n');
+  let last = section.end - 1;
+  while (last > section.start && !doc.lines[last]?.trim()) last--;
+  return insertLines(doc, last + 1, [line]);
 }
 
 function decideDecision(
@@ -295,17 +450,17 @@ function decideDecision(
     whereContext: string;
     dateIso: string;
   },
-  verdict: 'accepted' | 'rejected'
+  verdict: 'accepted' | 'rejected',
 ): { decisionMarkdown: string; logMarkdown: string } {
   validateHumanActor(params.person);
-  if (!params.whereContext || !params.whereContext.trim()) {
+  if (!params.whereContext?.trim()) {
     throw new Error('whereContext must be specified');
   }
 
   const parsed = parseFrontmatter(params.decisionMarkdown);
   if (parsed.fields.status !== 'proposed') {
     throw new Error(
-      `Decision can only be ${verdict} from proposed (current status: ${parsed.fields.status || 'none'})`
+      `Decision can only be ${verdict} from proposed (current status: ${parsed.fields.status || 'none'})`,
     );
   }
 
@@ -317,10 +472,9 @@ function decideDecision(
     title = headingMatch ? headingMatch[1].trim() : 'Decision';
   }
 
-  const decisionMarkdown = appendUnderApproval(
-    updateFrontmatterFields(params.decisionMarkdown, { status: verdict }),
-    `${verdict}: ${person}, ${where}, ${params.dateIso}`
-  );
+  const withStatus = updateFrontmatterFields(params.decisionMarkdown, { status: verdict });
+  let doc = parseDoc(withStatus);
+  doc = appendUnderApproval(doc, `${verdict}: ${person}, ${where}, ${params.dateIso}`);
 
   const logMarkdown = appendLogEntry({
     logMarkdown: params.logMarkdown,
@@ -331,7 +485,7 @@ function decideDecision(
     ids: [],
   });
 
-  return { decisionMarkdown, logMarkdown };
+  return { decisionMarkdown: renderDoc(doc), logMarkdown };
 }
 
 export function acceptDecisionHuman(params: {
@@ -362,29 +516,27 @@ function formatAttribution(a: Attribution): string {
   return `{ by: ${a.by}, at: ${normalizeAtIso(a.at)}${a.commit ? `, commit: ${a.commit}` : ''} }`;
 }
 
-/** Replaces the `verified:` frontmatter key with a single line (the validator reads one-line values only). */
-function setVerifiedFrontmatter(markdown: string, entries: Attribution[]): string {
-  const bom = markdown.startsWith('﻿') ? '﻿' : '';
-  const lines = markdown.slice(bom.length).replace(/\r\n/g, '\n').split('\n');
+function setVerifiedFrontmatter(doc: Doc, entries: Attribution[]): Doc {
+  const lines = doc.lines;
   const end = lines.indexOf('---', 1);
   if (lines[0] !== '---' || end === -1) {
     throw new Error('Page has no frontmatter to record a review in');
   }
 
-  // One line: a single inline map, or a flow list when there are several.
   const value =
     entries.length === 1 ? formatAttribution(entries[0]) : `[${entries.map(formatAttribution).join(', ')}]`;
-  const block = [`verified: ${value}`];
+  const block = `verified: ${value}`;
 
   const start = lines.findIndex((l, i) => i > 0 && i < end && /^verified:/.test(l));
+  const newLines = lines.slice();
   if (start === -1) {
-    lines.splice(end, 0, ...block);
+    newLines.splice(end, 0, block);
   } else {
     let stop = start + 1;
-    while (stop < end && /^\s+/.test(lines[stop])) stop++;
-    lines.splice(start, stop - start, ...block);
+    while (stop < end && /^\s+/.test(newLines[stop]!)) stop++;
+    newLines.splice(start, stop - start, block);
   }
-  return bom + lines.join('\n');
+  return { ...doc, lines: newLines };
 }
 
 export function markPageReviewed(params: {
@@ -397,12 +549,17 @@ export function markPageReviewed(params: {
   validateHumanActor(params.person);
   const person = params.person.trim();
   const commit = params.commit.trim();
+  const id = personId(person);
+  if (!id) {
+    throw new Error('Human authority required: person name yields an empty id');
+  }
   const page = parseFrontmatter(params.pageMarkdown);
 
-  const entry: Attribution = { by: `human:${personId(person)}`, at: normalizeAtIso(params.atIso) };
+  const entry: Attribution = { by: `human:${id}`, at: normalizeAtIso(params.atIso) };
   if (commit) entry.commit = commit;
 
-  const pageMarkdown = setVerifiedFrontmatter(params.pageMarkdown, [...page.verified, entry]);
+  let doc = parseDoc(params.pageMarkdown);
+  doc = setVerifiedFrontmatter(doc, [...page.verified, entry]);
   const title = page.fields.title || 'page';
   const logMarkdown = appendLogEntry({
     logMarkdown: params.logMarkdown,
@@ -413,5 +570,5 @@ export function markPageReviewed(params: {
     ids: [],
   });
 
-  return { pageMarkdown, logMarkdown };
+  return { pageMarkdown: renderDoc(doc), logMarkdown };
 }

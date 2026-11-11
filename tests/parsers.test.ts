@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseFrontmatter, updateFrontmatterFields, extractMarkdownLinks } from '../src/lib/frontmatter.ts';
-import { parseTrackerMarkdown, formatTrackerOpenTable } from '../src/lib/markdown-tables.ts';
+import { parseTrackerMarkdown } from '../src/lib/markdown-tables.ts';
 import { parseSchemaMarkdown, DEFAULT_CORE_MAP } from '../src/lib/schema-parser.ts';
 
 test('parseFrontmatter handles UTF-8 BOM, CRLF, scalar fields, and indented sources list', () => {
@@ -224,7 +224,7 @@ x`;
   assert.deepEqual(none.verified, []);
 });
 
-test('tracker rows keep extra columns and header order through parse and format', () => {
+test('tracker rows keep extra columns and header order through parse', () => {
   const md = `# Tracker
 
 ## Open
@@ -238,9 +238,6 @@ test('tracker rows keep extra columns and header order through parse and format'
   assert.deepEqual(data.openHeader, ['ID', 'Phase', 'Status', 'Goal', 'Done when', 'Owner', 'Next verification', 'Evidence']);
   assert.equal(data.open[0].extra.Phase, 'Core');
   assert.equal(data.open[0].status, '🟡');
-  const out = formatTrackerOpenTable(data.open, data.openHeader);
-  assert.equal(out.split('\n')[0], '| ID | Phase | Status | Goal | Done when | Owner | Next verification | Evidence |');
-  assert.match(out, /\| T1 \| Core \| 🟡 \| Build parser \| Tests pass \| stefano \|/);
 });
 
 test('parseSchemaMarkdown matches section headings exactly and case-insensitively', () => {

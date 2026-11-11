@@ -7,6 +7,7 @@ import {
   closeTrackerItemHumanUnproven,
   promoteProposalToOpen,
   updateOpenRowField,
+  StaleError,
 } from '../lib/human-actions';
 import { parseTrackerMarkdown } from '../lib/markdown-tables';
 import type { TrackerOpenRow, TrackerProposalRow } from '../types/wiki';
@@ -17,9 +18,6 @@ export const SIGN_HINT = 'Imposta il tuo nome nelle impostazioni per firmare.';
 const NOT_READY = 'La wiki non è ancora caricata. Premi Ricarica e riprova.';
 const STALE_PROPOSAL = 'La proposta è cambiata o non c\'è più. Ricarica e riprova.';
 const STALE_ROW = 'Il lavoro non è più aperto. Ricarica.';
-
-/** A write refused because the tracker changed after the dialog opened: shown as is, nothing is written. */
-class StaleError extends Error {}
 
 /** Local calendar date as YYYY-MM-DD (the date the person signs, not UTC). */
 export function localIsoDate(d = new Date()): string {
@@ -113,15 +111,16 @@ export function PromoteDialog({ proposal, onClose, onDone }: Handlers & { propos
             ? 'Scrivi come verificherai il lavoro.'
             : null,
       async (files) => {
-        // Match the proposal the person saw; the tracker may have changed since the dialog opened.
-        const proposalIndex = parseTrackerMarkdown(files.trackerMarkdown).proposals.findIndex(
+        const live = parseTrackerMarkdown(files.trackerMarkdown).proposals.filter(
           (p) => p.proposal === proposal.proposal && p.by === proposal.by && p.date === proposal.date,
         );
-        if (proposalIndex === -1) throw new StaleError(STALE_PROPOSAL);
+        if (live.length !== 1) throw new StaleError(STALE_PROPOSAL);
         const r = promoteProposalToOpen({
           trackerMarkdown: files.trackerMarkdown,
           logMarkdown: files.logMarkdown,
-          proposalIndex,
+          proposalText: proposal.proposal,
+          proposalBy: proposal.by,
+          proposalDate: proposal.date,
           person: project.actor,
           owner,
           doneWhen,

@@ -7,9 +7,9 @@ import type {
   BatonRow,
 } from '../types/wiki.ts';
 
-const OPEN_COLUMNS = ['ID', 'Status', 'Goal', 'Done when', 'Owner', 'Next verification', 'Evidence'];
-const PROPOSAL_COLUMNS = ['Proposal', 'By', 'Date', 'Why'];
-const DONE_COLUMNS = ['ID', 'Status', 'Goal', 'Closed', 'Criteria met', 'Evidence'];
+export const OPEN_COLUMNS = ['ID', 'Status', 'Goal', 'Done when', 'Owner', 'Next verification', 'Evidence'];
+export const PROPOSAL_COLUMNS = ['Proposal', 'By', 'Date', 'Why'];
+export const DONE_COLUMNS = ['ID', 'Status', 'Goal', 'Closed', 'Criteria met', 'Evidence'];
 const BATON_COLUMNS = ['Order', 'Task', 'Start files', 'Done when', 'Verification command', 'Notes / blockers'];
 
 // Header name (lowercased) -> row property, per tracker section.
@@ -346,64 +346,3 @@ export function computeNextTrackerId(trackerMarkdown: string, logMarkdown: strin
   return `T${maxId + 1}`;
 }
 
-function formatTrackerTable<T extends { extra: Record<string, string> }>(
-  rows: T[],
-  header: string[],
-  keys: Record<string, string>
-): string {
-  const lines: string[] = [`| ${header.join(' | ')} |`, `| ${header.map(() => '---').join(' | ')} |`];
-  for (const r of rows) {
-    const record = r as unknown as Record<string, unknown>;
-    const cells = header.map((h) => {
-      const key = keys[h.trim().toLowerCase()];
-      const value = key ? record[key] : r.extra[h];
-      return escapeTableCell(value === undefined || value === null ? '' : String(value));
-    });
-    lines.push(`| ${cells.join(' | ')} |`);
-  }
-  return lines.join('\n');
-}
-
-export function formatTrackerOpenTable(rows: TrackerOpenRow[], header: string[] = OPEN_COLUMNS): string {
-  return formatTrackerTable(rows, header, OPEN_KEYS);
-}
-
-export function formatTrackerProposalTable(rows: TrackerProposalRow[], header: string[] = PROPOSAL_COLUMNS): string {
-  return formatTrackerTable(rows, header, PROPOSAL_KEYS);
-}
-
-export function formatTrackerDoneTable(rows: TrackerDoneRow[], header: string[] = DONE_COLUMNS): string {
-  return formatTrackerTable(rows, header, DONE_KEYS);
-}
-
-export function replaceSectionTable(
-  markdown: string,
-  marker: string,
-  heading: string,
-  newTableMarkdown: string
-): string {
-  const normalized = markdown.replace(/\r\n/g, '\n');
-  const lines = normalized.split('\n');
-
-  const section = findSectionLines(lines, marker, heading);
-  const newTableLines = newTableMarkdown.split('\n');
-
-  if (!section) {
-    // Append section at end
-    const appendLines: string[] = ['', `## ${heading}`, `<!-- wiki:${marker} -->`, '', ...newTableLines, ''];
-    return lines.join('\n').trimEnd() + '\n' + appendLines.join('\n');
-  }
-
-  const existingTable = extractTableFromLines(section.lines);
-
-  if (existingTable) {
-    const absoluteHeaderLine = section.startLine + existingTable.headerLineOffset;
-    const absoluteTableEndLine = section.startLine + existingTable.tableEndLineOffset;
-    lines.splice(absoluteHeaderLine, absoluteTableEndLine - absoluteHeaderLine, ...newTableLines);
-  } else {
-    // Insert table after marker line (section.startLine)
-    lines.splice(section.startLine + 1, 0, '', ...newTableLines, '');
-  }
-
-  return lines.join('\n');
-}
