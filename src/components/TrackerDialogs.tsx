@@ -6,6 +6,7 @@ import { useProject, type ProjectState } from '../state/project';
 import { handoffLag, type HandoffLagAction } from '../lib/handoff-lag';
 import { DEFAULT_CORE_MAP } from '../lib/schema-parser';
 import { peer } from '../lib/apply-edits';
+import { todayLocal } from '../lib/dates';
 import {
   closeTrackerItemHumanUnproven,
   promoteProposalToOpen,
@@ -22,12 +23,6 @@ export const SIGN_HINT = 'Imposta il tuo nome nelle impostazioni per firmare.';
 const NOT_READY = 'La wiki non è ancora caricata. Premi Ricarica e riprova.';
 const STALE_PROPOSAL = 'La proposta è cambiata o non c\'è più. Ricarica e riprova.';
 const STALE_ROW = 'Il lavoro non è più aperto. Ricarica.';
-
-/** Local calendar date as YYYY-MM-DD (the date the person signs, not UTC). */
-export function localIsoDate(d = new Date()): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
 
 interface TrackerPaths {
   trackerPath: string;
@@ -157,7 +152,7 @@ export function PromoteDialog({ proposal, onClose, onDone }: Handlers & { propos
                 owner,
                 doneWhen,
                 nextVerification,
-                dateIso: localIsoDate(),
+                dateIso: todayLocal(),
               });
               assignedId = r.assignedId;
               logOut = r.logMarkdown;
@@ -227,7 +222,7 @@ export function CloseDialog({ row, onClose, onDone }: Handlers & { row: TrackerO
                 person: project.actor,
                 notProvenReason: notProven,
                 closureSource: source,
-                dateIso: localIsoDate(),
+                dateIso: todayLocal(),
               });
               logOut = r.logMarkdown;
               return r.trackerMarkdown;
@@ -283,7 +278,7 @@ export function FieldDialog({
 
   const submit = () =>
     run(!value.trim() ? `Scrivi ${label.toLowerCase()}.` : null, async (paths) => {
-      const date = localIsoDate();
+      const date = todayLocal();
       let logOut = '';
       await project.act([
         {

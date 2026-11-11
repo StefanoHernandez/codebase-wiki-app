@@ -1,5 +1,6 @@
 import type { CoreRole, SchemaConfig, SchemaTopic, SchemaBudgets } from '../types/wiki.ts';
 import { extractTableFromLines } from './markdown-tables.ts';
+import { fenceMask } from './md-edit.ts';
 
 export const DEFAULT_CORE_MAP: Record<CoreRole, string> = {
   index: 'index.md',
@@ -14,9 +15,16 @@ export const DEFAULT_CORE_MAP: Record<CoreRole, string> = {
   glossary: 'glossary.md',
 };
 
-/** Data rows of the first table in the lines (header and delimiter excluded), or []. */
+/** Data rows of the first table outside fences in the lines (header and delimiter excluded), or []. */
 function tableRows(lines: string[]): string[][] {
-  return extractTableFromLines(lines)?.rows ?? [];
+  const masked = fenceMask(lines);
+  const visible = lines.filter((_, i) => !masked[i]);
+  return extractTableFromLines(visible)?.rows ?? [];
+}
+
+function backtickToken(text: string): string | null {
+  const m = text.trim().match(/^`([^`]+)`$/);
+  return m ? m[1] : null;
 }
 
 function cleanSettingValue(val: string): string {
@@ -40,10 +48,16 @@ function parseBudgetBytes(valStr: string, fallback: number): number {
 
 function getSections(lines: string[]): Map<string, string[]> {
   const sections = new Map<string, string[]>();
+  const masked = fenceMask(lines);
   let currentKey = '';
   let currentLines: string[] = [];
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (masked[i]) {
+      if (currentKey) currentLines.push(line);
+      continue;
+    }
     const headingMatch = line.match(/^##\s+(.+)$/);
     const markerMatch = line.match(/^<!--\s*wiki:([a-zA-Z0-9_-]+)\s*-->$/);
 
@@ -76,6 +90,31 @@ function findSection(sections: Map<string, string[]>, keys: string[]): string[] 
     }
   }
   return [];
+}
+
+function excludedGlobsFromSection(lines: string[]): string[] {
+  const globs: string[] = [];
+  const masked = fenceMask(lines);
+  for (let i = 0; i < lines.length; i++) {
+    if (masked[i]) continue;
+    const line = lines[i]!;
+    const listMatch = line.match(/^\s*[-*]\s+(.*)$/);
+    if (listMatch) {
+      const glob = backtickToken(listMatch[1]!);
+      if (glob) globs.push(glob);
+      continue;
+    }
+  }
+  for (const row of tableRows(lines)) {
+    for (const cell of row) {
+      const glob = backtickToken(cell);
+      if (glob) {
+        globs.push(glob);
+        break;
+      }
+    }
+  }
+  return globs;
 }
 
 export function parseSchemaMarkdown(markdown: string): SchemaConfig {
@@ -161,17 +200,7 @@ export function parseSchemaMarkdown(markdown: string): SchemaConfig {
     }
   }
 
-  const excludedGlobs: string[] = [];
-  const excludedLines = findSection(sections, ['excluded paths']);
-  for (const line of excludedLines) {
-    const match = line.match(/^\s*[-*]\s+(.*)$/);
-    if (match) {
-      const glob = match[1].trim().replace(/^`+|`+$/g, '');
-      if (glob) {
-        excludedGlobs.push(glob);
-      }
-    }
-  }
+  const excludedGlobs = excludedGlobsFromSection(findSection(sections, ['excluded paths']));
 
   return {
     language,

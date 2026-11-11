@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Dialog, Field } from './Dialog';
-import { localIsoDate, SIGN_HINT } from './TrackerDialogs';
+import { SIGN_HINT } from './TrackerDialogs';
+import { todayLocal } from '../lib/dates';
 import { useProject, type ProjectState } from '../state/project';
 import { DEFAULT_CORE_MAP } from '../lib/schema-parser';
 import { peer } from '../lib/apply-edits';
@@ -94,7 +95,7 @@ export function DecideDialog({ decision, verdict, onClose, onDone }: DecideDialo
             relPath: paths.decisionPath,
             apply: (currentDecision) => {
               if (parseFrontmatter(currentDecision).fields.status !== 'proposed') throw new StaleError();
-              const date = localIsoDate();
+              const date = todayLocal();
               const fn = accept ? acceptDecisionHuman : rejectDecisionHuman;
               const result = fn({
                 decisionMarkdown: currentDecision,

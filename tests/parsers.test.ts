@@ -173,6 +173,14 @@ test('parseSchemaMarkdown parses actual resources/default-schema.md file', () =>
   assert.equal(config.topics.length, 1);
   assert.equal(config.topics[0].name, 'architecture');
   assert.equal(config.topics[0].path, 'architecture.md');
+  assert.deepEqual(config.excludedGlobs, []);
+});
+
+test('parseSchemaMarkdown ignores example globs inside fenced blocks in SCHEMA fixtures', () => {
+  const fixturePath = path.resolve(import.meta.dirname, '../tests/fixtures/wiki-v2/SCHEMA.md');
+  const content = fs.readFileSync(fixturePath, 'utf-8');
+  const config = parseSchemaMarkdown(content);
+  assert.deepEqual(config.excludedGlobs, []);
 });
 
 test('parseFrontmatter exposes generated and verified attributions from inline maps', () => {

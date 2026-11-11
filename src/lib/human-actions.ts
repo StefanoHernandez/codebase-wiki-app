@@ -7,6 +7,7 @@ import {
   DONE_COLUMNS,
 } from './markdown-tables.ts';
 import type { Attribution, TrackerDoneRow, TrackerOpenRow } from '../types/wiki.ts';
+import { todayLocal } from './dates.ts';
 import {
   parseDoc,
   renderDoc,
@@ -536,7 +537,7 @@ export function rejectDecisionHuman(params: {
 }
 
 function normalizeAtIso(at: string): string {
-  return at.replace(/\.\d+(?=Z$)/, '');
+  return at.replace(/\.\d{3}Z$/, 'Z');
 }
 
 function formatAttribution(a: Attribution): string {
@@ -590,7 +591,7 @@ export function markPageReviewed(params: {
   const title = page.fields.title || 'page';
   const logMarkdown = appendLogEntry({
     logMarkdown: params.logMarkdown,
-    date: params.atIso.slice(0, 10),
+    date: todayLocal(),
     title: 'Mark page reviewed',
     what: `${person} marked page "${title}" reviewed`,
     evidence: commit ? `commit ${commit}` : 'human review',

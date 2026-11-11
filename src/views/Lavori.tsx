@@ -16,6 +16,7 @@ type Pending =
 /** Open columns the app knows; any other header is an extra column shown as key/value. */
 const KNOWN_OPEN = ['id', 'status', 'goal', 'done when', 'owner', 'next verification', 'evidence'];
 const DONE_STATUS_TEXT: Record<string, string> = { '🟢': 'Verificato', '⚫': 'Chiuso senza prova' };
+const KNOWN_OPEN_STATUS = new Set(['⚪', '🟡', '🔴']);
 const CLOSURE = /^closed by (.+?) (\d{4}-\d{2}-\d{2}); not proven: (.+)$/;
 
 const idNumber = (id: string) => Number(id.replace(/\D/g, '')) || 0;
@@ -192,6 +193,7 @@ export default function Lavori() {
   );
 
   const byStatus = (status: string) => open.filter((r) => r.status === status);
+  const otherOpen = open.filter((r) => !KNOWN_OPEN_STATUS.has(r.status));
   const column = (title: string, icon: string | null, count: number, body: ReactNode) => (
     <section className="kanban-col">
       <h2 className="kanban-title">
@@ -239,6 +241,7 @@ export default function Lavori() {
         {column('Da fare', '⚪', byStatus('⚪').length, byStatus('⚪').length ? byStatus('⚪').map(openCard) : none)}
         {column('In corso', '🟡', byStatus('🟡').length, byStatus('🟡').length ? byStatus('🟡').map(openCard) : none)}
         {column('Bloccati', '🔴', byStatus('🔴').length, byStatus('🔴').length ? byStatus('🔴').map(openCard) : none)}
+        {column('Altro', null, otherOpen.length, otherOpen.length ? otherOpen.map(openCard) : none)}
         <section className="kanban-col">
           <h2 className="kanban-title">
             <span className="status-icon" aria-hidden="true">

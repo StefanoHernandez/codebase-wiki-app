@@ -4,6 +4,7 @@ import { SIGN_HINT } from './TrackerDialogs';
 import { useProject } from '../state/project';
 import { DEFAULT_CORE_MAP } from '../lib/schema-parser';
 import { peer } from '../lib/apply-edits';
+import { verifiedAtUtc } from '../lib/dates';
 import { markPageReviewed } from '../lib/human-actions';
 
 const NOT_READY = 'La wiki non è ancora caricata. Premi Ricarica e riprova.';
@@ -30,7 +31,7 @@ function useReviewSigned(pageRelPath: string, onDone: () => void) {
       return;
     }
     const head = project.snapshot?.gitState.headSha?.slice(0, 7) ?? '';
-    const atIso = new Date().toISOString();
+    const atIso = verifiedAtUtc();
     setError(null);
     setBusy(true);
     try {

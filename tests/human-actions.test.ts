@@ -14,6 +14,7 @@ import {
   markPageReviewed,
   appendLogEntry,
 } from '../src/lib/human-actions.ts';
+import { todayLocal } from '../src/lib/dates.ts';
 
 const SAMPLE_TRACKER = `---
 type: Project
@@ -329,7 +330,12 @@ confidence: high
   );
   assert.equal(parsed.fields.updated, '2026-11-01');
   assert.equal(parsed.fields.source_commit, 'a1b2c3d');
-  assert.match(res.logMarkdown, /\n## 2026-11-10 · Mark page reviewed · human\n- What: Mario Rossi marked page "Auth" reviewed\n- Evidence: commit b2c3d4e\n- IDs: none\n$/);
+  assert.match(
+    res.logMarkdown,
+    new RegExp(
+      `\\n## ${todayLocal()} · Mark page reviewed · human\\n- What: Mario Rossi marked page "Auth" reviewed\\n- Evidence: commit b2c3d4e\\n- IDs: none\\n$`,
+    ),
+  );
 });
 
 test('markPageReviewed writes one verified line for a single entry and keeps a flow list on one line', () => {
