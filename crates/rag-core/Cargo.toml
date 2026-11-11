@@ -18,6 +18,7 @@ dirs = "=6.0.0"
 rusqlite = { version = "=0.41.1", features = ["bundled"] }
 sqlite-vec = "=0.1.6"
 text-splitter = { version = "=0.33.2", features = ["code", "markdown"] }
+tree-sitter = "=0.27.2"
 tree-sitter-rust = "=0.24.2"
 tree-sitter-typescript = "=0.23.2"
 tree-sitter-javascript = "=0.25.0"

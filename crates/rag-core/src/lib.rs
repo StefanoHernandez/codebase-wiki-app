@@ -1,6 +1,7 @@
 //! Local code + wiki index (paths, store, search).
 
 pub mod catalog;
+pub mod chunk;
 pub mod files;
 pub mod paths;
 pub mod repo;
