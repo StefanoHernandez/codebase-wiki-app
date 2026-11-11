@@ -200,7 +200,7 @@ function sectionCounts(attention: ReturnType<typeof useProject>['attention']): P
   const decisioni = n('decision-proposed');
   if (decisioni) out.decisioni = { text: String(decisioni), tone: 'muted' };
   if (n('handoff-stale')) out.handoff = { text: '!', tone: 'drift' };
-  const salute = n('page-drift', 'reverify', 'lint-error');
+  const salute = n('page-drift', 'reverify', 'lint-error', 'risk-unowned');
   if (salute) out.salute = { text: String(salute), tone: 'muted' };
   return out;
 }

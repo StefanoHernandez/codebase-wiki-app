@@ -8,6 +8,8 @@ import { useStamp } from '../components/stamp';
 import { SIGN_HINT } from '../components/TrackerDialogs';
 import { useToast } from '../components/Toast';
 import { DEFAULT_CORE_MAP, DEFAULT_SCHEMA_BUDGETS } from '../lib/schema-parser';
+import { unownedSevereRisks } from '../lib/wiki-extras';
+import { renderInlineCode } from '../lib/inline-code';
 import type { TrustTier } from '../lib/trust';
 import { useProject } from '../state/project';
 import { useNav } from '../state/nav';
@@ -106,6 +108,7 @@ export default function Salute() {
   const logPage = project.pages.find((p) => p.relPath === core.log);
   const logBytes = logPage?.sizeBytes ?? 0;
   const risksPage = project.pages.find((p) => p.relPath === core.risks);
+  const unowned = new Set(unownedSevereRisks(project.risks ?? []));
 
   if (!project.snapshot?.wikiRoot) {
     return (
@@ -348,7 +351,44 @@ export default function Salute() {
 
       <section className="group">
         <h2 className="group-title">Rischi</h2>
-        {risksPage ? (
+        {project.risks ? (
+          project.risks.length === 0 ? (
+            <p className="muted">Il registro dei rischi è vuoto.</p>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Rischio</th>
+                  <th>Gravità</th>
+                  <th>Innesco</th>
+                  <th>Mitigazione</th>
+                  <th>Responsabile</th>
+                  <th>ID collegati</th>
+                </tr>
+              </thead>
+              <tbody>
+                {project.risks.map((r, i) => (
+                  <tr
+                    key={`${r.id}:${i}`}
+                    data-page={r.id}
+                    className={nav.ref === r.id ? 'is-selected' : undefined}
+                  >
+                    <td>{r.id}</td>
+                    <td>{renderInlineCode(r.risk)}</td>
+                    <td>{r.severity}</td>
+                    <td>{renderInlineCode(r.trigger)}</td>
+                    <td>{renderInlineCode(r.mitigation)}</td>
+                    <td>
+                      {unowned.has(r) ? <span className="badge badge-drift">Nessuno</span> : renderInlineCode(r.owner)}
+                    </td>
+                    <td>{renderInlineCode(r.ids)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        ) : risksPage ? (
           <div className="salute-risks md">
             <Markdown markdown={risksPage.markdown} pagePath={risksPage.relPath} onOpenPage={openPage} />
           </div>

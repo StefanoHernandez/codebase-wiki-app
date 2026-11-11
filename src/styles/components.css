@@ -749,3 +749,11 @@ kbd {
     box-shadow: inset 3px 0 0 transparent;
   }
 }
+
+.next-steps {
+  margin-bottom: 20px;
+}
+.next-steps ol {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Empty } from '../components/Empty';
 import { UpgradeBanner } from '../components/Compat';
+import { NextStepsCard } from '../components/NextSteps';
 import { PromoteDialog, SIGN_HINT } from '../components/TrackerDialogs';
 import { useToast } from '../components/Toast';
 import { useProject } from '../state/project';
@@ -15,6 +16,7 @@ const GROUPS: Array<{ kind: AttentionKind; title: string }> = [
   { kind: 'handoff-stale', title: 'Handoff da aggiornare' },
   { kind: 'page-drift', title: 'Pagine con sorgenti cambiati' },
   { kind: 'reverify', title: 'Da ri-verificare' },
+  { kind: 'risk-unowned', title: 'Rischi gravi senza responsabile' },
   { kind: 'lint-error', title: 'Errori di struttura' },
 ];
 
@@ -40,6 +42,7 @@ export default function PerTe() {
       <section className="view">
         <h1 className="view-title">Per te</h1>
         <UpgradeBanner />
+        <NextStepsCard />
         <Empty title="Niente che aspetti te." />
       </section>
     );
@@ -138,6 +141,15 @@ export default function PerTe() {
           actions: open('salute', ref),
         };
       }
+      case 'risk-unowned': {
+        const r = project.risks?.find((x) => x.id === ref);
+        return {
+          key,
+          title: r ? `${ref} · ${r.risk}` : ref,
+          detail: `Rischio ${r?.severity === 'critical' ? 'critico' : 'alto'} senza responsabile: assegnalo nella pagina dei rischi.`,
+          actions: open('salute', ref),
+        };
+      }
       case 'lint-error': {
         if (lintSeen.has(ref)) return null;
         lintSeen.add(ref);
@@ -156,6 +168,7 @@ export default function PerTe() {
     <section className="view">
       <h1 className="view-title">Per te</h1>
       <UpgradeBanner />
+      <NextStepsCard />
       {GROUPS.map((group) => {
         const rows = attention.flatMap((a, i) => {
           if (a.kind !== group.kind) return [];

@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Empty } from '../components/Empty';
 import { CloseDialog, FieldDialog, PromoteDialog, SIGN_HINT } from '../components/TrackerDialogs';
 import { useStamp } from '../components/stamp';
+import { NextStepsCard } from '../components/NextSteps';
 import { CLOSE_BLOCKED_REASON } from '../lib/wiki-compat';
 import { useToast } from '../components/Toast';
 import { useProject } from '../state/project';
@@ -214,6 +215,7 @@ export default function Lavori() {
   return (
     <section className="view">
       <h1 className="view-title">Lavori</h1>
+      <NextStepsCard />
       <div className="toolbar">
         {phaseHeader && phases.length > 0 && (
           <label className="toolbar-field">

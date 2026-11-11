@@ -11,6 +11,7 @@ import { computeAttention, type AttentionItem } from '../lib/attention';
 import { applyEdits, type FileEdit } from '../lib/apply-edits';
 import { validateHumanActor } from '../lib/human-actions';
 import { wikiCompat, type WikiCompat } from '../lib/wiki-compat';
+import { parseNextSteps, parseRiskRegister, type NextSteps, type RiskRow } from '../lib/wiki-extras';
 import { clearNavRef } from './nav';
 
 export interface WikiPage {
@@ -30,6 +31,10 @@ interface Derived {
   tracker: TrackerData | null;
   handoff: HandoffData | null;
   decisions: Decision[];
+  /** Tracker `## Next steps`, if present. */
+  nextSteps: NextSteps | null;
+  /** Risks page register table, if present. */
+  risks: RiskRow[] | null;
   pages: WikiPage[];
   attention: AttentionItem[];
   parseError: string | null;
@@ -73,6 +78,8 @@ const EMPTY: Derived = {
   tracker: null,
   handoff: null,
   decisions: [],
+  nextSteps: null,
+  risks: null,
   pages: [],
   attention: [],
   parseError: null,
@@ -119,6 +126,9 @@ function derive(snapshot: WikiSnapshot | null, lint: LintReport | null): Derived
     const tracker = trackerMd !== undefined ? parseTrackerMarkdown(trackerMd) : null;
     const handoffMd = byPath.get(core.handoff);
     const handoff = handoffMd !== undefined ? parseHandoffMarkdown(handoffMd) : null;
+    const nextSteps = trackerMd !== undefined ? parseNextSteps(trackerMd) : null;
+    const risksMd = byPath.get(core.risks);
+    const risks = risksMd !== undefined ? parseRiskRegister(risksMd) : null;
 
     const pages: WikiPage[] = snapshot.pages.map((p) => {
       const frontmatter = parseFrontmatter(p.content);
@@ -142,8 +152,9 @@ function derive(snapshot: WikiSnapshot | null, lint: LintReport | null): Derived
       handoffCommitsBehind: handoffMd !== undefined ? snapshot.gitState.handoffCommitsBehind : null,
       pages,
       lintFindings: (lint?.findings ?? []).map((f) => ({ relPath: f.wikiRelPath, line: f.line, message: f.message })),
+      risks,
     });
-    return { schema, tracker, handoff, decisions, pages, attention, parseError: null };
+    return { schema, tracker, handoff, decisions, nextSteps, risks, pages, attention, parseError: null };
   } catch (e) {
     return { ...EMPTY, parseError: message(e) };
   }

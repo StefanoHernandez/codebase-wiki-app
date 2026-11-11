@@ -1,4 +1,5 @@
 import type { Decision, TrackerData } from '../types/wiki.ts';
+import { unownedSevereRisks, type RiskRow } from './wiki-extras.ts';
 
 export type AttentionKind =
   | 'decision-proposed'
@@ -7,7 +8,8 @@ export type AttentionKind =
   | 'handoff-stale'
   | 'page-drift'
   | 'reverify'
-  | 'lint-error';
+  | 'lint-error'
+  | 'risk-unowned';
 
 export type AttentionView = 'lavori' | 'decisioni' | 'handoff' | 'salute';
 
@@ -24,6 +26,8 @@ export interface AttentionInput {
   handoffCommitsBehind: number | null;
   pages: Array<{ relPath: string; markdown: string; changedSources: string[] }>;
   lintFindings: Array<{ relPath: string; line: number; message: string }>;
+  /** Risk register rows (risks page), if any. */
+  risks?: RiskRow[] | null;
 }
 
 const HANDOFF_STALE_COMMITS = 5;
@@ -98,6 +102,15 @@ export function computeAttention(input: AttentionInput): AttentionItem[] {
       title: `Lint error: ${f.relPath}:${f.line}`,
       detail: f.message,
       target: { view: 'salute', ref: f.relPath },
+    });
+  }
+
+  for (const r of unownedSevereRisks(input.risks ?? [])) {
+    items.push({
+      kind: 'risk-unowned',
+      title: `Unowned ${r.severity} risk ${r.id}: ${r.risk}`,
+      detail: r.trigger,
+      target: { view: 'salute', ref: r.id },
     });
   }
 
