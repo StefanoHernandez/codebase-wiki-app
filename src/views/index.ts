@@ -5,8 +5,9 @@ import Decisioni from './Decisioni';
 import Handoff from './Handoff';
 import Salute from './Salute';
 import Grafo from './Grafo';
+import Ricerca from './Ricerca';
 
-export type SectionId = 'per-te' | 'lavori' | 'decisioni' | 'handoff' | 'salute' | 'grafo';
+export type SectionId = 'per-te' | 'lavori' | 'decisioni' | 'handoff' | 'salute' | 'ricerca' | 'grafo';
 
 /** Sections in nav order; position + 1 is the ⌘/Ctrl shortcut digit. */
 export const SECTIONS: Array<{ id: SectionId; label: string; View: ComponentType }> = [
@@ -15,5 +16,6 @@ export const SECTIONS: Array<{ id: SectionId; label: string; View: ComponentType
   { id: 'decisioni', label: 'Decisioni', View: Decisioni },
   { id: 'handoff', label: 'Handoff', View: Handoff },
   { id: 'salute', label: 'Salute', View: Salute },
+  { id: 'ricerca', label: 'Ricerca', View: Ricerca },
   { id: 'grafo', label: 'Grafo', View: Grafo },
 ];
