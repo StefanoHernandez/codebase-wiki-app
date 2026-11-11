@@ -354,8 +354,12 @@ export function rejectDecisionHuman(params: {
   return decideDecision(params, 'rejected');
 }
 
+function normalizeAtIso(at: string): string {
+  return at.replace(/\.\d+(?=Z$)/, '');
+}
+
 function formatAttribution(a: Attribution): string {
-  return `{ by: ${a.by}, at: ${a.at}${a.commit ? `, commit: ${a.commit}` : ''} }`;
+  return `{ by: ${a.by}, at: ${normalizeAtIso(a.at)}${a.commit ? `, commit: ${a.commit}` : ''} }`;
 }
 
 /** Replaces the `verified:` frontmatter key with a single line (the validator reads one-line values only). */
@@ -395,7 +399,7 @@ export function markPageReviewed(params: {
   const commit = params.commit.trim();
   const page = parseFrontmatter(params.pageMarkdown);
 
-  const entry: Attribution = { by: `human:${personId(person)}`, at: params.atIso };
+  const entry: Attribution = { by: `human:${personId(person)}`, at: normalizeAtIso(params.atIso) };
   if (commit) entry.commit = commit;
 
   const pageMarkdown = setVerifiedFrontmatter(params.pageMarkdown, [...page.verified, entry]);

@@ -7,6 +7,7 @@ import { extractTableFromLines, findSectionLines } from '../lib/markdown-tables'
 import { useProject } from '../state/project';
 import { useNav } from '../state/nav';
 import type { BatonRow } from '../types/wiki';
+import { renderInlineCode, textForCopy } from '../lib/inline-code';
 import './handoff.css';
 
 function taskId(task: string): string | null {
@@ -47,7 +48,7 @@ export default function Handoff() {
   const copyCmd = useCallback(
     async (text: string) => {
       try {
-        await copyText(text);
+        await copyText(textForCopy(text));
         toast('Comando copiato');
       } catch {
         toast('Non riesco a copiare');
@@ -94,14 +95,12 @@ export default function Handoff() {
           )}
           {row.task}
         </td>
-        <td>
-          <code>{row.startFiles}</code>
-        </td>
+        <td>{renderInlineCode(row.startFiles)}</td>
         <td>{row.doneWhen}</td>
         <td>
           {row.verificationCommand ? (
             <div className="handoff-cmd">
-              <code>{row.verificationCommand}</code>
+              {renderInlineCode(row.verificationCommand)}
               <button type="button" className="btn btn-quiet" onClick={() => void copyCmd(row.verificationCommand)}>
                 Copia
               </button>
@@ -130,7 +129,7 @@ export default function Handoff() {
           {data.rows.map((row, i) => (
             <tr key={i}>
               {row.map((cell, j) => (
-                <td key={j}>{cell.includes('`') ? <code>{cell.replace(/`/g, '')}</code> : cell}</td>
+                <td key={j}>{cell.includes('`') ? renderInlineCode(cell) : cell}</td>
               ))}
             </tr>
           ))}
@@ -168,7 +167,7 @@ export default function Handoff() {
             {Object.entries(handoff.stateBullets).map(([key, value]) => (
               <li key={key}>
                 <strong>{key}</strong>
-                <span>{value}</span>
+                <span>{renderInlineCode(value)}</span>
               </li>
             ))}
           </ul>
@@ -193,7 +192,11 @@ export default function Handoff() {
                 <th>Note</th>
               </tr>
             </thead>
-            <tbody>{handoff.baton.map(renderBaton)}</tbody>
+            <tbody>
+              {[...handoff.baton]
+                .sort((a, b) => (parseInt(a.order, 10) || 0) - (parseInt(b.order, 10) || 0))
+                .map(renderBaton)}
+            </tbody>
           </table>
         )}
       </section>

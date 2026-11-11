@@ -15,6 +15,7 @@ const GROUPS: Array<{ status: DecisionStatus; title: string; human?: boolean }> 
   { status: 'accepted', title: 'Accettate' },
   { status: 'rejected', title: 'Rifiutate' },
   { status: 'superseded', title: 'Superate' },
+  { status: 'unknown', title: 'Altro' },
 ];
 
 const STATUS_LABEL: Record<DecisionStatus, string> = {
@@ -43,7 +44,7 @@ export default function Decisioni() {
   const project = useProject();
   const nav = useNav();
   const toast = useToast();
-  const { stamp, isStamped } = useStamp();
+  const { stamp } = useStamp();
   const [selected, setSelected] = useState<string | null>(null);
   const [pending, setPending] = useState<{ decision: Decision; verdict: 'accepted' | 'rejected' } | null>(null);
   const signable = !project.actorError;
@@ -123,7 +124,7 @@ export default function Decisioni() {
                 <button
                   key={d.number}
                   type="button"
-                  className={`decisioni-row${selected === d.number ? ' is-selected' : ''}${isStamped(d.number) ? ' stamp' : ''}`}
+                  className={`decisioni-row${selected === d.number ? ' is-selected' : ''}`}
                   onClick={() => setSelected(d.number)}
                 >
                   <span className="decisioni-row-num">{d.number}</span>
@@ -145,19 +146,24 @@ export default function Decisioni() {
                 </div>
                 {meta && meta.sources.length > 0 && (
                   <div>
-                    <dt>Sources</dt>
+                    <dt>Fonti</dt>
                     <dd>{meta.sources.join(', ')}</dd>
                   </div>
                 )}
                 {meta?.fields.confidence && (
                   <div>
-                    <dt>Confidence</dt>
+                    <dt>Affidabilità</dt>
                     <dd>{meta.fields.confidence}</dd>
                   </div>
                 )}
               </dl>
               <div className="decisioni-detail">
-                <Markdown markdown={page.markdown} pagePath={page.relPath} onOpenPage={openDecisionLink} />
+                <Markdown
+                  markdown={page.markdown}
+                  pagePath={page.relPath}
+                  onOpenPage={openDecisionLink}
+                  wikiLinkTargets={project.decisions.map((d) => d.relPath)}
+                />
               </div>
               {active.status === 'proposed' && (
                 <div className="decisioni-actions">

@@ -59,6 +59,9 @@
   align-items: center;
   margin-bottom: 12px;
 }
+.salute-budget-row--spaced {
+  margin-top: 20px;
+}
 .salute-budget-label {
   margin: 0;
   font-size: var(--text-sm);
@@ -79,7 +82,7 @@
 }
 
 .salute-table-path {
-  font-family: var(--font-mono);
+  font-family: var(--font-code);
   font-size: var(--text-sm);
 }
 

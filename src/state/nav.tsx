@@ -3,7 +3,7 @@ import type { SectionId } from '../views';
 
 let clearNavRefImpl: (() => void) | null = null;
 
-/** Clears the section item ref when the open project changes (ProjectProvider is above NavProvider). */
+/** Clears `ref` (tracker ID, decision number, page path, …) when the user closes or switches project. */
 export function clearNavRef() {
   clearNavRefImpl?.();
 }

@@ -36,8 +36,6 @@ jobs:
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
 
       - name: Install Linux dependencies (Tauri)
         run: |
@@ -48,6 +46,9 @@ jobs:
             librsvg2-dev \
             patchelf \
             libgtk-3-dev
+
+      - name: Build frontend
+        run: npm run build
 
       - name: Cargo tests
         run: cargo test --workspace
@@ -88,8 +89,6 @@ jobs:
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
 
       - name: Install Linux dependencies (Tauri)
         if: matrix.platform == 'ubuntu-22.04'
@@ -132,11 +131,6 @@ jobs:
         with:
           name: bundles-${{ matrix.platform }}
           path: |
-            src-tauri/target/release/bundle/**/*.dmg
-            src-tauri/target/release/bundle/**/*.app
-            src-tauri/target/**/release/bundle/**/*.dmg
-            src-tauri/target/**/release/bundle/**/*.app
-            src-tauri/target/release/bundle/**/*.msi
-            src-tauri/target/release/bundle/**/*.exe
-            src-tauri/target/release/bundle/**/*.deb
-            src-tauri/target/release/bundle/**/*.AppImage
+            src-tauri/target/release/bundle/**
+            src-tauri/target/universal-apple-darwin/release/bundle/**
+          if-no-files-found: error

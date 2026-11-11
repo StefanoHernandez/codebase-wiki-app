@@ -15,7 +15,7 @@ Applicazione desktop **Tauri v2** + React: pannello di controllo per una persona
 
 - **Node.js** ≥ 22
 - **Rust** (toolchain stable) e **Cargo**
-- **Python 3** (solo per il validatore `resources/validate-wiki.py`, stdlib)
+- **Python 3** — per il lint strutturale (`resources/validate-wiki.py`, stdlib): l’app prova `python3` e, in alternativa, `python` (Windows); accetta solo interpreti che rispondono con «Python 3» a `--version`.
 - **Git**
 - **Linux (build desktop):** `libwebkit2gtk-4.1-dev`, `libappindicator3-dev`, `librsvg2-dev`, `patchelf`, `libgtk-3-dev`
 

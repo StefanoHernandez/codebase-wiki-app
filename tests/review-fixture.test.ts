@@ -8,14 +8,14 @@ import { makeTempRepo, runValidator, read } from './helpers/fixture.ts';
 
 const PAGE = 'agent/context.md';
 
-function shortHead(repo: string): string {
-  return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
+function headCommit(repo: string): string {
+  return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
 }
 
 test('markPageReviewed on fixture page passes validator with one then two verified entries on one line', () => {
   const temp = makeTempRepo();
   try {
-    const head = shortHead(temp.repo);
+    const head = headCommit(temp.repo);
     const at = '2026-11-10T14:00:00Z';
 
     const page0 = read(temp.wiki, PAGE);
@@ -29,7 +29,10 @@ test('markPageReviewed on fixture page passes validator with one then two verifi
     });
     assert.match(
       once.pageMarkdown,
-      /^verified: \{ by: human:stefano, at: 2026-11-10T14:00:00Z, commit: [0-9a-f]+ \}$/m,
+      new RegExp(
+        `^verified: \\{ by: human:stefano, at: 2026-11-10T14:00:00Z, commit: ${head} \\}$`,
+        'm',
+      ),
     );
     assert.equal(once.pageMarkdown.match(/^verified:/gm)!.length, 1);
 
@@ -42,10 +45,12 @@ test('markPageReviewed on fixture page passes validator with one then two verifi
       pageMarkdown: once.pageMarkdown,
       logMarkdown: once.logMarkdown,
       person: 'Stefano',
-      atIso: '2026-11-11T10:00:00Z',
+      atIso: '2026-11-11T10:00:00.000Z',
       commit: head,
     });
     assert.match(twice.pageMarkdown, /^verified: \[\{/m);
+    assert.doesNotMatch(twice.pageMarkdown, /at: 2026-11-11T10:00:00\.000Z/);
+    assert.match(twice.pageMarkdown, /at: 2026-11-11T10:00:00Z/);
     assert.equal(twice.pageMarkdown.match(/^verified:/gm)!.length, 1);
 
     fs.writeFileSync(path.join(temp.wiki, PAGE), twice.pageMarkdown);

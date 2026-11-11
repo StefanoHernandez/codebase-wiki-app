@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Markdown } from './Markdown';
 import { readSourceFile, sourceDiff } from '../api';
 import type { WikiPage } from '../state/project';
 import type { TrustTier } from '../lib/trust';
+import { diffLineKind } from '../views/grafo-helpers';
 import './page-drawer.css';
 
 export type PageDrawerTarget =
@@ -20,16 +21,6 @@ export function trustTierLabel(tier: TrustTier): string {
     case 'stale-verified':
       return 'Verifica obsoleta';
   }
-}
-
-export type DiffLineKind = 'add' | 'del' | 'hunk' | 'ctx';
-
-export function diffLineKind(line: string): DiffLineKind {
-  if (line.startsWith('+++') || line.startsWith('---')) return 'ctx';
-  if (line.startsWith('@@')) return 'hunk';
-  if (line.startsWith('+')) return 'add';
-  if (line.startsWith('-')) return 'del';
-  return 'ctx';
 }
 
 const META_SKIP = new Set(['title', 'confidence', 'source_commit', 'generated', 'verified', 'sources']);
@@ -132,10 +123,10 @@ function WikiPanel({
               </>
             )}
             {facts.map(([k, v]) => (
-              <span key={k} style={{ display: 'contents' }}>
+              <Fragment key={k}>
                 <dt>{k}</dt>
                 <dd>{v}</dd>
-              </span>
+              </Fragment>
             ))}
           </dl>
         )}
@@ -163,9 +154,10 @@ function WikiPanel({
 }
 
 function tierBadge(tier: TrustTier): string {
+  if (tier === 'machine-confirmed') return 'ok';
   if (tier === 'human-reviewed') return 'human';
   if (tier === 'stale-verified') return 'drift';
-  return 'ok';
+  return '';
 }
 
 function SourcePanel({
@@ -183,28 +175,35 @@ function SourcePanel({
   const [diff, setDiff] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loadSeq = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     setLoading(true);
     setError(null);
     try {
       const payload = await readSourceFile(repo, relPath);
+      if (seq !== loadSeq.current) return;
       setContent(payload.content);
       if (commit) {
         try {
-          setDiff(await sourceDiff(repo, relPath, commit));
+          const diffText = await sourceDiff(repo, relPath, commit);
+          if (seq !== loadSeq.current) return;
+          setDiff(diffText);
         } catch (e) {
+          if (seq !== loadSeq.current) return;
           setDiff(`Diff non disponibile: ${e instanceof Error ? e.message : String(e)}`);
         }
       } else {
         setDiff(null);
       }
     } catch (e) {
+      if (seq !== loadSeq.current) return;
       setError(e instanceof Error ? e.message : String(e));
       setContent(null);
       setDiff(null);
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }, [repo, relPath, commit]);
 

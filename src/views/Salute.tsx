@@ -21,7 +21,7 @@ const TRUST_LABEL: Record<TrustTier, string> = {
 
 const TRUST_BADGE: Record<TrustTier, string> = {
   unverified: 'badge',
-  'machine-confirmed': 'badge',
+  'machine-confirmed': 'badge badge-ok',
   'human-reviewed': 'badge badge-human',
   'stale-verified': 'badge badge-drift',
 };
@@ -32,13 +32,12 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function isCorePath(relPath: string, coreMap: Record<string, string>): boolean {
+function coreReadPaths(coreMap: Record<string, string>): Set<string> {
+  const paths = new Set<string>(['SCHEMA.md']);
   for (const p of Object.values(coreMap)) {
-    if (p.endsWith('/')) {
-      if (relPath.startsWith(p)) return true;
-    } else if (relPath === p) return true;
+    if (!p.endsWith('/')) paths.add(p);
   }
-  return false;
+  return paths;
 }
 
 function recentLogSections(markdown: string): string[] {
@@ -102,14 +101,20 @@ export default function Salute() {
     return list.sort((a, b) => a.relPath.localeCompare(b.relPath));
   }, [project.pages, tierFilter, driftOnly]);
 
+  const logRel = core.log;
+
   const overBudget = budgets
-    ? project.pages.filter((p) => p.sizeBytes > budgets.singlePageBytes)
+    ? project.pages.filter(
+        (p) => p.relPath !== logRel && p.sizeBytes > budgets.singlePageBytes,
+      )
     : [];
+
+  const corePaths = useMemo(() => coreReadPaths(core), [core]);
 
   const coreReadBytes = useMemo(() => {
     if (!budgets) return 0;
-    return project.pages.filter((p) => isCorePath(p.relPath, core)).reduce((s, p) => s + p.sizeBytes, 0);
-  }, [project.pages, core, budgets]);
+    return project.pages.filter((p) => corePaths.has(p.relPath)).reduce((s, p) => s + p.sizeBytes, 0);
+  }, [project.pages, corePaths, budgets]);
 
   const logPage = project.pages.find((p) => p.relPath === core.log);
   const logBytes = logPage?.sizeBytes ?? 0;
@@ -168,9 +173,10 @@ export default function Salute() {
                 <tr
                   key={`${f.wikiRelPath}:${f.line}:${i}`}
                   className="salute-clickable"
+                  role="button"
                   tabIndex={0}
                   onClick={() => openPage(f.wikiRelPath)}
-                  onKeyDown={(e) => e.key === 'Enter' && openPage(f.wikiRelPath)}
+                  onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && openPage(f.wikiRelPath)}
                 >
                   <td className="salute-table-path">{f.wikiRelPath}</td>
                   <td>{f.line}</td>
@@ -212,7 +218,7 @@ export default function Salute() {
               <th>Percorso</th>
               <th>Tipo</th>
               <th>Livello</th>
-              <th>Sources</th>
+              <th>Fonti</th>
               <th>Drift</th>
               <th>Dimensione</th>
               <th />
@@ -274,10 +280,13 @@ export default function Salute() {
           )}
           {overBudget.length === 0 && <p className="muted">Nessuna pagina supera il limite per pagina.</p>}
 
-          <div className="salute-budget-row" style={{ marginTop: 20 }}>
+          <div className="salute-budget-row salute-budget-row--spaced">
             <p className="salute-budget-label">
               Lettura core
-              <span className="field-hint" title="Somma approssimativa dei byte delle pagine elencate nella Core map (file e cartelle) più log.md.">
+              <span
+                className="field-hint"
+                title="Somma dei byte di SCHEMA.md e delle pagine file nella Core map (esclude le cartelle come decisions/ o log/)."
+              >
                 {' '}
                 (approssimazione)
               </span>

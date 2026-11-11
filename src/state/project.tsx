@@ -211,14 +211,14 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const forget = useCallback(
     async (path: string) => {
-      const seq = ++openSeq.current;
+      const seq = openSeq.current;
       try {
         await api.removeRecent(path);
-        if (seq !== openSeq.current) return;
         if (path === currentRef.current) {
           clearNavRef();
           setSnapshot(null);
           setLint(null);
+          setLoading(false);
         }
       } catch (e) {
         if (seq === openSeq.current) setError(message(e));
@@ -246,12 +246,16 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const repo = currentRef.current;
       if (!repo) throw new Error('Nessun progetto aperto.');
       let failed: unknown;
+      let attempted = false;
       try {
-        for (const w of writes) await api.writeWikiFile(repo, w.relPath, w.content);
+        for (const w of writes) {
+          attempted = true;
+          await api.writeWikiFile(repo, w.relPath, w.content);
+        }
       } catch (e) {
         failed = e;
       } finally {
-        await reload();
+        if (attempted) await reload();
       }
       if (failed) throw failed;
     },

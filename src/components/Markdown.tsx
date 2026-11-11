@@ -10,6 +10,8 @@ type Props = {
   pagePath?: string;
   /** Called with a wiki-relative path when an internal `.md` link is clicked. */
   onOpenPage?: (relPath: string) => void;
+  /** When set, only these wiki paths are interactive links; others render as plain text. */
+  wikiLinkTargets?: string[];
 };
 
 /** Resolves `href` against the directory of `pagePath` (both wiki-relative, `/`-separated). */
@@ -25,8 +27,10 @@ function resolveRelative(pagePath: string, href: string): string {
 const isExternal = (href: string) => /^[a-z][a-z0-9+.-]*:/i.test(href);
 
 /** Renders a wiki page as a document (Newsreader). Raw HTML is never rendered. */
-export function Markdown({ markdown, pagePath = '', onOpenPage }: Props) {
+export function Markdown({ markdown, pagePath = '', onOpenPage, wikiLinkTargets }: Props) {
   const body = parseFrontmatter(markdown).body;
+  const linkable =
+    wikiLinkTargets === undefined ? null : new Set(wikiLinkTargets.map((p) => p.replace(/\\/g, '/')));
   return (
     <div className="md">
       <ReactMarkdown
@@ -35,12 +39,16 @@ export function Markdown({ markdown, pagePath = '', onOpenPage }: Props) {
           a({ href = '', children }) {
             const internal = !isExternal(href) && /\.md(#.*)?$/i.test(href);
             if (internal && onOpenPage) {
+              const target = resolveRelative(pagePath, href);
+              if (linkable && !linkable.has(target)) {
+                return <span>{children}</span>;
+              }
               return (
                 <a
                   href="#"
                   onClick={(e) => {
                     e.preventDefault();
-                    onOpenPage(resolveRelative(pagePath, href));
+                    onOpenPage(target);
                   }}
                 >
                   {children}

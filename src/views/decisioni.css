@@ -39,18 +39,8 @@
   background: var(--surface-sunk);
 }
 .decisioni-row.is-selected {
-  background: var(--human-wash);
-}
-.decisioni-row.stamp {
-  animation: decision-stamp 0.3s ease-out;
-}
-@keyframes decision-stamp {
-  from {
-    background: var(--human-wash);
-  }
-  to {
-    background: transparent;
-  }
+  background: var(--surface-sunk);
+  box-shadow: inset 3px 0 0 var(--rule);
 }
 .decisioni-row-num {
   flex-shrink: 0;
@@ -104,10 +94,5 @@
 @media (max-width: 800px) {
   .decisioni-layout {
     grid-template-columns: 1fr;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .decisioni-row.stamp {
-    animation: none;
   }
 }

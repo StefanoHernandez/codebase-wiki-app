@@ -300,6 +300,7 @@ export function parseHandoffMarkdown(markdown: string): HandoffData {
         }
       }
     }
+    baton.sort((a, b) => (parseInt(a.order, 10) || 0) - (parseInt(b.order, 10) || 0));
   }
 
   // Blockers

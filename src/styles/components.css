@@ -264,7 +264,7 @@ kbd {
   white-space: nowrap;
   cursor: pointer;
 }
-.btn:hover:not(:disabled) {
+.btn:hover:not(:disabled):not([aria-disabled='true']) {
   border-color: var(--ink-muted);
 }
 .btn:disabled {

@@ -14,34 +14,12 @@ import { buildWikiCodeGraph, filterWikiGraph } from '../lib/graph-builder';
 import { useProject } from '../state/project';
 import { useTheme } from '../state/theme';
 import type { GraphEdge, GraphNode, GraphNodeCategory } from '../types/wiki';
+import { LABEL_ZOOM_THRESHOLD, neighborIds, readCategoryColors } from './grafo-helpers';
 import './grafo.css';
-
-export const LABEL_ZOOM_THRESHOLD = 2.2;
 
 type FgNode = GraphNode & { x?: number; y?: number };
 
-export function neighborIds(nodeId: string, edges: GraphEdge[]): Set<string> {
-  const out = new Set<string>([nodeId]);
-  for (const e of edges) {
-    if (e.source === nodeId) out.add(e.target);
-    if (e.target === nodeId) out.add(e.source);
-  }
-  return out;
-}
-
 const CATEGORIES: GraphNodeCategory[] = ['core', 'decision', 'tracker', 'agent', 'topic', 'source'];
-
-export function readCategoryColors(root: HTMLElement): Record<GraphNodeCategory, string> {
-  const cs = getComputedStyle(root);
-  return {
-    core: cs.getPropertyValue('--graph-cat-core').trim(),
-    decision: cs.getPropertyValue('--graph-cat-decision').trim(),
-    tracker: cs.getPropertyValue('--graph-cat-tracker').trim(),
-    agent: cs.getPropertyValue('--graph-cat-agent').trim(),
-    topic: cs.getPropertyValue('--graph-cat-topic').trim(),
-    source: cs.getPropertyValue('--graph-cat-source').trim(),
-  };
-}
 
 export default function Grafo() {
   const project = useProject();
@@ -59,13 +37,13 @@ export default function Grafo() {
   const [tokenInk, setTokenInk] = useState('#1b2220');
   const [tokenDrift, setTokenDrift] = useState('#b4540a');
   const [tokenError, setTokenError] = useState('#b42318');
-  const [tokenRule, setTokenRule] = useState('#d5dbd8');
+  const [tokenLink, setTokenLink] = useState('#d5dbd8');
+  const [labelFont, setLabelFont] = useState('sans-serif');
 
   const [includeSources, setIncludeSources] = useState(true);
   const [onlyDrift, setOnlyDrift] = useState(false);
   const [localHop, setLocalHop] = useState(false);
   const [searchDraft, setSearchDraft] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [zoomK, setZoomK] = useState(1);
@@ -94,11 +72,11 @@ export default function Grafo() {
     return filterWikiGraph(fullGraph, {
       includeCodeSources: includeSources,
       onlyDriftOrErrors: onlyDrift,
-      searchQuery,
+      searchQuery: '',
       focusNodeId: focusId,
       localGraphHops: focusId ? 1 : undefined,
     });
-  }, [fullGraph, includeSources, onlyDrift, searchQuery, localHop, selectedId]);
+  }, [fullGraph, includeSources, onlyDrift, localHop, selectedId]);
 
   const graphData = useMemo(
     () => ({
@@ -114,6 +92,13 @@ export default function Grafo() {
     return neighborIds(active, filtered.edges);
   }, [hoverId, selectedId, filtered.edges]);
 
+  useEffect(() => {
+    if (selectedId && !filtered.nodes.some((n) => n.id === selectedId)) {
+      setSelectedId(null);
+      setLocalHop(false);
+    }
+  }, [filtered.nodes, selectedId]);
+
   const refreshTokens = useCallback(() => {
     const el = viewRef.current;
     if (!el) return;
@@ -122,7 +107,10 @@ export default function Grafo() {
     setTokenInk(cs.getPropertyValue('--ink').trim() || '#1b2220');
     setTokenDrift(cs.getPropertyValue('--drift').trim() || '#b4540a');
     setTokenError(cs.getPropertyValue('--error').trim() || '#b42318');
-    setTokenRule(cs.getPropertyValue('--rule').trim() || '#d5dbd8');
+    setTokenLink(cs.getPropertyValue('--rule').trim() || '#d5dbd8');
+    const bodyFont = cs.getPropertyValue('font-family').trim();
+    const mono = cs.getPropertyValue('--font-code').trim();
+    setLabelFont(mono || bodyFont || 'sans-serif');
   }, []);
 
   useLayoutEffect(() => {
@@ -163,7 +151,6 @@ export default function Grafo() {
 
   const runSearch = useCallback(() => {
     const q = searchDraft.trim();
-    setSearchQuery(q);
     if (!q || !fullGraph) return;
     const match = fullGraph.nodes.find(
       (n) => n.label.toLowerCase().includes(q.toLowerCase()) || n.path.toLowerCase().includes(q.toLowerCase())
@@ -232,7 +219,7 @@ export default function Grafo() {
         node.id === hoverId || node.id === selectedId || globalScale >= LABEL_ZOOM_THRESHOLD;
       if (showLabel && node.label) {
         const fontSize = Math.max(10 / globalScale, 3);
-        ctx.font = `${fontSize}px ${getComputedStyle(viewRef.current ?? document.body).fontFamily}`;
+        ctx.font = `${fontSize}px ${labelFont}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         ctx.fillStyle = tokenInk;
@@ -242,7 +229,7 @@ export default function Grafo() {
         ctx.globalAlpha = 1;
       }
     },
-    [colors, tokenInk, tokenDrift, tokenError, highlight, selectedId, hoverId]
+    [colors, tokenInk, tokenDrift, tokenError, highlight, selectedId, hoverId, labelFont]
   );
 
   if (!snapshot?.wikiRoot || !fullGraph) {
@@ -317,11 +304,11 @@ export default function Grafo() {
             nodeCanvasObjectMode={() => 'replace'}
             nodeCanvasObject={paintNode}
             linkColor={(link) => {
-              if (!highlight) return tokenRule;
+              if (!highlight) return tokenLink;
               const s = typeof link.source === 'object' ? link.source.id : link.source;
               const t = typeof link.target === 'object' ? link.target.id : link.target;
               const on = highlight.has(String(s)) && highlight.has(String(t));
-              return on ? tokenRule : 'rgba(0,0,0,0.06)';
+              return on ? tokenLink : 'rgba(0,0,0,0.06)';
             }}
             linkWidth={(link) => {
               if (!highlight) return 0.65;
@@ -333,7 +320,6 @@ export default function Grafo() {
             linkDirectionalParticles={0}
             cooldownTicks={120}
             d3VelocityDecay={0.35}
-            onEngineStop={() => fgRef.current?.pauseAnimation()}
             onNodeClick={onNodeClick}
             onNodeHover={(n) => setHoverId(n?.id ?? null)}
             onZoom={({ k }) => setZoomK(k)}

@@ -106,7 +106,7 @@
 
 .source-chip {
   font-family: var(--font-code);
-  font-size: 12px;
+  font-size: 13px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;

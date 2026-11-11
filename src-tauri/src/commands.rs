@@ -34,10 +34,24 @@ pub struct WikiChanged {
 
 /// Pure recents update: `entry` goes to the front, any older entry with the same
 /// path is dropped, and the list is capped at `MAX_RECENTS`.
+fn same_repo_path(a: &str, b: &str) -> bool {
+    match (
+        dunce::canonicalize(Path::new(a)),
+        dunce::canonicalize(Path::new(b)),
+    ) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => a == b,
+    }
+}
+
 pub fn with_recent(list: &[RecentProject], entry: RecentProject) -> Vec<RecentProject> {
     let mut out = Vec::with_capacity(MAX_RECENTS);
     out.push(entry.clone());
-    out.extend(list.iter().filter(|r| r.path != entry.path).cloned());
+    out.extend(
+        list.iter()
+            .filter(|r| !same_repo_path(&r.path, &entry.path))
+            .cloned(),
+    );
     out.truncate(MAX_RECENTS);
     out
 }
@@ -48,8 +62,8 @@ fn repo_canonical(path: &Path) -> Result<PathBuf, String> {
 
 static RECENTS_LOCK: Mutex<()> = Mutex::new(());
 
-fn with_recents_lock<T>(_app: &AppHandle, f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
-    let _guard = RECENTS_LOCK.lock().map_err(|e| e.to_string())?;
+fn with_recents_lock<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    let _guard = RECENTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     f()
 }
 
@@ -200,7 +214,7 @@ pub async fn open_project(app: AppHandle, path: String) -> Result<WikiSnapshot, 
             return Err("Not a git repository".to_string());
         }
         let snap = snapshot_for(&repo)?;
-        with_recents_lock(&app, || {
+        with_recents_lock(|| {
             let name = repo
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
@@ -221,7 +235,7 @@ pub async fn open_project(app: AppHandle, path: String) -> Result<WikiSnapshot, 
 #[tauri::command]
 pub async fn list_recent(app: AppHandle) -> Result<Vec<RecentProject>, String> {
     blocking(move || {
-        with_recents_lock(&app, || {
+        with_recents_lock(|| {
             let list = read_recents(&app)?;
             let kept: Vec<RecentProject> = list
                 .iter()
@@ -240,10 +254,10 @@ pub async fn list_recent(app: AppHandle) -> Result<Vec<RecentProject>, String> {
 #[tauri::command]
 pub async fn remove_recent(app: AppHandle, path: String) -> Result<(), String> {
     blocking(move || {
-        with_recents_lock(&app, || {
+        with_recents_lock(|| {
             let mut list = read_recents(&app)?;
             let before = list.len();
-            list.retain(|r| r.path != path);
+            list.retain(|r| !same_repo_path(&r.path, &path));
             if list.len() != before {
                 write_recents(&app, &list)?;
             }
@@ -341,8 +355,8 @@ mod tests {
         let b = base.join("b");
         std::fs::create_dir_all(&a).unwrap();
         std::fs::create_dir_all(&b).unwrap();
-        let a_canon = a.canonicalize().unwrap();
-        let b_canon = b.canonicalize().unwrap();
+        let a_canon = dunce::canonicalize(&a).unwrap();
+        let b_canon = dunce::canonicalize(&b).unwrap();
 
         let listed = vec![RecentProject {
             path: a_canon.to_string_lossy().into_owned(),
@@ -378,5 +392,14 @@ mod tests {
         assert_eq!(out.len(), MAX_RECENTS);
         assert_eq!(out[0], rp("/p3"));
         assert_eq!(out.iter().filter(|r| r.path == "/p3").count(), 1);
+
+        let base = std::env::temp_dir().join(format!("cw_recent_dunce_{}", std::process::id()));
+        let nested = base.join("proj");
+        std::fs::create_dir_all(&nested).unwrap();
+        let via_dot = format!("{}/./proj", base.display());
+        let canon = dunce::canonicalize(&nested).unwrap().to_string_lossy().into_owned();
+        let out = with_recent(&[rp(&canon)], rp(&via_dot));
+        assert_eq!(out.len(), 1);
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

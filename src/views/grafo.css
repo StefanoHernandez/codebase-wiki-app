@@ -7,9 +7,9 @@
   background: var(--ground);
   /* Category node fills — read via getComputedStyle */
   --graph-cat-core: #5f6a66;
-  --graph-cat-decision: #3d5a80;
+  --graph-cat-decision: #6b6560;
   --graph-cat-tracker: #6b5b7a;
-  --graph-cat-agent: #4a6fa5;
+  --graph-cat-agent: #7a6b55;
   --graph-cat-topic: #4a7c59;
   --graph-cat-source: #7a6f5c;
 }
