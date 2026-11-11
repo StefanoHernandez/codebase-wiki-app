@@ -29,3 +29,8 @@ confidence: high
 - What: 34 domande di codice (app 16, plugin 12, Versal 6) con quattro modelli di embedding, ciascuno senza e con reranker. Il reranker abbassa hit@1 con tutti i modelli; `multilingual-e5-small` resta il predefinito. Su richiesta di Stefano il reranker è stato disinstallato dal suo Mac (cartella nel Cestino).
 - Evidence: script di valutazione locale con `codebase-wiki-mcp search --json` 0.3.0 → tabella in [0005](project/decisions/0005-reranker-facoltativo.md) @99f7caf
 - IDs: none
+
+## 2026-11-11 · Ricerca nel codice: query in inglese e test in fondo · agent
+- What: test allargato a 58 domande di codice. Le istruzioni MCP chiedono all'agente query in inglese con i nomi probabili di file e simboli; i file di test valgono la metà nel ranking, salvo query che parlano di test. Provate e scartate: parole camelCase spezzate per BM25 (36/58 contro 37/58) e CodeRankEmbed int8 (45/58 con query in inglese contro 43/58 di e5-small, ma 37/58 contro 41/58 in italiano e indicizzazione 3,5 volte più lenta).
+- Evidence: con `multilingual-e5-small`, domande originali → hit@1 37/58, MRR 0,70; query in inglese + test penalizzati → hit@1 43/58, hit@5 0,98, MRR 0,85; `cargo test --workspace` → verde
+- IDs: none

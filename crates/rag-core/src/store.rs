@@ -435,6 +435,20 @@ impl Store {
                 bm25_ranks.insert(id, i as u32 + 1);
             }
         }
+        // Tests repeat the words of the code they test: rank them below it unless the query asks for tests.
+        let wants_tests = query_text.to_lowercase().contains("test");
+        if !wants_tests {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT f.path FROM chunks c JOIN files f ON f.id=c.file_id WHERE c.id=?1")
+                .map_err(|e| e.to_string())?;
+            for (id, score) in scores.iter_mut() {
+                let path: Option<String> = stmt.query_row(params![id], |r| r.get(0)).optional().map_err(|e| e.to_string())?;
+                if path.as_deref().is_some_and(is_test_path) {
+                    *score *= TEST_PENALTY;
+                }
+            }
+        }
         let mut ranked: Vec<(i64, f64)> = scores.into_iter().collect();
         ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0)));
         let mut out = Vec::new();
@@ -482,6 +496,27 @@ impl Store {
     }
 }
 
+/// Score multiplier for test files, so the implementation outranks the test that names it.
+const TEST_PENALTY: f64 = 0.5;
+
+/// Test files by common conventions: a `tests`/`test`/`__tests__`/`spec` folder, or names like
+/// `x.test.ts`, `x.spec.js`, `x_test.go`, `test_x.py`, `test-x.sh`, `XTest.java`, `XTests.cs`.
+fn is_test_path(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    let mut parts = lower.split('/').collect::<Vec<_>>();
+    let name = parts.pop().unwrap_or("");
+    if parts.iter().any(|d| matches!(*d, "tests" | "test" | "__tests__" | "spec" | "specs")) {
+        return true;
+    }
+    let stem = name.split('.').next().unwrap_or("");
+    name.contains(".test.")
+        || name.contains(".spec.")
+        || stem.ends_with("_test")
+        || stem.starts_with("test_")
+        || stem.starts_with("test-")
+        || path.rsplit('/').next().unwrap_or("").split('.').next().is_some_and(|s| s.ends_with("Test") || s.ends_with("Tests"))
+}
+
 /// A file changed since indexing when it is gone or its size or mtime differ.
 pub fn file_changed(root: &Path, rel_path: &str, size: u64, mtime: i64) -> bool {
     match std::fs::metadata(root.join(rel_path)) {
@@ -506,6 +541,16 @@ fn vector_to_blob(vec: &[f32]) -> Vec<u8> {
 mod tests {
     use super::*;
     use crate::chunk::Chunk;
+
+    #[test]
+    fn test_paths_are_recognised() {
+        for p in ["tests/md-edit.test.ts", "src/a.spec.js", "pkg/x_test.go", "scripts/test-hooks.sh", "test_x.py", "src/FooTest.java", "a/__tests__/b.tsx"] {
+            assert!(is_test_path(p), "{p}");
+        }
+        for p in ["src/lib/md-edit.ts", "crates/x/src/testing.rs", "src/contest.ts", "latest.py"] {
+            assert!(!is_test_path(p), "{p}");
+        }
+    }
 
     fn fake_vec(seed: f32) -> Vec<f32> {
         vec![seed, 0.1, 0.2, 0.3]

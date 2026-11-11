@@ -14,7 +14,7 @@ use rag_core::{
 };
 use wiki_core::{content_has_forbidden_term, read_private_terms};
 
-const INSTRUCTIONS: &str = "Local search over this repository's source code. Use `search_code` for *where/how* questions (where is X defined, how does Y work, what calls Z) before grepping; then read or grep the lines it points to. It does not cover the wiki or other docs: for status, decisions, risks, handoff and *why*, read the Codebase Wiki starting from its index page (Core map). Results marked `stale: true` changed after indexing: re-read those lines from disk before relying on them. Outside a repository (e.g. a desktop chat), call `list_repos` and pass `repo` to the other tools.";
+const INSTRUCTIONS: &str = "Local search over this repository's source code. Use `search_code` for *where/how* questions (where is X defined, how does Y work, what calls Z) before grepping; then read or grep the lines it points to. Write the query in English, even when the user writes in another language, and add the file, function or type names you expect (e.g. `graph builder wiki pages source files buildGraph`): code is in English and names weigh most. It does not cover the wiki or other docs: for status, decisions, risks, handoff and *why*, read the Codebase Wiki starting from its index page (Core map). Results marked `stale: true` changed after indexing: re-read those lines from disk before relying on them. Outside a repository (e.g. a desktop chat), call `list_repos` and pass `repo` to the other tools.";
 
 /// The repo the server was started in, if any. A server started outside a repo (Claude Desktop
 /// chat, Cowork) has none and every tool takes `repo` instead.
@@ -36,7 +36,7 @@ pub struct WikiMcp {
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct SearchParams {
-    /// What to look for: a question or keywords, any language.
+    /// What to look for, in English: a short description plus the file, function or type names you expect.
     query: String,
     /// Number of results (default 8, max 20).
     #[serde(default = "default_k_code")]
@@ -188,7 +188,7 @@ fn tool_result(r: Result<String, String>) -> Result<CallToolResult, McpError> {
 
 #[tool_router]
 impl WikiMcp {
-    #[tool(description = "Search this repository's source code (hybrid keyword + semantic). Use it for where/how questions before grepping. Returns a header line, then one JSON object per hit: path, start_line, end_line, score, stale, snippet.")]
+    #[tool(description = "Search this repository's source code (hybrid keyword + semantic). Use it for where/how questions before grepping; write the query in English with likely identifiers. Returns a header line, then one JSON object per hit: path, start_line, end_line, score, stale, snippet.")]
     fn search_code(&self, Parameters(p): Parameters<SearchParams>) -> Result<CallToolResult, McpError> {
         tool_result(self.search_inner(p.repo.as_deref(), &p.query, p.k, p.path_glob.as_deref()))
     }
