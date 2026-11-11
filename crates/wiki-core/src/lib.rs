@@ -4,6 +4,7 @@ pub mod validator;
 pub mod watcher;
 pub mod wiki_fs;
 pub mod wiki_resolver;
+pub mod wiki_schema;
 
 pub use prompts::build_workflow_prompt;
 pub use git_ops::{
@@ -16,10 +17,12 @@ pub use validator::{
 };
 pub use watcher::{watch_repo, WatchHandle};
 pub use wiki_fs::{
-    collect_repo_files_recursive, load_wiki_snapshot, read_repo_file_safe, read_wiki_file_safe,
+    collect_repo_files_recursive, content_has_forbidden_term, is_private_terms_name,
+    load_wiki_snapshot, read_private_terms, read_repo_file_safe, read_wiki_file_safe,
     write_wiki_file_safe, write_wiki_files_safe, wiki_content_sha256, RepoFilePayload,
     WikiFileWrite, WikiPageEntry, WikiSnapshot,
 };
+pub use wiki_schema::{glob_match, parse_excluded_globs};
 pub use wiki_resolver::{
     ensure_wiki_inside_repo, is_valid_wiki_folder_name, resolve_wiki_root, WikiResolution,
     WIKI_OUTSIDE_REPO,

@@ -41,7 +41,7 @@ pub struct RepoFilePayload {
 
 /// True for any spelling the OS may resolve to `.private-terms`: case-insensitive
 /// (APFS/NTFS) and ignoring trailing dots/spaces (Windows).
-fn is_private_terms_name(name: &std::ffi::OsStr) -> bool {
+pub fn is_private_terms_name(name: &std::ffi::OsStr) -> bool {
     name.to_string_lossy()
         .trim_end_matches(['.', ' '])
         .eq_ignore_ascii_case(".private-terms")
@@ -147,7 +147,7 @@ fn current_target_sha256(target_path: &Path) -> Result<String, String> {
     }
 }
 
-fn read_private_terms(wiki_dir: &Path) -> Result<Option<String>, String> {
+pub fn read_private_terms(wiki_dir: &Path) -> Result<Option<String>, String> {
     let private_terms_path = wiki_dir.join(".private-terms");
     match fs::symlink_metadata(&private_terms_path) {
         Ok(meta) if meta.file_type().is_symlink() => {
@@ -164,7 +164,7 @@ fn read_private_terms(wiki_dir: &Path) -> Result<Option<String>, String> {
     }
 }
 
-fn content_has_forbidden_term(terms_content: &str, content: &str) -> bool {
+pub fn content_has_forbidden_term(terms_content: &str, content: &str) -> bool {
     let terms_content = terms_content.trim_start_matches('\u{feff}');
     let lower_content = content.to_lowercase();
     for line in terms_content.lines() {
