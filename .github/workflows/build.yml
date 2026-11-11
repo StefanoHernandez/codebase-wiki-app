@@ -65,8 +65,9 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            args: --target universal-apple-darwin
-            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+            # Apple Silicon only: ONNX Runtime (ort 2.0.0-rc.13) ships no prebuilt x86_64-apple-darwin.
+            args: --target aarch64-apple-darwin
+            rust-targets: aarch64-apple-darwin
           - platform: windows-latest
             args: ""
             rust-targets: ""
@@ -110,12 +111,7 @@ jobs:
       # macOS notarization / signing: set APPLE_CERTIFICATE, APPLE_SIGNING_IDENTITY, etc.
       # Windows code signing: set WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD, etc.
 
-      # beforeBuildCommand builds the sidecar for TAURI_ENV_TARGET_TRIPLE (or the host). The macOS
-      # universal bundle also needs the lipo'd binary, built here explicitly.
-      - name: MCP sidecar (macOS universal)
-        if: matrix.platform == 'macos-latest'
-        run: node scripts/build-sidecar.mjs universal-apple-darwin
-
+      # beforeBuildCommand builds the MCP sidecar for TAURI_ENV_TARGET_TRIPLE (or the host).
       - name: Build Tauri bundles (draft release)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: tauri-apps/tauri-action@v0
@@ -141,5 +137,5 @@ jobs:
           name: bundles-${{ matrix.platform }}
           path: |
             target/release/bundle/**
-            target/universal-apple-darwin/release/bundle/**
+            target/aarch64-apple-darwin/release/bundle/**
           if-no-files-found: error

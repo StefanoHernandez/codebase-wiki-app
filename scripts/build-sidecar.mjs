@@ -5,8 +5,7 @@
 //   --if-missing                              skip when the binary already exists (tauri dev)
 //   --stub                                    write an empty placeholder if missing (CI test job: cargo test only)
 //
-// universal-apple-darwin builds both arches, keeps the per-arch copies (each arch's tauri-build
-// checks its own) and joins them with lipo for the bundler.
+// macOS is Apple Silicon only (aarch64-apple-darwin): ONNX Runtime has no prebuilt Intel build.
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -47,11 +46,7 @@ function build(t) {
   console.log('sidecar:', dest(t));
 }
 
-if (triple === 'universal-apple-darwin') {
-  const arches = ['aarch64-apple-darwin', 'x86_64-apple-darwin'];
-  arches.forEach(build);
-  execSync(`lipo -create ${arches.map(dest).join(' ')} -output ${dest(triple)}`, { cwd: root, stdio: 'inherit' });
-  console.log('sidecar:', dest(triple));
-} else {
-  build(triple);
+if (triple.startsWith('x86_64-apple') || triple === 'universal-apple-darwin') {
+  throw new Error('macOS Intel non supportato: ONNX Runtime non ha binari precompilati per x86_64-apple-darwin');
 }
+build(triple);

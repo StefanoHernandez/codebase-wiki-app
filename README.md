@@ -40,7 +40,7 @@ npm run build          # solo frontend (Vite)
 npm run tauri build    # bundle desktop (.dmg, .msi, .deb, .AppImage, …)
 ```
 
-La CI multipiattaforma è in `.github/workflows/build.yml` (test su Ubuntu, build su macOS universal, Windows e Linux).
+La CI multipiattaforma è in `.github/workflows/build.yml` (test su Ubuntu, build su macOS Apple Silicon (i Mac Intel non sono supportati: ONNX Runtime non ha binari precompilati), Windows e Linux su Ubuntu 24.04).
 
 ## Formati delle azioni umane
 
