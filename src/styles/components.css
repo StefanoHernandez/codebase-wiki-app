@@ -349,6 +349,36 @@ kbd {
   background: var(--human);
   filter: brightness(1.08);
 }
+/* Opens a signing dialog: outlined, so only the dialog's confirm button is filled. */
+.btn-human-outline {
+  background: transparent;
+  border-color: var(--human);
+  color: var(--human);
+}
+.btn-human-outline:hover:not(:disabled):not([aria-disabled='true']) {
+  border-color: var(--human);
+  background: var(--human-wash);
+}
+.btn-strong:disabled {
+  opacity: 1;
+  background: var(--surface-sunk);
+  border-color: var(--rule);
+  color: var(--ink-muted);
+}
+.btn-link {
+  height: auto;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--human);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.btn-link:hover:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink);
+}
 .btn-quiet {
   background: transparent;
   border-color: transparent;

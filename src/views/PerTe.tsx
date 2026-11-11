@@ -1,3 +1,4 @@
+import { renderInlineCode } from '../lib/inline-code';
 import { useState, type ReactNode } from 'react';
 import { Empty } from '../components/Empty';
 import { UpgradeBanner } from '../components/Compat';
@@ -28,6 +29,8 @@ interface Row {
   title: string;
   detail: string;
   actions: ReactNode;
+  /** Whole row opens this target: for long lists whose only action is "open". */
+  go?: () => void;
 }
 
 export default function PerTe() {
@@ -84,7 +87,7 @@ export default function PerTe() {
               {p && (
                 <button
                   type="button"
-                  className="btn btn-human"
+                  className="btn btn-human-outline"
                   aria-disabled={!signable}
                   title={signable ? undefined : SIGN_HINT}
                   onClick={() => signable && p && setPromoting(p)}
@@ -121,7 +124,8 @@ export default function PerTe() {
           key,
           title: ref,
           detail: `${n} ${n === 1 ? 'file sorgente cambiato' : 'file sorgente cambiati'} dall'ultima verifica.`,
-          actions: open('salute', ref),
+          actions: null,
+          go: () => nav.go('salute', ref),
         };
       }
       case 'reverify': {
@@ -131,7 +135,8 @@ export default function PerTe() {
           key,
           title: ref,
           detail: `${n} ${n === 1 ? 'punto segnato' : 'punti segnati'} da ri-verificare.`,
-          actions: open('salute', ref),
+          actions: null,
+          go: () => nav.go('salute', ref),
         };
       }
       case 'risk-unowned': {
@@ -149,7 +154,8 @@ export default function PerTe() {
           key,
           title: ref,
           detail: `${n} ${n === 1 ? 'problema di struttura' : 'problemi di struttura'} in questa pagina.`,
-          actions: open('salute', ref),
+          actions: null,
+          go: () => nav.go('salute', ref),
         };
       }
       case 'lint-legacy': {
@@ -185,11 +191,18 @@ export default function PerTe() {
             <ul className="rows">
               {rows.map((r) => (
                 <li key={r.key} className="row">
-                  <div className="row-main">
-                    <p className="row-title">{r.title}</p>
-                    <p className="row-detail">{r.detail}</p>
-                  </div>
-                  <div className="row-actions">{r.actions}</div>
+                  {r.go ? (
+                    <button type="button" className="row-main row-link" onClick={r.go}>
+                      <span className="row-title">{renderInlineCode(r.title)}</span>
+                      <span className="row-detail">{renderInlineCode(r.detail)}</span>
+                    </button>
+                  ) : (
+                    <div className="row-main">
+                      <p className="row-title">{renderInlineCode(r.title)}</p>
+                      <p className="row-detail">{renderInlineCode(r.detail)}</p>
+                    </div>
+                  )}
+                  {r.go ? <span className="row-chevron" aria-hidden="true">›</span> : <div className="row-actions">{r.actions}</div>}
                 </li>
               ))}
             </ul>

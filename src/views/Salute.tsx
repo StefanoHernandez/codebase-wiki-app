@@ -271,7 +271,7 @@ export default function Salute() {
                 <td>
                   <button
                     type="button"
-                    className="btn btn-human"
+                    className="btn btn-human-outline"
                     aria-disabled={!signable}
                     title={signable ? undefined : SIGN_HINT}
                     onClick={() => signable && setReview({ path: p.relPath, markdown: p.markdown })}

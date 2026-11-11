@@ -164,11 +164,11 @@ export default function Ricerca() {
           </div>
           <div className="rag-tile">
             <span className="rag-tile-label">Agenti (MCP)</span>
-            <span className="rag-tile-value">{connected.length ? `${connected.length} collegati` : 'Nessuno'}</span>
+            <span className="rag-tile-value">{connected.length === 1 ? '1 collegato' : connected.length ? `${connected.length} collegati` : 'Nessuno'}</span>
             <span className="rag-tile-sub">{connected.map((h) => h.label).join(', ') || 'Collegali dalle Impostazioni'}</span>
           </div>
         </div>
-        <button type="button" className="btn btn-quiet" onClick={() => nav.go('impostazioni')}>
+        <button type="button" className="btn btn-link" onClick={() => nav.go('impostazioni')}>
           Cambia modelli o agenti
         </button>
       </section>

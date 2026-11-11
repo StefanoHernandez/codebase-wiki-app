@@ -149,12 +149,12 @@ export default function Handoff() {
         <p className="handoff-freshness-text">
           {behind === 0
             ? 'Handoff allineato a HEAD.'
-            : `${behind} commit dietro HEAD${stale ? '.' : ''}`}
+            : `L'handoff è fermo a ${behind} commit fa: gli ultimi lavori non sono nel testimone.`}
         </p>
         {stale && (
           <>
             <span className="badge badge-drift">Handoff da aggiornare</span>
-            <button type="button" className="btn btn-human" onClick={() => void copySync()} disabled={!project.current}>
+            <button type="button" className="btn" onClick={() => void copySync()} disabled={!project.current}>
               Copia prompt /wiki-sync
             </button>
           </>

@@ -7,8 +7,13 @@ export function textForCopy(raw: string): string {
   return trimmed.replace(/`([^`]+)`/g, '$1');
 }
 
+/** Inline Markdown as plain text: `[label](target)` keeps the label, so a link never shows as raw syntax. */
+function stripLinks(text: string): string {
+  return text.replace(/\[([^\]]+)\]\([^)\s]+\)/g, '$1');
+}
+
 export function renderInlineCode(raw: string): ReactNode {
-  const text = raw.trim();
+  const text = stripLinks(raw.trim());
   if (!text) return '—';
   if (/^`[^`]+`$/.test(text)) return <code>{text.slice(1, -1)}</code>;
   const parts: ReactNode[] = [];

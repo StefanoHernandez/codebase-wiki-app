@@ -34,3 +34,8 @@ confidence: high
 - What: test allargato a 58 domande di codice. Le istruzioni MCP chiedono all'agente query in inglese con i nomi probabili di file e simboli; i file di test valgono la metà nel ranking, salvo query che parlano di test. Provate e scartate: parole camelCase spezzate per BM25 (36/58 contro 37/58) e CodeRankEmbed int8 (45/58 con query in inglese contro 43/58 di e5-small, ma 37/58 contro 41/58 in italiano e indicizzazione 3,5 volte più lenta).
 - Evidence: con `multilingual-e5-small`, domande originali → hit@1 37/58, MRR 0,70; query in inglese + test penalizzati → hit@1 43/58, hit@5 0,98, MRR 0,85; `cargo test --workspace` → verde
 - IDs: none
+
+## 2026-11-11 · Correzioni di interfaccia e firma ad-hoc per la 0.3.1 · agent
+- What: revisione della UI dagli screenshot di Stefano. Testi aggiornati (la wiki non è indicizzata, note dei modelli provati, "1 collegato"); Markdown inline reso in Per te e Lavori; il blu pieno resta al bottone di conferma che firma, nelle liste diventa un bordo; "Copia prompt /wiki-sync" non è più blu; numero di decisione non ripetuto; messaggio dell'handoff indietro più chiaro; righe di pagine da ricontrollare cliccabili; spaziatura e bottone disattivato in Ricerca. Firma ad-hoc del pacchetto macOS e versione 0.3.1.
+- Evidence: `npm test` → 130 pass; `cargo test --workspace` → verde; `npm run tauri build -- --bundles app` → `codesign --verify --deep --strict` ok
+- IDs: T1

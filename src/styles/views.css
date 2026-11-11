@@ -6,6 +6,10 @@
 .group:first-of-type {
   margin-top: 0;
 }
+.view-title + .muted + .group,
+.view-title + .muted + .banner + .group {
+  margin-top: 20px;
+}
 .group-title {
   display: flex;
   align-items: baseline;
@@ -17,6 +21,23 @@
 .group-count {
   color: var(--ink-muted);
   font-size: var(--text-sm);
+}
+.row-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.row-link:hover .row-title {
+  color: var(--human);
+}
+.row-chevron {
+  color: var(--ink-faint);
+  font-size: var(--text-lg);
+  padding-right: 6px;
 }
 .row-main {
   flex: 1;

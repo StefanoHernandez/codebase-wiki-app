@@ -94,7 +94,7 @@ export default function Decisioni() {
   const signButton = (label: string, onClick: () => void, blocked = false) => (
     <button
       type="button"
-      className="btn btn-human"
+      className="btn btn-human-outline"
       aria-disabled={!signable || blocked}
       title={blocked ? DECISION_BLOCKED_REASON : signable ? undefined : SIGN_HINT}
       onClick={() => signable && !blocked && onClick()}
@@ -130,7 +130,7 @@ export default function Decisioni() {
                   onClick={() => setSelected(d.number)}
                 >
                   <span className="decisioni-row-num">{d.number}</span>
-                  <span className="decisioni-row-title">{d.title}</span>
+                  <span className="decisioni-row-title">{d.title.replace(new RegExp(`^${d.number}\\s*[-–—:]\\s*`), '')}</span>
                   {statusChip(d)}
                 </button>
               ))}

@@ -1,3 +1,4 @@
+import { renderInlineCode } from '../lib/inline-code';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Empty } from '../components/Empty';
 import { CloseDialog, FieldDialog, PromoteDialog, SIGN_HINT } from '../components/TrackerDialogs';
@@ -98,7 +99,7 @@ export default function Lavori() {
       .map((h) => (
         <div key={h} className="card-extra">
           <dt>{h}</dt>
-          <dd>{values[h]}</dd>
+          <dd>{renderInlineCode(values[h])}</dd>
         </div>
       ));
 
@@ -114,7 +115,7 @@ export default function Lavori() {
         </span>
         {row.id}
       </p>
-      <p className="card-goal">{row.goal}</p>
+      <p className="card-goal">{renderInlineCode(row.goal)}</p>
       <dl className="card-meta">
         <div>
           <dt>Responsabile</dt>
@@ -122,7 +123,7 @@ export default function Lavori() {
         </div>
         <div>
           <dt>Fatto quando</dt>
-          <dd className="clamp-3">{row.doneWhen}</dd>
+          <dd className="clamp-3">{renderInlineCode(row.doneWhen)}</dd>
         </div>
         <div>
           <dt>Prossima verifica</dt>
@@ -132,7 +133,7 @@ export default function Lavori() {
         </div>
         <div>
           <dt>Prova</dt>
-          <dd className="clamp-3">{row.evidence}</dd>
+          <dd className="clamp-3">{renderInlineCode(row.evidence)}</dd>
         </div>
         {extras(row.extra, extraOpen)}
       </dl>
@@ -142,21 +143,21 @@ export default function Lavori() {
           signButton('Cambia priorità', 'btn-quiet', () =>
             setPending({ kind: 'priority', row, column: priorityHeader }),
           )}
-        {signButton('Chiudi senza prova', 'btn-human', () => setPending({ kind: 'close', row }), closeBlocked ? CLOSE_BLOCKED_REASON : null)}
+        {signButton('Chiudi senza prova', 'btn-human-outline', () => setPending({ kind: 'close', row }), closeBlocked ? CLOSE_BLOCKED_REASON : null)}
       </div>
     </article>
   );
 
   const proposalCard = (p: TrackerProposalRow, index: number) => (
     <article key={`${index}:${p.proposal}`} data-key={p.proposal} className={`card kanban-card${nav.ref === p.proposal ? ' is-selected' : ''}`}>
-      <p className="card-goal">{p.proposal}</p>
+      <p className="card-goal">{renderInlineCode(p.proposal)}</p>
       <p className="card-meta-text">
         {p.by || 'Qualcuno'}
         {p.date ? ` il ${p.date}` : ''}
       </p>
-      {p.why && <p className="card-meta-text">{p.why}</p>}
+      {p.why && <p className="card-meta-text">{renderInlineCode(p.why)}</p>}
       <div className="card-actions">
-        {signButton('Promuovi a lavoro', 'btn-human', () =>
+        {signButton('Promuovi a lavoro', 'btn-human-outline', () =>
           setPending({ kind: 'promote', proposal: p }),
         )}
       </div>
@@ -176,7 +177,7 @@ export default function Lavori() {
         {row.id}
         <span className="muted">{DONE_STATUS_TEXT[row.status] ?? ''}</span>
       </p>
-      <p className="card-goal">{row.goal}</p>
+      <p className="card-goal">{renderInlineCode(row.goal)}</p>
       <dl className="card-meta">
         <div>
           <dt>Chiuso il</dt>
@@ -188,7 +189,7 @@ export default function Lavori() {
         </div>
         <div>
           <dt>Prova</dt>
-          <dd className="clamp-3">{row.evidence}</dd>
+          <dd className="clamp-3">{renderInlineCode(row.evidence)}</dd>
         </div>
         {extras(row.extra, tracker.doneHeader.filter((h) => !['id', 'status', 'goal', 'closed', 'criteria met', 'evidence'].includes(h.trim().toLowerCase())))}
       </dl>

@@ -65,8 +65,8 @@ pub fn catalog() -> &'static [ModelSpec] {
             max_tokens: 512,
             size_mb: 34,
             languages: "EN",
-            note: "Veloce, inglese",
-            tested: false,
+            note: "Provato: buono sul codice in inglese, debole con domande in italiano",
+            tested: true,
         },
         ModelSpec {
             id: "all-MiniLM-L6-v2",
@@ -95,8 +95,8 @@ pub fn catalog() -> &'static [ModelSpec] {
             max_tokens: 512,
             size_mb: 279,
             languages: "multilingue",
-            note: "Qualità superiore",
-            tested: false,
+            note: "Provato: non supera e5-small e indicizza 2,5 volte più lento",
+            tested: true,
         },
         ModelSpec {
             id: "nomic-embed-text-v1.5",
@@ -125,8 +125,8 @@ pub fn catalog() -> &'static [ModelSpec] {
             max_tokens: 8192,
             size_mb: 162,
             languages: "code",
-            note: "Specializzato codice; non provato su ONNX",
-            tested: false,
+            note: "Provato: simile a e5-small, indicizza 3 volte più lento",
+            tested: true,
         },
     ];
     &MODELS

@@ -36,3 +36,11 @@ confidence: high
 - **Verification:** ⚠️ NOT VERIFIED - osservato con `ps` il 2026-11-11, nessun comando di prova dedicato
 - **Limits:** none known
 - **Related:** [rag-core e wiki-mcp](modules/rag-mcp.md)
+
+## macOS dice che l'app "è danneggiata e non può essere aperta"
+- **Cause:** fino alla 0.3.0 il pacchetto aveva solo la firma del linker sul binario, senza risorse sigillate; con l'attributo di quarantena del download Gatekeeper lo rifiuta come danneggiato.
+- **Fix:** dalla 0.3.1 `bundle.macOS.signingIdentity: "-"` in `src-tauri/tauri.conf.json` firma ad-hoc tutto il pacchetto; Gatekeeper mostra "sviluppatore non verificato" e si apre da Impostazioni → Privacy e sicurezza → Apri comunque.
+- **Workaround:** per la 0.3.0: `xattr -dr com.apple.quarantine "/Applications/Codebase Wiki.app"` e `codesign --force --deep -s - "/Applications/Codebase Wiki.app"`.
+- **Verification:** `codesign -dv` → `Signature=adhoc`, `Sealed Resources version=2`; `codesign --verify --deep --strict` → ok, build locale 2026-11-11
+- **Limits:** senza Developer ID e notarizzazione l'avviso di Gatekeeper resta.
+- **Related:** [CI e release](engineering/operations.md)

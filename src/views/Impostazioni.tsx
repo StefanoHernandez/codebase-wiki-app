@@ -226,7 +226,7 @@ function Modelli() {
   return (
     <section className="group">
       <h2 className="group-title">Modelli per la ricerca</h2>
-      <p className="muted">Il modello di embedding trasforma codice e wiki in vettori; il reranker riordina i risultati migliori.</p>
+      <p className="muted">Il modello di embedding trasforma il codice in vettori per la ricerca. Nelle nostre prove multilingual-e5-small è il migliore per qualità e velocità.</p>
       <table className="table">
         <thead>
           <tr>
