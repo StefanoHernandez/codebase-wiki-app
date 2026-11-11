@@ -29,12 +29,12 @@ l'app la mostra in Ricerca, gli agenti la usano via MCP.
 | --- | --- |
 | `rag-core/files.rs` | `list_files`: `git ls-files` meno cartella wiki, prosa, dati/log, lockfile, binari, file >512 KB, `.private-terms`, symlink |
 | `rag-core/chunk.rs` | divisione con tree-sitter (Rust, TS/TSX, JS, Python, Go, Java, C, C++, C#, Kotlin, Swift, PHP, Ruby, Bash, Scala, Lua) e intestazione `path › Classe › metodo`; testo semplice per il resto |
-| `rag-core/store.rs` | SQLite + FTS5 + sqlite-vec; ricerca ibrida BM25 + vettori fusi con RRF (k=60); copie identiche contano una volta |
+| `rag-core/store.rs` | SQLite + FTS5 + sqlite-vec; ricerca ibrida BM25 + vettori fusi con RRF (k=60); i file di test valgono la metà salvo query sui test; copie identiche contano una volta |
 | `rag-core/embed.rs` | embedding fastembed/ONNX (feature `embed`), reranker facoltativo |
 | `rag-core/catalog.rs`, `models.rs` | catalogo curato, download con avanzamento, modelli Hugging Face aggiunti a mano (`tested: false`) |
 | `rag-core/harness.rs` | stato e scrittura delle config MCP di Codex, Cursor, Claude, con anteprima e backup |
 | `wiki-mcp/run.rs` | CLI `index`, `search`, `status`, `models list/pull/search/add` con `--json` |
-| `wiki-mcp/serve.rs` | server MCP stdio: `search_code`, `index_status`, `list_repos`; scarica i modelli dopo 5 minuti senza ricerche |
+| `wiki-mcp/serve.rs` | server MCP stdio: `search_code`, `index_status`, `list_repos`; le istruzioni chiedono query in inglese con i nomi probabili; scarica i modelli dopo 5 minuti senza ricerche |
 
 ## Invarianti
 - Senza indice o modello il server dà un errore chiaro e non scarica né indicizza nulla.

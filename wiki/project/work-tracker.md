@@ -21,23 +21,25 @@ aperti sotto sono stati aperti da Stefano il 2026-11-11, nella sessione con Clau
 ## Prossimi passi
 <!-- wiki:next -->
 
-**In una riga:** 0.3.0 pubblicata il 2026-11-11 con CI verde; manca la prova a mano dell'app installata e su Windows.
+**In una riga:** 0.3.1 in uscita (ricerca migliorata, correzioni di interfaccia, firma ad-hoc); poi le nuove funzioni. Manca ancora la prova a mano dell'app installata e su Windows.
 
-1. Provare l'app 0.3.0 installata dal `.dmg` (T1)
-2. Provare un agente vero collegato via MCP (T5) e lo scarico della memoria (T4)
-3. Adopt della copia di prova di Versal e azioni umane su una wiki 0.13 (T3)
-4. Test su Windows (T2)
+1. Chiudere la release 0.3.1 con CI verde (T9)
+2. Provare l'app 0.3.1 installata dal `.dmg` (T1)
+3. Provare un agente vero collegato via MCP (T5) e lo scarico della memoria (T4)
+4. Adopt della copia di prova di Versal e azioni umane su una wiki 0.13 (T3)
+5. Test su Windows (T2)
 
 ## Aperti
 <!-- wiki:open -->
 
 | ID | Status | Goal | Done when | Owner | Next verification | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| T1 | ⚪ | Prova a mano della 0.3.0 installata dal `.dmg` | aperta dal Finder: trova Python ≥3.10 (o lo dice in Salute); Ricerca indicizza e cerca; "Collega" scrive la config; si apre nonostante manchi la firma (o il blocco è documentato) | Stefano | prova a mano | ⚠️ NOT VERIFIED - non ancora fatta |
+| T1 | ⚪ | Prova a mano della 0.3.1 installata dal `.dmg` | aperta dal Finder: trova Python ≥3.10 (o lo dice in Salute); Ricerca indicizza e cerca; "Collega" scrive la config; con la firma ad-hoc Gatekeeper propone "Apri comunque" e non "danneggiata" | Stefano | prova a mano | ⚠️ NOT VERIFIED - non ancora fatta |
 | T2 | ⚪ | Prova su Windows | installer `.exe` funziona; azioni umane e ricerca vanno; "Collega Claude Code" trova `claude.cmd` o mostra il comando | Stefano | prova a mano su Windows | ⚠️ NOT VERIFIED - nessuna macchina Windows disponibile |
 | T3 | ⚪ | Adopt della copia di prova di Versal alla 0.13.1 e prova delle azioni umane | copia adottata con `50-benchmark/results/**` in Excluded paths; promuovi, chiudi ⚫, accetta decisione, firma; `validate-wiki.py --json` senza finding nuovi e `git diff` solo righe attese + log | Claude (agente) | `python3 resources/validate-wiki.py --json versal-test/docs` | ⚠️ NOT VERIFIED - copia pronta, adopt non fatto |
 | T4 | ⚪ | Verificare che il server MCP liberi i modelli dopo 5 minuti senza ricerche | in Monitoraggio Attività `codebase-wiki-mcp serve` scende da ~1–2 GB a pochi MB | unknown | Monitoraggio Attività dopo una ricerca + 6 minuti | ⚠️ NOT VERIFIED - codice in `crates/wiki-mcp/src/serve.rs` (`unload_when_idle`), mai osservato |
-| T5 | ⚪ | Prova di un agente reale collegato alla 0.3.0 | una domanda dove/come usa `search_code`; una su stato o rischi apre la wiki da `index.md` | Stefano | sessione Claude Code o Codex dopo il riavvio | ⚠️ NOT VERIFIED - provato solo con il server 0.2.0 |
+| T5 | ⚪ | Prova di un agente reale collegato alla 0.3.1 | una domanda dove/come usa `search_code` con una query in inglese; una su stato o rischi apre la wiki da `index.md` | Stefano | sessione Claude Code o Codex dopo il riavvio | ⚠️ NOT VERIFIED - provato solo con il server 0.2.0 |
+| T9 | ⚪ | Release 0.3.1 con pacchetti per Windows, macOS e Linux | CI del tag `v0.3.1` verde su test e tre build; release pubblicata; pacchetto macOS con firma ad-hoc | Claude (agente) | `gh run list --workflow build.yml` sul tag | ⚠️ NOT VERIFIED - build locale firmata ad-hoc e verificata con `codesign`, CI non ancora partita |
 | T6 | ⚪ | Prova di privacy del RAG | un termine di `.private-terms` messo in un file di codice non compare mai nei risultati di `search_code` | unknown | `codebase-wiki-mcp search` su repo di prova | ⚠️ NOT VERIFIED - coperto solo da test unitari (`filter_private_chunks`) |
 
 ## Proposte

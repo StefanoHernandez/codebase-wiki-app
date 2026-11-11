@@ -17,20 +17,21 @@ confidence: high
 ## Stato del lavoro
 <!-- wiki:state -->
 
-- Tracker IDs: T1, T3, T4, T5
-- Goal: provare la 0.3.0 dal vivo e chiudere le verifiche rimaste
-- Last completed step: release 0.3.0 pubblicata con CI verde (T7, run 43073107982)
+- Tracker IDs: T9, T1, T3, T4, T5
+- Goal: pubblicare la 0.3.1, poi progettare le nuove funzioni (panoramica dei progetti, visibilità sugli agenti, primo avvio, tracker con dipendenze)
+- Last completed step: 0.3.1 pronta e verificata in locale: test verdi, build macOS firmata ad-hoc
 - Current branch: `main`
-- Last commit: `206cc3c`
-- Worktree: clean (wiki, `CLAUDE.md`, `AGENTS.md`, `.gitattributes` nel commit che crea la wiki)
+- Last commit: commit di sync della wiki per la 0.3.1, sopra `9a19fdd`
+- Worktree: clean
 
 ## Baton per il prossimo agente
 <!-- wiki:baton -->
 
 | Order | Task | Start files | Done when | Verification command | Notes / blockers |
 | --- | --- | --- | --- | --- | --- |
-| 1 | T3 - adopt della copia di prova di Versal e prova delle azioni umane | `resources/validate-wiki.py`, `src/lib/md-edit.ts` | see T3 | `python3 resources/validate-wiki.py --json versal-test/docs` | la copia sta nello scratchpad di una sessione: se non c'è più, rifarla dallo zip in `~/Downloads` senza toccare gli originali |
-| 2 | T4 - osservare lo scarico dei modelli del server MCP | `crates/wiki-mcp/src/serve.rs` | see T4 | Monitoraggio Attività | serve un server avviato dall'eseguibile 0.3.0 |
+| 1 | T9 - chiudere la release 0.3.1 | `.github/workflows/build.yml` | see T9 | `gh run list --workflow build.yml --limit 3` | la release parte in bozza: pubblicarla solo con l'ok di Stefano |
+| 2 | T3 - adopt della copia di prova di Versal e prova delle azioni umane | `resources/validate-wiki.py`, `src/lib/md-edit.ts` | see T3 | `python3 resources/validate-wiki.py --json versal-test/docs` | la copia sta nello scratchpad di una sessione: se non c'è più, rifarla dallo zip in `~/Downloads` senza toccare gli originali |
+| 3 | T4 - osservare lo scarico dei modelli del server MCP | `crates/wiki-mcp/src/serve.rs` | see T4 | Monitoraggio Attività | serve un server avviato dall'eseguibile 0.3.1 |
 
 ## Blocchi
 <!-- wiki:blockers -->
@@ -52,21 +53,22 @@ confidence: high
 
 | Command | Directory | Result | Evidence / notes |
 | --- | --- | --- | --- |
-| `npm test` | repo | pass @fe7bba6 | 130 test |
-| `cargo test --workspace` | repo | pass @fe7bba6 | tutti verdi |
-| `npx tauri build --bundles app` | repo | pass @fe7bba6 | `Codebase Wiki.app` 85 MB |
+| `npm test` | repo | pass @9a19fdd | 130 test |
+| `cargo test --workspace` | repo | pass @9a19fdd | tutti verdi |
+| `npm run tauri build -- --bundles app` | repo | pass @9a19fdd | `Codebase Wiki.app` 85 MB, `Signature=adhoc`, `codesign --verify --deep --strict` ok |
 | CI tag `v0.3.0` | GitHub Actions | pass @206cc3c | run 43073107982 |
 
 ## Da non rifare
 <!-- wiki:do-not-redo -->
 
 - Valutazione del RAG su plugin e Versal, e decisione di cercare solo nel codice: [0004](../project/decisions/0004-rag-solo-codice.md), [log](../log.md).
-- Misura del reranker sul codice: [0005](../project/decisions/0005-reranker-facoltativo.md).
+- Misura del reranker e di 4 modelli di embedding sul codice: [0005](../project/decisions/0005-reranker-facoltativo.md).
+- Prove di ranking su 58 domande (identificatori spezzati, CodeRankEmbed scartati; test penalizzati e query in inglese tenuti): [log](../log.md).
 - Pulizia dei branch vecchi e della cartella annidata `codebase-wiki-app/`: [log](../log.md).
 
 ## Traccia delle prove
 <!-- wiki:evidence-trail -->
 
 - `log`: [log.md](../log.md), voci del 2026-11-11
-- `tracker`: T1, T3, T4, T5, T6 aperti
+- `tracker`: T1, T3, T4, T5, T6, T9 aperti
 - `decisions`: [0004](../project/decisions/0004-rag-solo-codice.md), [0005](../project/decisions/0005-reranker-facoltativo.md)

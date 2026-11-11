@@ -52,7 +52,7 @@ Non ricavarli di nuovo. Ricontrolla un fatto solo se la sua prova è cambiata o 
 
 | Fatto | Valore | Prova | Verificato |
 | --- | --- | --- | --- |
-| Versione | 0.3.0 | `package.json`, `src-tauri/tauri.conf.json`, tag `v0.3.0` | 2026-11-11 @206cc3c |
+| Versione | 0.3.1 | `package.json`, `src-tauri/tauri.conf.json`, tag `v0.3.1` | 2026-11-12 @9a19fdd |
 | Validatore incluso | plugin 0.13.1, formato 0.12.0 | `python3 resources/validate-wiki.py --version` | 2026-11-11 @206cc3c |
 | Cartella dati RAG | `<data_local_dir>/com.codebasewiki.app/rag`, sovrascrivibile con `CODEBASE_WIKI_DATA_DIR` | `crates/rag-core/src/paths.rs` (`data_dir`) | 2026-11-11 @206cc3c |
 | L'indice contiene | solo codice e config: niente cartella wiki, Markdown, testo, dati e log | `crates/rag-core/src/files.rs` (`list_files`) | 2026-11-11 @206cc3c |
