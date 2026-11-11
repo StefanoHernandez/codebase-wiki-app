@@ -86,9 +86,11 @@ test('applyEdits: row added on disk before promote stays in Open', async () => {
   await applyEdits(
     edits,
     async (rel) => store.get(rel) ?? snapshotTracker,
-    async (rel, content) => {
-      written.push(rel);
-      store.set(rel, content);
+    async (files) => {
+      for (const { relPath, content } of files) {
+        written.push(relPath);
+        store.set(relPath, content);
+      }
     },
     LOG_PATH,
   );
@@ -121,9 +123,11 @@ test('applyEdits: unreadable log writes nothing', async () => {
           if (rel === LOG_PATH) throw new Error('ENOENT');
           return store.get(rel)!;
         },
-        async (rel, content) => {
-          written.push(rel);
-          store.set(rel, content);
+        async (files) => {
+          for (const { relPath, content } of files) {
+            written.push(relPath);
+            store.set(relPath, content);
+          }
         },
         LOG_PATH,
       ),

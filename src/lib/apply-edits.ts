@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 export const LOG_UNREADABLE = 'Il log non è leggibile: nessuna modifica scritta.';
 
 export interface FileEdit {
@@ -6,7 +8,18 @@ export interface FileEdit {
 }
 
 export type ReadFn = (relPath: string) => Promise<string>;
-export type WriteFn = (relPath: string, content: string) => Promise<void>;
+
+export interface WikiWritePayload {
+  relPath: string;
+  content: string;
+  expectedSha256: string;
+}
+
+export type WriteBatchFn = (files: WikiWritePayload[]) => Promise<void>;
+
+function wikiContentSha256(content: string): string {
+  return createHash('sha256').update(content, 'utf8').digest('hex');
+}
 
 let actDisk: Record<string, string> | null = null;
 
@@ -28,14 +41,17 @@ export function peer(relPath: string): string {
 export async function applyEdits(
   edits: FileEdit[],
   read: ReadFn,
-  write: WriteFn,
+  writeBatch: WriteBatchFn,
   logRelPath: string,
 ): Promise<void> {
   const paths = [...new Set(edits.map((e) => e.relPath))];
   const disk: Record<string, string> = {};
+  const readSha: Record<string, string> = {};
   for (const rel of paths) {
     try {
-      disk[rel] = await read(rel);
+      const text = await read(rel);
+      disk[rel] = text;
+      readSha[rel] = wikiContentSha256(text);
     } catch (e) {
       if (rel === logRelPath) {
         throw new Error(LOG_UNREADABLE);
@@ -58,7 +74,11 @@ export async function applyEdits(
     if (b === logRelPath) return -1;
     return a.localeCompare(b);
   });
-  for (const rel of toWrite) {
-    await write(rel, disk[rel]!);
-  }
+  await writeBatch(
+    toWrite.map((rel) => ({
+      relPath: rel,
+      content: disk[rel]!,
+      expectedSha256: readSha[rel]!,
+    })),
+  );
 }

@@ -17,7 +17,8 @@ pub use validator::{
 pub use watcher::{watch_repo, WatchHandle};
 pub use wiki_fs::{
     collect_repo_files_recursive, load_wiki_snapshot, read_repo_file_safe, read_wiki_file_safe,
-    write_wiki_file_safe, RepoFilePayload, WikiPageEntry, WikiSnapshot,
+    write_wiki_file_safe, write_wiki_files_safe, wiki_content_sha256, RepoFilePayload,
+    WikiFileWrite, WikiPageEntry, WikiSnapshot,
 };
 pub use wiki_resolver::{
     ensure_wiki_inside_repo, is_valid_wiki_folder_name, resolve_wiki_root, WikiResolution,

@@ -10,7 +10,8 @@ use wiki_core::{
     build_workflow_prompt, collect_repo_files_recursive, file_diff_since_commit, inspect_git_state,
     is_git_repo, load_wiki_snapshot, read_repo_file_safe, resolve_wiki_root,
     read_wiki_file_safe, run_structural_lint_with, watch_repo,
-    write_wiki_file_safe, LintReport, RepoFilePayload, WatchHandle, WikiSnapshot,
+    write_wiki_file_safe, write_wiki_files_safe, LintReport, RepoFilePayload, WatchHandle,
+    WikiFileWrite, WikiSnapshot,
 };
 
 pub const PYTHON_NOT_FOUND_MSG: &str = "Il controllo strutturale richiede Python 3.10 o più recente. Installalo (python.org, oppure `brew install python` su macOS) o indica il percorso nelle impostazioni.";
@@ -467,6 +468,20 @@ pub async fn write_wiki_file(
         let repo = opened_repo(&app, &repo)?;
         let root = wiki_root_of(&repo)?;
         write_wiki_file_safe(&repo, &root, &rel_path, &content)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn write_wiki_files(
+    app: AppHandle,
+    repo: String,
+    files: Vec<WikiFileWrite>,
+) -> Result<(), String> {
+    blocking(move || {
+        let repo = opened_repo(&app, &repo)?;
+        let root = wiki_root_of(&repo)?;
+        write_wiki_files_safe(&repo, &root, &files)
     })
     .await
 }

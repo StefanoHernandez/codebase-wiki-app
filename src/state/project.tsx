@@ -255,20 +255,22 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const logRel = derived.schema?.coreMap.log ?? DEFAULT_CORE_MAP.log;
       let failed: unknown;
       let attempted = false;
+      let threw = false;
       try {
         attempted = edits.length > 0;
         await applyEdits(
           edits,
           (relPath) => api.readWikiFile(repo, relPath),
-          (relPath, content) => api.writeWikiFile(repo, relPath, content),
+          (files) => api.writeWikiFiles(repo, files),
           logRel,
         );
       } catch (e) {
+        threw = true;
         failed = e;
       } finally {
         if (attempted) await reload();
       }
-      if (failed) throw failed;
+      if (threw) throw failed;
     },
     [reload, derived.schema?.coreMap.log],
   );

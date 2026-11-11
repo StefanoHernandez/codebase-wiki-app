@@ -37,6 +37,16 @@ export function writeWikiFile(repo: string, relPath: string, content: string): P
   return invoke('write_wiki_file', { repo, relPath, content });
 }
 
+export interface WikiWriteFile {
+  relPath: string;
+  content: string;
+  expectedSha256: string;
+}
+
+export function writeWikiFiles(repo: string, files: WikiWriteFile[]): Promise<void> {
+  return invoke('write_wiki_files', { repo, files });
+}
+
 export function readWikiFile(repo: string, relPath: string): Promise<string> {
   return invoke('read_wiki_file', { repo, relPath });
 }

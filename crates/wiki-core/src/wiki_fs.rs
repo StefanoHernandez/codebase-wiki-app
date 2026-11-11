@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
-use std::fs;
+use std::fs::{self, File};
+use std::io::Write;
 use std::path::{Component, Path};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::git_ops::{self, GitState};
 use crate::wiki_resolver;
@@ -110,6 +112,175 @@ pub fn read_repo_file_safe(
 const PRIVATE_TERMS_SYMLINK_MSG: &str =
     "`.private-terms` è un collegamento simbolico: scrittura rifiutata.";
 const FORBIDDEN_TERM_MSG: &str = "Il testo contiene un termine vietato da .private-terms.";
+const SHA_MISMATCH_MSG: &str =
+    "Il file è cambiato sul disco dopo la lettura; modifica annullata.";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiFileWrite {
+    pub rel_path: String,
+    pub content: String,
+    pub expected_sha256: String,
+}
+
+fn sha256_hex_utf8(content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(content.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+pub fn wiki_content_sha256(content: &str) -> String {
+    sha256_hex_utf8(content)
+}
+
+fn current_target_sha256(target_path: &Path) -> Result<String, String> {
+    match fs::read_to_string(target_path) {
+        Ok(text) => Ok(sha256_hex_utf8(&text)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(sha256_hex_utf8("")),
+        Err(e) => Err(format!(
+            "Failed to read {} before write: {}",
+            target_path.display(),
+            e
+        )),
+    }
+}
+
+fn read_private_terms(wiki_dir: &Path) -> Result<Option<String>, String> {
+    let private_terms_path = wiki_dir.join(".private-terms");
+    match fs::symlink_metadata(&private_terms_path) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            return Err(PRIVATE_TERMS_SYMLINK_MSG.into());
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("Cannot read .private-terms, write refused: {}", e)),
+    }
+    match fs::read_to_string(&private_terms_path) {
+        Ok(text) => Ok(Some(text)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("Cannot read .private-terms, write refused: {}", e)),
+    }
+}
+
+fn content_has_forbidden_term(terms_content: &str, content: &str) -> bool {
+    let terms_content = terms_content.trim_start_matches('\u{feff}');
+    let lower_content = content.to_lowercase();
+    for line in terms_content.lines() {
+        let term = line.trim();
+        if term.is_empty() || term.starts_with('#') {
+            continue;
+        }
+        if lower_content.contains(&term.to_lowercase()) {
+            return true;
+        }
+    }
+    false
+}
+
+struct PendingWrite {
+    target_path: std::path::PathBuf,
+    tmp_path: std::path::PathBuf,
+    expected_sha256: String,
+}
+
+fn remove_pending_temps(pending: &[PendingWrite]) {
+    for p in pending {
+        let _ = fs::remove_file(&p.tmp_path);
+    }
+}
+
+/// Validates, writes temp files, checks on-disk hashes, then renames in order.
+pub fn write_wiki_files_safe(
+    repo_path: &Path,
+    wiki_root: &str,
+    files: &[WikiFileWrite],
+) -> Result<(), String> {
+    if files.is_empty() {
+        return Ok(());
+    }
+
+    let wiki_dir = repo_path.join(wiki_root);
+    let terms_content = read_private_terms(&wiki_dir)?;
+
+    let mut plans = Vec::with_capacity(files.len());
+    for file in files {
+        let target_path = resolve_wiki_target(repo_path, wiki_root, &file.rel_path, "written")?;
+        if let Some(ref terms) = terms_content {
+            if content_has_forbidden_term(terms, &file.content) {
+                return Err(FORBIDDEN_TERM_MSG.into());
+            }
+        }
+
+        let file_name = target_path
+            .file_name()
+            .ok_or("Invalid wiki file name")?
+            .to_string_lossy();
+        let parent = target_path.parent().ok_or("Invalid wiki file path")?;
+        let pid = std::process::id();
+        let tmp_name = format!(".{}.tmp-{}", file_name, pid);
+        let tmp_path = parent.join(&tmp_name);
+
+        plans.push((
+            file.content.clone(),
+            PendingWrite {
+                target_path,
+                tmp_path,
+                expected_sha256: file.expected_sha256.clone(),
+            },
+        ));
+    }
+
+    let mut pending = Vec::with_capacity(plans.len());
+    for (content, plan) in plans {
+        if let Some(parent) = plan.target_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create parent directories: {}", e))?;
+        }
+
+        let tmp_path = plan.tmp_path.clone();
+        let write_result = (|| -> Result<(), String> {
+            let mut f = File::create(&tmp_path)
+                .map_err(|e| format!("Failed to write temp file {}: {}", tmp_path.display(), e))?;
+            f.write_all(content.as_bytes())
+                .map_err(|e| format!("Failed to write temp file {}: {}", tmp_path.display(), e))?;
+            f.sync_all()
+                .map_err(|e| format!("Failed to sync temp file {}: {}", tmp_path.display(), e))?;
+            Ok(())
+        })();
+
+        if let Err(e) = write_result {
+            remove_pending_temps(&pending);
+            return Err(e);
+        }
+
+        pending.push(plan);
+    }
+
+    for p in &pending {
+        let actual = current_target_sha256(&p.target_path)?;
+        if actual != p.expected_sha256 {
+            remove_pending_temps(&pending);
+            return Err(SHA_MISMATCH_MSG.into());
+        }
+    }
+
+    let mut renamed = 0usize;
+    for p in &pending {
+        if let Err(e) = fs::rename(&p.tmp_path, &p.target_path) {
+            for rest in &pending[renamed..] {
+                let _ = fs::remove_file(&rest.tmp_path);
+            }
+            return Err(format!(
+                "Failed to write file {}: {}",
+                p.target_path.display(),
+                e
+            ));
+        }
+        renamed += 1;
+    }
+
+    Ok(())
+}
 
 fn resolve_wiki_target(
     repo_path: &Path,
@@ -168,60 +339,16 @@ pub fn write_wiki_file_safe(
     content: &str,
 ) -> Result<(), String> {
     let target_path = resolve_wiki_target(repo_path, wiki_root, wiki_rel_path, "written")?;
-    let wiki_dir = repo_path.join(wiki_root);
-
-    // `.private-terms` in the wiki root is the source of truth for forbidden terms.
-    let private_terms_path = wiki_dir.join(".private-terms");
-    match fs::symlink_metadata(&private_terms_path) {
-        Ok(meta) if meta.file_type().is_symlink() => {
-            return Err(PRIVATE_TERMS_SYMLINK_MSG.into());
-        }
-        Ok(_) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(format!("Cannot read .private-terms, write refused: {}", e)),
-    }
-    // Fail closed: an existing but unreadable terms file refuses the write.
-    let terms_content = match fs::read_to_string(&private_terms_path) {
-        Ok(text) => Some(text),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => return Err(format!("Cannot read .private-terms, write refused: {}", e)),
-    };
-    if let Some(terms_content) = terms_content {
-        let terms_content = terms_content.trim_start_matches('\u{feff}');
-        let lower_content = content.to_lowercase();
-        for line in terms_content.lines() {
-            let term = line.trim();
-            if term.is_empty() || term.starts_with('#') {
-                continue;
-            }
-            if lower_content.contains(&term.to_lowercase()) {
-                return Err(FORBIDDEN_TERM_MSG.into());
-            }
-        }
-    }
-
-    if let Some(parent) = target_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create parent directories: {}", e))?;
-    }
-
-    let file_name = target_path
-        .file_name()
-        .ok_or("Invalid wiki file name")?
-        .to_string_lossy();
-    let parent = target_path
-        .parent()
-        .ok_or("Invalid wiki file path")?;
-    let pid = std::process::id();
-    let tmp_name = format!(".{}.tmp-{}", file_name, pid);
-    let tmp_path = parent.join(&tmp_name);
-
-    fs::write(&tmp_path, content.as_bytes())
-        .map_err(|e| format!("Failed to write temp file {}: {}", tmp_path.display(), e))?;
-    fs::rename(&tmp_path, &target_path)
-        .map_err(|e| format!("Failed to write file {}: {}", target_path.display(), e))?;
-
-    Ok(())
+    let expected_sha256 = current_target_sha256(&target_path)?;
+    write_wiki_files_safe(
+        repo_path,
+        wiki_root,
+        &[WikiFileWrite {
+            rel_path: wiki_rel_path.to_string(),
+            content: content.to_string(),
+            expected_sha256,
+        }],
+    )
 }
 
 #[cfg(test)]
@@ -287,6 +414,106 @@ mod tests {
         let mut f = fs::File::create(&path).unwrap();
         f.write_all(&[0xFF, 0xFE, 0x41]).unwrap();
         assert!(read_wiki_file_safe(repo, "wiki", "bin.md").is_err());
+    }
+
+    fn tmp_leftovers(wiki: &Path) -> Vec<String> {
+        let pid = std::process::id();
+        let mut leftovers = Vec::new();
+        for entry in fs::read_dir(wiki).unwrap() {
+            let name = entry.unwrap().file_name().to_string_lossy().into_owned();
+            if name.contains(&format!(".tmp-{}", pid)) {
+                leftovers.push(name);
+            }
+        }
+        leftovers
+    }
+
+    #[test]
+    fn batch_forbidden_in_second_file_skips_first() {
+        let td = TestDir::new("batch_forbidden");
+        let repo = td.path();
+        let wiki = repo.join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        fs::write(wiki.join("a.md"), "keep-a").unwrap();
+        fs::write(wiki.join("b.md"), "keep-b").unwrap();
+        fs::write(wiki.join(".private-terms"), "secret\n").unwrap();
+
+        let err = write_wiki_files_safe(
+            repo,
+            "wiki",
+            &[
+                WikiFileWrite {
+                    rel_path: "a.md".into(),
+                    content: "new-a".into(),
+                    expected_sha256: wiki_content_sha256("keep-a"),
+                },
+                WikiFileWrite {
+                    rel_path: "b.md".into(),
+                    content: "leak secret".into(),
+                    expected_sha256: wiki_content_sha256("keep-b"),
+                },
+            ],
+        )
+        .unwrap_err();
+        assert_eq!(err, FORBIDDEN_TERM_MSG);
+        assert_eq!(fs::read_to_string(wiki.join("a.md")).unwrap(), "keep-a");
+        assert_eq!(fs::read_to_string(wiki.join("b.md")).unwrap(), "keep-b");
+        assert!(tmp_leftovers(&wiki).is_empty());
+    }
+
+    #[test]
+    fn batch_sha_mismatch_aborts_without_tmp() {
+        let td = TestDir::new("batch_sha");
+        let repo = td.path();
+        let wiki = repo.join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        fs::write(wiki.join("a.md"), "on-disk").unwrap();
+
+        let err = write_wiki_files_safe(
+            repo,
+            "wiki",
+            &[WikiFileWrite {
+                rel_path: "a.md".into(),
+                content: "wanted".into(),
+                expected_sha256: wiki_content_sha256("stale-read"),
+            }],
+        )
+        .unwrap_err();
+        assert_eq!(err, SHA_MISMATCH_MSG);
+        assert_eq!(fs::read_to_string(wiki.join("a.md")).unwrap(), "on-disk");
+        assert!(tmp_leftovers(&wiki).is_empty());
+    }
+
+    #[test]
+    fn batch_success_leaves_no_tmp_files() {
+        let td = TestDir::new("batch_ok");
+        let repo = td.path();
+        let wiki = repo.join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        fs::write(wiki.join("a.md"), "v1").unwrap();
+        fs::write(wiki.join("log.md"), "old-log").unwrap();
+
+        write_wiki_files_safe(
+            repo,
+            "wiki",
+            &[
+                WikiFileWrite {
+                    rel_path: "a.md".into(),
+                    content: "v2".into(),
+                    expected_sha256: wiki_content_sha256("v1"),
+                },
+                WikiFileWrite {
+                    rel_path: "log.md".into(),
+                    content: "new-log".into(),
+                    expected_sha256: wiki_content_sha256("old-log"),
+                },
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(fs::read_to_string(wiki.join("a.md")).unwrap(), "v2");
+        assert_eq!(fs::read_to_string(wiki.join("log.md")).unwrap(), "new-log");
+        assert!(tmp_leftovers(&wiki).is_empty());
     }
 
     #[test]
