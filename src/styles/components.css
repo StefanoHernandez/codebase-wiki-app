@@ -241,6 +241,14 @@ kbd {
 .banner-drift {
   color: var(--drift);
 }
+.view .banner {
+  margin: 0 0 16px;
+}
+.banner ul {
+  margin: 6px 0;
+  padding-left: 18px;
+  font-weight: 400;
+}
 
 .muted {
   color: var(--ink-muted);

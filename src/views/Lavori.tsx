@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Empty } from '../components/Empty';
 import { CloseDialog, FieldDialog, PromoteDialog, SIGN_HINT } from '../components/TrackerDialogs';
 import { useStamp } from '../components/stamp';
+import { CLOSE_BLOCKED_REASON } from '../lib/wiki-compat';
 import { useToast } from '../components/Toast';
 import { useProject } from '../state/project';
 import { useNav } from '../state/nav';
@@ -77,13 +78,14 @@ export default function Lavori() {
     extra?.();
   };
 
-  const signButton = (label: string, cls: string, onClick: () => void) => (
+  const closeBlocked = project.compat.closeBlocked;
+  const signButton = (label: string, cls: string, onClick: () => void, blockedReason: string | null = null) => (
     <button
       type="button"
       className={`btn ${cls}`}
-      aria-disabled={!signable}
-      title={signable ? undefined : SIGN_HINT}
-      onClick={() => signable && onClick()}
+      aria-disabled={!signable || !!blockedReason}
+      title={blockedReason ?? (signable ? undefined : SIGN_HINT)}
+      onClick={() => signable && !blockedReason && onClick()}
     >
       {label}
     </button>
@@ -139,7 +141,7 @@ export default function Lavori() {
           signButton('Cambia priorità', 'btn-quiet', () =>
             setPending({ kind: 'priority', row, column: priorityHeader }),
           )}
-        {signButton('Chiudi senza prova', 'btn-human', () => setPending({ kind: 'close', row }))}
+        {signButton('Chiudi senza prova', 'btn-human', () => setPending({ kind: 'close', row }), closeBlocked ? CLOSE_BLOCKED_REASON : null)}
       </div>
     </article>
   );
@@ -227,6 +229,7 @@ export default function Lavori() {
           </label>
         )}
         {!signable && <p className="muted">{SIGN_HINT}</p>}
+        {closeBlocked && <p className="muted">{CLOSE_BLOCKED_REASON}</p>}
       </div>
 
       <div className="kanban">

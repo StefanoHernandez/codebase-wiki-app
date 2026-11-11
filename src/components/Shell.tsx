@@ -7,6 +7,7 @@ import { useTheme, type ThemeChoice } from '../state/theme';
 import { SECTIONS, type SectionId } from '../views';
 import { CommandPalette, MOD } from './CommandPalette';
 import { Empty } from './Empty';
+import { IncompatibleWiki } from './Compat';
 import { useToast } from './Toast';
 
 /** Two letters from a folder name: initials of its first two words, else its first two letters. */
@@ -123,11 +124,16 @@ export function Shell() {
             <Header />
             {project.error && <Banner tone="error">{project.error}</Banner>}
             {project.snapshot.warning && <Banner tone="drift">{project.snapshot.warning}</Banner>}
+            {project.compat.pluginOutdated && (
+              <Banner tone="drift">La wiki è più nuova del plugin: aggiorna il plugin.</Banner>
+            )}
             {project.parseError && (
               <Banner tone="error">Non riesco a leggere la wiki: {project.parseError}. Correggi il file e premi Ricarica.</Banner>
             )}
             <div className={nav.section === 'grafo' ? 'content-body content-bleed' : 'content-body'}>
-              {hasWiki ? (
+              {hasWiki && project.compat.incompatible ? (
+                <IncompatibleWiki />
+              ) : hasWiki ? (
                 <CurrentView section={nav.section} />
               ) : (
                 <Empty

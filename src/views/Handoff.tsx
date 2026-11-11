@@ -7,6 +7,7 @@ import { extractTableFromLines, findSectionLines } from '../lib/markdown-tables'
 import { useProject } from '../state/project';
 import { useNav } from '../state/nav';
 import type { BatonRow } from '../types/wiki';
+import type { LintInfo } from '../types/snapshot';
 import { renderInlineCode, textForCopy } from '../lib/inline-code';
 import './handoff.css';
 
@@ -138,6 +139,8 @@ export default function Handoff() {
     );
   };
 
+  const handoffInfos = (project.lint?.infos ?? []).filter((i) => HANDOFF_INFO_CODES.has(i.code));
+
   return (
     <section className="view">
       <h1 className="view-title">Handoff</h1>
@@ -157,6 +160,19 @@ export default function Handoff() {
           </>
         )}
       </div>
+
+      {handoffInfos.length > 0 && (
+        <div className="banner banner-drift" role="status">
+          <ul>
+            {handoffInfos.map((i, n) => (
+              <li key={`${i.code}:${n}`}>{handoffInfoCopy(i)}</li>
+            ))}
+          </ul>
+          <button type="button" className="btn" onClick={() => void copySync()} disabled={!project.current}>
+            Copia prompt /wiki-sync
+          </button>
+        </div>
+      )}
 
       <section className="handoff-section">
         <h2>Stato corrente</h2>
@@ -238,4 +254,15 @@ export default function Handoff() {
       </section>
     </section>
   );
+}
+
+const HANDOFF_INFO_CODES = new Set(['handoff-no-open-work-stale', 'handoff-baton-id-closed']);
+
+/** Italian copy of the validator's two handoff infos. */
+function handoffInfoCopy(info: LintInfo): string {
+  if (info.code === 'handoff-no-open-work-stale') {
+    return 'L’handoff dice «No open work.» ma il tracker ha lavori aperti: aggiorna l’handoff con /wiki-sync.';
+  }
+  const id = /\b(T[1-9]\d*)\b/.exec(info.message)?.[1];
+  return `Il baton cita ${id ?? 'un lavoro'} che nel tracker è già chiuso: aggiorna l’handoff con /wiki-sync.`;
 }

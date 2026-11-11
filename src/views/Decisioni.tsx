@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Empty } from '../components/Empty';
 import { Markdown } from '../components/Markdown';
 import { DecideDialog, SIGN_HINT } from '../components/DecisionDialogs';
+import { DECISION_BLOCKED_REASON } from '../lib/wiki-compat';
 import { useStamp } from '../components/stamp';
 import { useToast } from '../components/Toast';
 import { parseFrontmatter } from '../lib/frontmatter';
@@ -75,6 +76,7 @@ export default function Decisioni() {
   const active = project.decisions.find((d) => d.number === selected) ?? null;
   const page = active ? project.pages.find((p) => p.relPath === active.relPath) : null;
   const meta = page ? parseFrontmatter(page.markdown) : null;
+  const activeBlocked = !!active && project.compat.decisionBlocked.has(active.relPath);
 
   const openDecisionLink = (relPath: string) => {
     const normalized = relPath.replace(/\\/g, '/');
@@ -89,13 +91,13 @@ export default function Decisioni() {
     setSelected(number);
   };
 
-  const signButton = (label: string, onClick: () => void) => (
+  const signButton = (label: string, onClick: () => void, blocked = false) => (
     <button
       type="button"
       className="btn btn-human"
-      aria-disabled={!signable}
-      title={signable ? undefined : SIGN_HINT}
-      onClick={() => signable && onClick()}
+      aria-disabled={!signable || blocked}
+      title={blocked ? DECISION_BLOCKED_REASON : signable ? undefined : SIGN_HINT}
+      onClick={() => signable && !blocked && onClick()}
     >
       {label}
     </button>
@@ -167,8 +169,9 @@ export default function Decisioni() {
               </div>
               {active.status === 'proposed' && (
                 <div className="decisioni-actions">
-                  {signButton('Accetta decisione', () => setPending({ decision: active, verdict: 'accepted' }))}
-                  {signButton('Rifiuta decisione', () => setPending({ decision: active, verdict: 'rejected' }))}
+                  {signButton('Accetta decisione', () => setPending({ decision: active, verdict: 'accepted' }), activeBlocked)}
+                  {signButton('Rifiuta decisione', () => setPending({ decision: active, verdict: 'rejected' }), activeBlocked)}
+                  {activeBlocked && <p className="muted">{DECISION_BLOCKED_REASON}</p>}
                 </div>
               )}
             </>

@@ -10,6 +10,7 @@ import { trustTier, type TrustTier } from '../lib/trust';
 import { computeAttention, type AttentionItem } from '../lib/attention';
 import { applyEdits, type FileEdit } from '../lib/apply-edits';
 import { validateHumanActor } from '../lib/human-actions';
+import { wikiCompat, type WikiCompat } from '../lib/wiki-compat';
 import { clearNavRef } from './nav';
 
 export interface WikiPage {
@@ -41,6 +42,11 @@ export interface ProjectState extends Derived {
   snapshot: WikiSnapshot | null;
   lint: LintReport | null;
   lintRunning: boolean;
+  /** Last lint call that threw (Python not found, ...); null after a successful run. */
+  lintError: string | null;
+  lintAt: Date | null;
+  /** Gating from the validator's upgrade codes. */
+  compat: WikiCompat;
   runLint(): Promise<LintReport | null>;
   /** Signing person, trimmed; '' when unset. Valid only when `actorError` is null. */
   actor: string;
@@ -60,6 +66,7 @@ export interface ProjectState extends Derived {
 const ACTOR_KEY = 'cw.actor';
 export const PYTHON_KEY = 'cw.python';
 const RELOAD_DEBOUNCE_MS = 300;
+const LINT_DEBOUNCE_MS = 600;
 
 const EMPTY: Derived = {
   schema: null,
@@ -149,6 +156,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<WikiSnapshot | null>(null);
   const [lint, setLint] = useState<LintReport | null>(null);
   const [lintRunning, setLintRunning] = useState(false);
+  const [lintError, setLintError] = useState<string | null>(null);
+  const [lintAt, setLintAt] = useState<Date | null>(null);
+  /** Only the latest lint run may set state. */
+  const lintSeq = useRef(0);
   const [actor, setActorState] = useState(readStoredActor);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -161,6 +172,14 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   currentRef.current = current;
 
   const derived = useMemo(() => derive(snapshot, lint), [snapshot, lint]);
+  const compat = useMemo(() => wikiCompat(lint), [lint]);
+  const clearLint = () => {
+    lintSeq.current++;
+    setLint(null);
+    setLintError(null);
+    setLintAt(null);
+    setLintRunning(false);
+  };
 
   useEffect(() => {
     if (current) setAttentionCounts((c) => ({ ...c, [current]: derived.attention.length }));
@@ -183,7 +202,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         const snap = await api.openProject(path);
         if (seq !== openSeq.current) return;
         clearNavRef();
-        setLint(null);
+        clearLint();
         setSnapshot(snap);
         if (!readStoredActor()) {
           const name = (await api.gitUserName(snap.repoPath).catch(() => null))?.trim();
@@ -224,7 +243,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         if (path === currentRef.current) {
           clearNavRef();
           setSnapshot(null);
-          setLint(null);
+          clearLint();
           setLoading(false);
         }
       } catch (e) {
@@ -238,15 +257,31 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const runLint = useCallback(async () => {
     const repo = currentRef.current;
     if (!repo) return null;
+    const seq = ++lintSeq.current;
+    const latest = () => seq === lintSeq.current && currentRef.current === repo;
     setLintRunning(true);
     try {
       const report = await api.runLint(repo, readStoredPythonPath());
-      if (currentRef.current === repo) setLint(report);
+      if (latest()) {
+        setLint(report);
+        setLintError(null);
+        setLintAt(new Date());
+      }
       return report;
+    } catch (e) {
+      if (latest()) setLintError(message(e));
+      throw e;
     } finally {
-      setLintRunning(false);
+      if (seq === lintSeq.current) setLintRunning(false);
     }
   }, []);
+
+  // Every successful snapshot load (open, reload after act(), watcher) → debounced lint.
+  useEffect(() => {
+    if (!snapshot?.wikiRoot) return;
+    const timer = setTimeout(() => void runLint().catch(() => {}), LINT_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [snapshot, runLint]);
 
   const act = useCallback(
     async (edits: FileEdit[]) => {
@@ -328,6 +363,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       snapshot,
       lint,
       lintRunning,
+      lintError,
+      lintAt,
+      compat,
       runLint,
       actor: actor.trim(),
       actorError: actor.trim() ? actorProblem(actor.trim()) : 'Imposta il tuo nome nelle impostazioni.',
@@ -347,6 +385,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       snapshot,
       lint,
       lintRunning,
+      lintError,
+      lintAt,
+      compat,
       runLint,
       actor,
       loading,

@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Empty } from '../components/Empty';
+import { UpgradeBanner } from '../components/Compat';
 import { PromoteDialog, SIGN_HINT } from '../components/TrackerDialogs';
 import { useToast } from '../components/Toast';
 import { useProject } from '../state/project';
@@ -38,6 +39,7 @@ export default function PerTe() {
     return (
       <section className="view">
         <h1 className="view-title">Per te</h1>
+        <UpgradeBanner />
         <Empty title="Niente che aspetti te." />
       </section>
     );
@@ -153,6 +155,7 @@ export default function PerTe() {
   return (
     <section className="view">
       <h1 className="view-title">Per te</h1>
+      <UpgradeBanner />
       {GROUPS.map((group) => {
         const rows = attention.flatMap((a, i) => {
           if (a.kind !== group.kind) return [];

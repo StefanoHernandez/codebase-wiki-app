@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Empty } from '../components/Empty';
+import { UpgradeBanner } from '../components/Compat';
 import { Markdown } from '../components/Markdown';
 import { ReviewDialog } from '../components/ReviewDialog';
 import { SidePanel } from '../components/SidePanel';
@@ -57,8 +58,6 @@ export default function Salute() {
   const toast = useToast();
   const { stamp, isStamped } = useStamp();
 
-  const [lintError, setLintError] = useState<string | null>(null);
-  const [lastLintAt, setLastLintAt] = useState<Date | null>(null);
   const [panel, setPanel] = useState<PanelPage | null>(null);
   const [review, setReview] = useState<{ path: string; markdown: string } | null>(null);
   const [tierFilter, setTierFilter] = useState<TrustTier | ''>('');
@@ -74,15 +73,10 @@ export default function Salute() {
     el?.scrollIntoView({ block: 'nearest' });
   }, [nav.ref, nav.section]);
 
-  const runStructureLint = async () => {
-    setLintError(null);
-    try {
-      await project.runLint();
-      setLastLintAt(new Date());
-    } catch (e) {
-      setLintError(e instanceof Error ? e.message : String(e));
-    }
-  };
+  // Errors land in project.lintError.
+  const runStructureLint = () => void project.runLint().catch(() => {});
+  const lintError = project.lintError;
+  const lastLintAt = project.lintAt;
 
   const openPage = (path: string) => {
     const page = project.pages.find((p) => p.relPath === path);
@@ -123,6 +117,7 @@ export default function Salute() {
   }
 
   const findings = project.lint?.findings ?? [];
+  const infos = project.lint?.infos ?? [];
 
   const finishReview = () => {
     const path = review?.path ?? '';
@@ -134,6 +129,7 @@ export default function Salute() {
   return (
     <section className="view">
       <h1 className="view-title">Salute</h1>
+      <UpgradeBanner />
 
       <section className="group">
         <h2 className="group-title">Struttura</h2>
@@ -149,7 +145,9 @@ export default function Salute() {
           {lastLintAt && <p className="muted">Ultimo controllo: {formatLintWhen(lastLintAt)}</p>}
         </div>
         {lintError && <p className="error-text">{lintError}</p>}
-        {project.lint?.error && <p className="error-text">Il validatore non è partito: {project.lint.error}</p>}
+        {project.compat.validatorUnavailable && (
+          <p className="error-text">Il validatore non è partito: {project.compat.validatorUnavailable}</p>
+        )}
         {project.lint && !project.lint.error && findings.length === 0 && !lintError && (
           <p className="muted">Nessun problema di struttura.</p>
         )}
@@ -181,6 +179,33 @@ export default function Salute() {
           </table>
         )}
       </section>
+
+      {infos.length > 0 && (
+        <section className="group">
+          <h2 className="group-title">
+            Note del validatore <span className="group-count">{infos.length}</span>
+          </h2>
+          <ul className="rows">
+            {infos.map((i, n) => (
+              <li key={`${i.code}:${n}`} className="row">
+                <div className="row-main">
+                  <p className="row-title">
+                    {i.wikiRelPath ? (
+                      <span className="salute-table-path">
+                        {i.wikiRelPath}
+                        {i.line ? `:${i.line}` : ''}
+                      </span>
+                    ) : (
+                      i.code
+                    )}
+                  </p>
+                  <p className="row-detail">{i.message}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="group">
         <h2 className="group-title">Fiducia</h2>
