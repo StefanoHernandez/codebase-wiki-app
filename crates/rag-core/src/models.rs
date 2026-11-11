@@ -106,7 +106,7 @@ fn pick_onnx_remote(hf_repo: &str) -> Result<String, String> {
         "model.onnx",
     ] {
         let url = format!("{}/{}/resolve/main/{}", hf_base(), hf_repo, candidate);
-        if agent.get(&url).call().is_ok() {
+        if agent.head(&url).call().is_ok() {
             return Ok(candidate.into());
         }
     }
@@ -119,12 +119,28 @@ fn leak_str(s: &str) -> &'static str {
 }
 
 #[cfg(feature = "download")]
+/// `owner/name` with HF's allowed characters → local id (the name, dots as dashes).
+/// Refuses anything else, and names that clash with the curated catalog.
+pub fn custom_id(hf_repo: &str) -> Result<String, String> {
+    let ok = |p: &str| {
+        !p.is_empty()
+            && !p.starts_with('.')
+            && p.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+    };
+    let parts: Vec<&str> = hf_repo.split('/').collect();
+    if parts.len() != 2 || !parts.iter().all(|p| ok(p)) {
+        return Err(format!("repo Hugging Face non valido: {hf_repo} (atteso proprietario/nome)"));
+    }
+    let id = parts[1].replace('.', "-");
+    if crate::catalog::catalog().iter().any(|m| m.id == id) {
+        return Err(format!("{id} è già nel catalogo: usa Scarica"));
+    }
+    Ok(id)
+}
+
+#[cfg(feature = "download")]
 pub fn add_custom(hf_repo: &str) -> Result<String, String> {
-    let id = hf_repo
-        .split('/')
-        .next_back()
-        .unwrap_or(hf_repo)
-        .replace('.', "-");
+    let id = custom_id(hf_repo)?;
     let config = fetch_hf_json(hf_repo, "config.json")?;
     let pooling = fetch_hf_json(hf_repo, "1_Pooling/config.json").ok();
     let sentence = fetch_hf_json(hf_repo, "sentence_bert_config.json").ok();
@@ -336,6 +352,15 @@ mod tests {
         let (dims, p) = infer_from_config(&cfg, None).unwrap();
         assert_eq!(dims, 768);
         assert_eq!(p, Pooling::Mean);
+    }
+
+    #[test]
+    fn custom_id_validates_repo_names() {
+        assert_eq!(custom_id("BAAI/bge-m3").unwrap(), "bge-m3");
+        assert_eq!(custom_id("org/model.v2").unwrap(), "model-v2");
+        for bad in ["bge-m3", "a/b/c", "../x", "org/..", "org/a b", "intfloat/multilingual-e5-small"] {
+            assert!(custom_id(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

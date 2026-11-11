@@ -53,13 +53,11 @@ fn home_dir() -> PathBuf {
 
 fn safe_write(path: &Path, content: &str) -> Result<(), String> {
     match fs::read_to_string(path) {
-        Ok(existing) => {
-            let bak = sibling_bak(path);
-            fs::copy(path, &bak).map_err(|e| e.to_string())?;
+        Ok(_) => {
+            fs::copy(path, sibling_bak(path)).map_err(|e| e.to_string())?;
             let tmp = path.with_extension("tmp");
             fs::write(&tmp, content).map_err(|e| e.to_string())?;
             fs::rename(&tmp, path).map_err(|e| e.to_string())?;
-            let _ = existing;
             Ok(())
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -215,7 +213,6 @@ fn classify(command: Option<String>) -> HarnessLink {
 
 pub fn harness_state() -> Vec<HarnessRow> {
     let home = home_dir();
-    let bin = bin_path();
     let codex_path = codex_config_path(&home);
     let cursor_path = cursor_config_path(&home);
     let codex_before = fs::read_to_string(&codex_path).unwrap_or_default();
@@ -238,7 +235,12 @@ pub fn harness_state() -> Vec<HarnessRow> {
         HarnessRow {
             id: "claude",
             label: "Claude Code",
-            status: HarnessLink::Absent,
+            // `claude mcp add --scope user` stores the server in ~/.claude.json (read only here).
+            status: classify(
+                fs::read_to_string(home.join(".claude.json"))
+                    .ok()
+                    .and_then(|t| cursor_command_in_json(&t)),
+            ),
             config_path: "scope user (claude mcp)".into(),
             hint: None,
         },
@@ -259,7 +261,6 @@ pub fn harness_state() -> Vec<HarnessRow> {
                 "Installa Claude Code CLI o copia il comando manualmente.".into()
             });
         }
-        let _ = bin;
         row
     })
     .collect()
@@ -273,13 +274,22 @@ pub enum HarnessAction {
     Update,
 }
 
+/// Current file text; a missing file is empty, any other read error is refused.
+fn read_config_text(path: &Path) -> Result<String, String> {
+    match fs::read_to_string(path) {
+        Ok(t) => Ok(t),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(e) => Err(format!("{}: {e}", path.display())),
+    }
+}
+
 pub fn harness_preview(harness: &str, action: HarnessAction) -> Result<HarnessPreview, String> {
     let home = home_dir();
     let bin = bin_path();
     match harness {
         "codex" => {
             let path = codex_config_path(&home);
-            let before = fs::read_to_string(&path).unwrap_or_default();
+            let before = read_config_text(&path)?;
             let after = match action {
                 HarnessAction::Disconnect => propose_codex_disconnect(&before)?,
                 HarnessAction::Connect | HarnessAction::Update => propose_codex_patch(&before, &bin)?,
@@ -292,7 +302,7 @@ pub fn harness_preview(harness: &str, action: HarnessAction) -> Result<HarnessPr
         }
         "cursor" => {
             let path = cursor_config_path(&home);
-            let before = fs::read_to_string(&path).unwrap_or_default();
+            let before = read_config_text(&path)?;
             let after = match action {
                 HarnessAction::Disconnect => {
                     if before.trim().is_empty() {
@@ -310,9 +320,13 @@ pub fn harness_preview(harness: &str, action: HarnessAction) -> Result<HarnessPr
             })
         }
         "claude" => Ok(HarnessPreview {
-            path: "claude mcp".into(),
+            path: "claude mcp (scope user)".into(),
             before: String::new(),
-            after: claude_command(&bin),
+            after: if action == HarnessAction::Disconnect {
+                claude_remove_command().into()
+            } else {
+                claude_command(&bin)
+            },
         }),
         "antigravity" => Ok(HarnessPreview {
             path: "antigravity raw".into(),

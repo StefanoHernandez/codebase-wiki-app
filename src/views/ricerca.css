@@ -1,0 +1,44 @@
+.ricerca-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-muted);
+}
+.ricerca-progress {
+  display: grid;
+  gap: 4px;
+  max-width: 420px;
+  margin-top: 8px;
+}
+.ricerca-progress progress,
+.ricerca-actions progress {
+  width: 100%;
+}
+.ricerca-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+.ricerca-badge {
+  margin-left: 6px;
+}
+.ricerca-hit {
+  margin-top: 12px;
+}
+.ricerca-snippet {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  max-height: 16em;
+  overflow: auto;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunk);
+  font-family: var(--font-code);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ricerca-diff {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}

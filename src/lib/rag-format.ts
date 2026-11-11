@@ -11,6 +11,23 @@ export type IndexStatus = {
   staleInstall?: boolean;
 };
 
+/** `status --json` (snake_case) → IndexStatus. */
+export function parseIndexStatus(raw: Record<string, unknown>): IndexStatus {
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
+  return {
+    model: str(raw.model) ?? undefined,
+    indexed: raw.indexed === true,
+    indexedModel: str(raw.indexed_model),
+    error: str(raw.error),
+    files: Number(raw.files ?? 0),
+    chunks: Number(raw.chunks ?? 0),
+    indexedHead: str(raw.indexed_head),
+    head: str(raw.head),
+    changedSinceIndex: Number(raw.changed_since_index ?? 0),
+    staleInstall: raw.stale_install === true,
+  };
+}
+
 export function formatIndexState(status: IndexStatus | null): string {
   if (!status) return 'Indice assente';
   if (status.indexed === false && status.error) return status.error;

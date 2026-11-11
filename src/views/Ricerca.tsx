@@ -1,242 +1,246 @@
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { copyText } from '../api';
+import { Dialog } from '../components/Dialog';
+import { Empty } from '../components/Empty';
+import { Markdown } from '../components/Markdown';
+import { SidePanel } from '../components/SidePanel';
+import { useToast } from '../components/Toast';
+import { formatIndexState, parseIndexStatus, type IndexStatus } from '../lib/rag-format';
 import { useProject } from '../state/project';
 import { useRag } from '../state/rag';
-import { formatIndexState, type IndexStatus } from '../lib/rag-format';
-import { SidePanel } from '../components/SidePanel';
-import { Dialog } from '../components/Dialog';
-import { copyText } from '../api';
+import './ricerca.css';
 
-type CatalogRow = {
-  id: string;
-  languages: string;
-  sizeMb: number;
-  note: string;
-  tested: boolean;
-  installed: boolean;
-};
-
-type SearchHit = {
-  path: string;
-  startLine: number;
-  endLine: number;
-  snippet: string;
-  score: number;
-};
+type CatalogRow = { id: string; languages: string; sizeMb: number; note: string; tested: boolean; installed: boolean };
+type SearchHit = { path: string; startLine: number; endLine: number; snippet: string; score: number };
+type HarnessRow = { id: string; label: string; status: 'connected' | 'outdated' | 'absent'; configPath: string; hint?: string | null };
+type HarnessDlg = { id: string; label: string; action: string; path: string; before: string; after: string };
 
 const DEFAULT_MODEL = 'multilingual-e5-small';
+const COPY_ONLY = new Set(['antigravity']);
+const LINK_LABEL: Record<HarnessRow['status'], string> = {
+  connected: 'Collegato',
+  outdated: 'Da aggiornare',
+  absent: 'Non collegato',
+};
+const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export default function Ricerca() {
   const project = useProject();
   const rag = useRag();
+  const toast = useToast();
   const repo = project.snapshot?.repoPath ?? null;
   const wikiRoot = project.snapshot?.wikiRoot ?? null;
+  const job = rag.indexJob(repo);
+
   const [status, setStatus] = useState<IndexStatus | null>(null);
   const [catalog, setCatalog] = useState<CatalogRow[]>([]);
-  const [query, setQuery] = useState('');
-  const [wiki, setWiki] = useState(false);
-  const [hits, setHits] = useState<SearchHit[]>([]);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [panel, setPanel] = useState<{ path: string; markdown: string } | null>(null);
-  const [harnessRows, setHarnessRows] = useState<
-    Array<{ id: string; label: string; status: string; configPath: string; hint?: string | null }>
-  >([]);
-  const [harnessDlg, setHarnessDlg] = useState<{
-    id: string;
-    action: string;
-    path: string;
-    before: string;
-    after: string;
-  } | null>(null);
-  const [harnessBusy, setHarnessBusy] = useState(false);
+  const [harness, setHarness] = useState<HarnessRow[]>([]);
+  const [harnessError, setHarnessError] = useState<string | null>(null);
+  const [dlg, setDlg] = useState<HarnessDlg | null>(null);
+  const [dlgBusy, setDlgBusy] = useState(false);
   const [hfQuery, setHfQuery] = useState('');
   const [hfHits, setHfHits] = useState<Array<{ id: string; downloads: number }>>([]);
-
-  const job = rag.jobFor(repo);
+  const [hfError, setHfError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [wiki, setWiki] = useState(false);
+  const [hits, setHits] = useState<SearchHit[] | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [panel, setPanel] = useState<{ path: string; markdown: string } | null>(null);
 
   const refresh = useCallback(async () => {
     if (!repo) return;
     try {
-      const s = (await invoke('rag_status', { repo })) as Record<string, unknown>;
-      setStatus(rag.parseStatus(s));
-    } catch {
-      setStatus(null);
+      setStatus(parseIndexStatus((await invoke('rag_status', { repo })) as Record<string, unknown>));
+    } catch (e) {
+      setStatus({ indexed: false, error: message(e) });
     }
     try {
-      const m = (await invoke('rag_models')) as {
-        catalog?: Array<Record<string, unknown>>;
-      };
-      const rows =
-        m.catalog?.map((row) => ({
-          id: String(row.id ?? ''),
-          languages: String(row.languages ?? ''),
-          sizeMb: Number(row.size_mb ?? row.sizeMb ?? 0),
-          note: String(row.note ?? ''),
-          tested: row.tested === true,
-          installed: row.installed === true,
-        })) ?? [];
-      setCatalog(rows);
+      const m = (await invoke('rag_models')) as { catalog?: Array<Record<string, unknown>> };
+      setCatalog(
+        (m.catalog ?? []).map((r) => ({
+          id: String(r.id ?? ''),
+          languages: String(r.languages ?? ''),
+          sizeMb: Number(r.size_mb ?? 0),
+          note: String(r.note ?? ''),
+          tested: r.tested === true,
+          installed: r.installed === true,
+        })),
+      );
     } catch {
       setCatalog([]);
     }
-  }, [repo, rag]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    void invoke('rag_harness_state')
-      .then((rows) => setHarnessRows(rows as typeof harnessRows))
-      .catch(() => setHarnessRows([]));
   }, [repo]);
 
-  const harnessActionLabel = (status: string, verb: 'connect' | 'disconnect' | 'update') => {
-    if (verb === 'disconnect') return 'Scollega';
-    if (status === 'outdated') return 'Aggiorna';
-    return 'Collega';
-  };
-
-  const openHarness = async (id: string, status: string, verb: 'connect' | 'disconnect' | 'update') => {
-  const action = verb === 'disconnect' ? 'disconnect' : status === 'outdated' ? 'update' : 'connect';
+  const refreshHarness = useCallback(async () => {
     try {
-      const preview = (await invoke('rag_harness_preview', { harness: id, action })) as {
-        path: string;
-        before: string;
-        after: string;
-      };
-      setHarnessDlg({ id, action, ...preview });
+      setHarness((await invoke('rag_harness_state')) as HarnessRow[]);
     } catch (e) {
-      setSearchError(e instanceof Error ? e.message : String(e));
+      setHarnessError(message(e));
     }
-  };
+  }, []);
 
-  const applyHarness = async () => {
-    if (!harnessDlg) return;
-    setHarnessBusy(true);
-    try {
-      await invoke('rag_harness_apply', { harness: harnessDlg.id, action: harnessDlg.action });
-      setHarnessDlg(null);
-      const rows = (await invoke('rag_harness_state')) as typeof harnessRows;
-      setHarnessRows(rows);
-    } catch (e) {
-      setSearchError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setHarnessBusy(false);
+  // Re-read when the project changes and whenever an index or download job ends.
+  useEffect(() => {
+    void refresh();
+  }, [refresh, rag.tick]);
+  useEffect(() => {
+    void refreshHarness();
+  }, [refreshHarness]);
+
+  if (!repo) {
+    return (
+      <section className="view">
+        <h1 className="view-title">Ricerca</h1>
+        <Empty title="Apri un progetto per usare la ricerca locale." />
+      </section>
+    );
+  }
+
+  const activeModel = status?.model || DEFAULT_MODEL;
+
+  const useModel = async (id: string) => {
+    if (status?.indexed && status.indexedModel && status.indexedModel !== id) {
+      if (!window.confirm("L'indice verrà ricostruito con il nuovo modello.")) return;
     }
+    try {
+      await invoke('rag_set_model', { id });
+    } catch (e) {
+      toast(message(e), 'error');
+    }
+    void refresh();
   };
 
   const searchHf = async () => {
     if (!hfQuery.trim()) return;
+    setHfError(null);
     try {
-      const hits = (await invoke('rag_models_search', { q: hfQuery })) as Array<{ id: string; downloads: number }>;
-      setHfHits(hits);
+      setHfHits((await invoke('rag_models_search', { q: hfQuery })) as Array<{ id: string; downloads: number }>);
     } catch (e) {
-      setSearchError(e instanceof Error ? e.message : String(e));
+      setHfError(message(e));
     }
   };
 
-  const activeModel = status?.model || DEFAULT_MODEL;
-
-  const startIndex = async () => {
-    if (!repo) return;
-    rag.noteIndexStart(repo);
-    await invoke('rag_index_start', { repo });
-  };
-
-  const cancelIndex = async () => {
-    if (!repo) return;
-    await invoke('rag_index_cancel', { repo });
-  };
-
-  const useModel = async (id: string) => {
-    if (status?.indexedModel && status.indexedModel !== id) {
-      if (!window.confirm("L'indice verrà ricostruito con il nuovo modello.")) return;
-    }
-    await invoke('rag_set_model', { id });
-    void refresh();
-  };
-
-  const pullModel = async (id: string) => {
-    if (!repo) return;
-    rag.noteDownloadStart(repo, id);
-    await invoke('rag_model_pull', { id });
-  };
-
-  const runPreview = async () => {
-    if (!repo || !query.trim()) return;
-    setPreviewLoading(true);
-    setSearchError(null);
-    setHits([]);
+  const addHf = async (hfRepo: string) => {
+    setHfError(null);
     try {
-      const out = (await invoke('rag_preview', { repo, query, wiki })) as SearchHit[];
-      setHits(out);
+      await invoke('rag_models_add', { hfRepo });
+      toast(`${hfRepo} aggiunto al catalogo: ora puoi scaricarlo`);
+      void refresh();
     } catch (e) {
-      setSearchError(e instanceof Error ? e.message : String(e));
+      setHfError(message(e));
+    }
+  };
+
+  const openHarness = async (row: HarnessRow) => {
+    const action = row.status === 'connected' ? 'disconnect' : row.status === 'outdated' ? 'update' : 'connect';
+    setHarnessError(null);
+    try {
+      const preview = (await invoke('rag_harness_preview', { harness: row.id, action })) as Omit<HarnessDlg, 'id' | 'label' | 'action'>;
+      setDlg({ id: row.id, label: row.label, action, ...preview });
+    } catch (e) {
+      setHarnessError(message(e));
+    }
+  };
+
+  const confirmHarness = async () => {
+    if (!dlg) return;
+    if (COPY_ONLY.has(dlg.id)) {
+      await copyText(dlg.after);
+      toast('Configurazione copiata');
+      setDlg(null);
+      return;
+    }
+    setDlgBusy(true);
+    try {
+      await invoke('rag_harness_apply', { harness: dlg.id, action: dlg.action });
+      toast(dlg.action === 'disconnect' ? `${dlg.label} scollegato` : `${dlg.label} collegato`);
+      setDlg(null);
+      void refreshHarness();
+    } catch (e) {
+      setHarnessError(message(e));
+      setDlg(null);
     } finally {
-      setPreviewLoading(false);
+      setDlgBusy(false);
     }
   };
 
-  const openHit = async (hit: SearchHit) => {
-    if (!repo || !wikiRoot) return;
-    const normRoot = wikiRoot.replace(/\\/g, '/').replace(/\/+$/, '');
-    const normPath = hit.path.replace(/\\/g, '/');
-    if (!normPath.startsWith(`${normRoot}/`) && normPath !== normRoot) return;
-    const rel = normPath.startsWith(`${normRoot}/`) ? normPath.slice(normRoot.length + 1) : normPath;
+  const runSearch = async () => {
+    if (!query.trim()) return;
+    setSearching(true);
+    setSearchError(null);
     try {
-      const markdown = await invoke<string>('read_wiki_file', { repo, relPath: rel });
-      setPanel({ path: rel, markdown });
-    } catch {
-      setSearchError('Impossibile aprire la pagina wiki.');
+      setHits((await invoke('rag_preview', { repo, query, wiki })) as SearchHit[]);
+    } catch (e) {
+      setHits(null);
+      setSearchError(message(e));
+    } finally {
+      setSearching(false);
     }
   };
 
-  if (!repo) {
-    return <p className="empty">Apri un progetto per usare la ricerca locale.</p>;
-  }
+  const wikiRel = (path: string): string | null => {
+    if (!wikiRoot) return null;
+    const root = wikiRoot.replace(/\\/g, '/').replace(/\/+$/, '');
+    const p = path.replace(/\\/g, '/');
+    return p.startsWith(`${root}/`) ? p.slice(root.length + 1) : null;
+  };
+
+  const openHit = async (rel: string) => {
+    try {
+      setPanel({ path: rel, markdown: await invoke<string>('read_wiki_file', { repo, relPath: rel }) });
+    } catch (e) {
+      setSearchError(message(e));
+    }
+  };
+
+  const dl = rag.download;
+  const dialogVerb = dlg?.action === 'disconnect' ? 'Scollega' : dlg?.action === 'update' ? 'Aggiorna' : 'Collega';
 
   return (
-    <div className="view ricerca-view">
+    <section className="view">
       <h1 className="view-title">Ricerca</h1>
-      {status?.staleInstall ? (
-        <p className="hint">Chiudi gli agenti collegati e riapri l'app per aggiornare il server MCP.</p>
-      ) : null}
-      <section className="card">
-        <h2>Stato indice</h2>
-        <p>{formatIndexState(status)}</p>
-        <label className="grafo-toggle">
-          <input
-            type="checkbox"
-            checked={rag.autoIndex}
-            onChange={(e) => rag.setAutoIndex(e.target.checked)}
-          />
-          Indicizza automaticamente
-        </label>
-        <div className="btn-row">
-          <button type="button" className="btn btn-primary" disabled={job.running} onClick={() => void startIndex()}>
+      {status?.staleInstall && (
+        <p className="banner banner-drift">Chiudi gli agenti collegati e riapri l'app per aggiornare il server MCP.</p>
+      )}
+
+      <section className="group">
+        <h2 className="group-title">Indice</h2>
+        <p className={status?.indexed === false ? 'muted' : undefined}>{formatIndexState(status)}</p>
+        <div className="toolbar">
+          <button type="button" className="btn btn-strong" disabled={job.running || !!dl} onClick={() => void rag.startIndex(repo)}>
+            {job.running && (
+              <span className="spin" aria-hidden="true">
+                ⟳
+              </span>
+            )}
             Indicizza
           </button>
-          <button type="button" className="btn" disabled={!job.running} onClick={() => void cancelIndex()}>
-            Annulla
-          </button>
+          {job.running && (
+            <button type="button" className="btn" onClick={() => void rag.cancelIndex(repo)}>
+              Annulla
+            </button>
+          )}
+          <label className="ricerca-check">
+            <input type="checkbox" checked={rag.autoIndex} onChange={(e) => rag.setAutoIndex(e.target.checked)} />
+            Indicizza automaticamente
+          </label>
         </div>
-        {job.progress ? (
-          <progress value={job.progress.done} max={job.progress.total || 1}>
-            {job.progress.phase}
-          </progress>
-        ) : null}
-        {job.progress ? (
-          <p className="hint">
-            {job.progress.phase}: {job.progress.done}/{job.progress.total}
-          </p>
-        ) : null}
-        {job.error ? <p className="error">{job.error}</p> : null}
+        {job.progress && (
+          <div className="ricerca-progress">
+            <span className="muted">
+              {job.progress.phase === 'wiki' ? 'Documentazione' : 'Codice'}: {job.progress.done}/{job.progress.total}
+            </span>
+            <progress value={job.progress.done} max={job.progress.total || 1} />
+          </div>
+        )}
+        {job.error && <p className="error-text">{job.error}</p>}
       </section>
-      <section className="card">
-        <h2>Modello</h2>
-        <table className="wiki-table">
+
+      <section className="group">
+        <h2 className="group-title">Modello</h2>
+        <table className="table">
           <thead>
             <tr>
               <th>Modello</th>
@@ -249,25 +253,24 @@ export default function Ricerca() {
             {catalog.map((row) => (
               <tr key={row.id}>
                 <td>
-                  {row.id}
-                  {activeModel === row.id ? ' (attivo)' : ''}
-                  {!row.tested ? ' — non provato' : ''}
-                  {row.note ? ` — ${row.note}` : ''}
+                  <span className="mono">{row.id}</span>
+                  {activeModel === row.id && <span className="badge badge-ok ricerca-badge">attivo</span>}
+                  {!row.tested && <span className="badge ricerca-badge">non provato</span>}
+                  {row.note && <div className="muted">{row.note}</div>}
                 </td>
                 <td>{row.languages}</td>
-                <td>{row.sizeMb} MB</td>
-                <td>
-                  {row.installed ? (
-                    <button type="button" className="btn" onClick={() => void useModel(row.id)}>
-                      Usa questo
-                    </button>
+                <td>{row.sizeMb > 0 ? `${row.sizeMb} MB` : '—'}</td>
+                <td className="ricerca-actions">
+                  {dl?.id === row.id ? (
+                    <progress value={dl.done} max={dl.total || 1} aria-label={`Download ${row.id}`} />
+                  ) : row.installed ? (
+                    activeModel !== row.id && (
+                      <button type="button" className="btn" onClick={() => void useModel(row.id)}>
+                        Usa questo
+                      </button>
+                    )
                   ) : (
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      disabled={job.downloading}
-                      onClick={() => void pullModel(row.id)}
-                    >
+                    <button type="button" className="btn" disabled={!!dl || job.running} onClick={() => void rag.startPull(row.id)}>
                       Scarica
                     </button>
                   )}
@@ -276,116 +279,151 @@ export default function Ricerca() {
             ))}
           </tbody>
         </table>
-        <div className="field">
+        {rag.downloadError && <p className="error-text">{rag.downloadError}</p>}
+        <div className="toolbar">
           <input
             className="input"
             value={hfQuery}
             onChange={(e) => setHfQuery(e.target.value)}
-            placeholder="Cerca modelli su Hugging Face"
+            onKeyDown={(e) => e.key === 'Enter' && void searchHf()}
+            placeholder="Nome o argomento del modello"
+            aria-label="Cerca modelli su Hugging Face"
           />
           <button type="button" className="btn" onClick={() => void searchHf()}>
             Cerca su Hugging Face
           </button>
         </div>
-        {hfHits.length ? (
-          <ul>
-            {hfHits.map((h) => (
-              <li key={h.id}>
-                {h.id} ({h.downloads} download)
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        {hfError && <p className="error-text">{hfError}</p>}
+        {hfHits.length > 0 && (
+          <table className="table">
+            <tbody>
+              {hfHits.map((h) => (
+                <tr key={h.id}>
+                  <td className="mono">{h.id}</td>
+                  <td className="muted">{h.downloads.toLocaleString('it-IT')} download</td>
+                  <td className="ricerca-actions">
+                    <button type="button" className="btn" onClick={() => void addHf(h.id)}>
+                      Aggiungi
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
-      <section className="card">
-        <h2>Collega agli agenti</h2>
-        <table className="wiki-table">
+
+      <section className="group">
+        <h2 className="group-title">Collega agli agenti</h2>
+        <table className="table">
           <tbody>
-            {harnessRows.map((row) => (
+            {harness.map((row) => (
               <tr key={row.id}>
-                <td>
-                  <span className={`status-dot status-${row.status}`} aria-hidden /> {row.label}
-                </td>
-                <td className="hint">{row.hint}</td>
-                <td>
-                  {row.status === 'connected' || row.status === 'outdated' ? (
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => void openHarness(row.id, row.status, row.status === 'outdated' ? 'update' : 'disconnect')}
-                    >
-                      {row.status === 'outdated' ? harnessActionLabel(row.status, 'update') : 'Scollega'}
-                    </button>
-                  ) : (
-                    <button type="button" className="btn btn-primary" onClick={() => void openHarness(row.id, row.status, 'connect')}>
-                      Collega
-                    </button>
-                  )}
-                  {(row.id === 'claude' || row.id === 'antigravity') && harnessDlg?.id === row.id ? (
-                    <button type="button" className="btn" onClick={() => void copyText(harnessDlg.after)}>
-                      Copia
-                    </button>
-                  ) : null}
+                <td>{row.label}</td>
+                <td className={row.status === 'connected' ? undefined : 'muted'}>{LINK_LABEL[row.status]}</td>
+                <td className="muted">{row.hint}</td>
+                <td className="ricerca-actions">
+                  <button type="button" className="btn" onClick={() => void openHarness(row)}>
+                    {COPY_ONLY.has(row.id)
+                      ? 'Mostra configurazione'
+                      : row.status === 'connected'
+                        ? 'Scollega'
+                        : row.status === 'outdated'
+                          ? 'Aggiorna'
+                          : 'Collega'}
+                  </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        {harnessError && <p className="error-text">{harnessError}</p>}
       </section>
-      <section className="card">
-        <h2>Prova una ricerca</h2>
-        <input
-          className="input"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Dove è definito…"
-        />
-        <div className="segmented">
-          <button type="button" aria-pressed={!wiki} onClick={() => setWiki(false)}>
-            Codice
-          </button>
-          <button type="button" aria-pressed={wiki} onClick={() => setWiki(true)}>
-            Documentazione
+
+      <section className="group">
+        <h2 className="group-title">Prova una ricerca</h2>
+        <div className="toolbar">
+          <input
+            className="input"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void runSearch()}
+            placeholder="Dove viene gestito il watcher?"
+            aria-label="Domanda"
+          />
+          <div className="segmented" role="group" aria-label="Dove cercare">
+            <button type="button" aria-pressed={!wiki} onClick={() => setWiki(false)}>
+              Codice
+            </button>
+            <button type="button" aria-pressed={wiki} onClick={() => setWiki(true)}>
+              Documentazione
+            </button>
+          </div>
+          <button type="button" className="btn btn-strong" disabled={searching || !query.trim()} onClick={() => void runSearch()}>
+            Cerca
           </button>
         </div>
-        <button type="button" className="btn btn-primary" disabled={previewLoading} onClick={() => void runPreview()}>
-          Cerca
-        </button>
-        {searchError ? <p className="error">{searchError}</p> : null}
-        <ul className="search-hits">
-          {hits.map((h) => (
-            <li key={`${h.path}:${h.startLine}`}>
-              <button type="button" className="linklike" onClick={() => void openHit(h)}>
-                {h.path}:{h.startLine}-{h.endLine}
-              </button>
-              <pre className="preview-out">{h.snippet}</pre>
-            </li>
-          ))}
-        </ul>
-      </section>
-      {panel ? (
-        <SidePanel title={panel.path} onClose={() => setPanel(null)}>
-          <pre className="preview-out">{panel.markdown}</pre>
-        </SidePanel>
-      ) : null}
-      <Dialog
-        open={!!harnessDlg}
-        title="Conferma modifica"
-        confirmLabel="Conferma"
-        busy={harnessBusy}
-        onCancel={() => setHarnessDlg(null)}
-        onConfirm={() => void applyHarness()}
-      >
-        {harnessDlg ? (
-          <>
-            <p className="hint">{harnessDlg.path}</p>
-            <div className="diff-pair">
-              <pre className="preview-out">{harnessDlg.before || '(vuoto)'}</pre>
-              <pre className="preview-out">{harnessDlg.after}</pre>
+        {searchError && <p className="error-text">{searchError}</p>}
+        {hits && hits.length === 0 && <p className="muted">Nessun risultato.</p>}
+        {hits?.map((h) => {
+          const rel = wikiRel(h.path);
+          const label = `${h.path}:${h.startLine}-${h.endLine}`;
+          return (
+            <div key={`${h.path}:${h.startLine}`} className="ricerca-hit">
+              {rel ? (
+                <button type="button" className="btn btn-quiet mono" onClick={() => void openHit(rel)}>
+                  {label}
+                </button>
+              ) : (
+                <span className="mono">{label}</span>
+              )}
+              <pre className="ricerca-snippet">{h.snippet}</pre>
             </div>
+          );
+        })}
+      </section>
+
+      {panel && (
+        <SidePanel title={panel.path} onClose={() => setPanel(null)}>
+          <Markdown markdown={panel.markdown} pagePath={panel.path} />
+        </SidePanel>
+      )}
+
+      <Dialog
+        open={!!dlg}
+        title={dlg ? `${dialogVerb} ${dlg.label}` : ''}
+        confirmLabel={dlg && COPY_ONLY.has(dlg.id) ? 'Copia' : dlg?.id === 'claude' ? 'Esegui' : 'Conferma'}
+        busy={dlgBusy}
+        onCancel={() => setDlg(null)}
+        onConfirm={() => void confirmHarness()}
+      >
+        {dlg && (
+          <>
+            <p className="dialog-note mono">{dlg.path}</p>
+            {dlg.id === 'claude' || COPY_ONLY.has(dlg.id) ? (
+              <>
+                <pre className="ricerca-snippet">{dlg.after}</pre>
+                {dlg.id === 'claude' && (
+                  <button type="button" className="btn btn-quiet" onClick={() => void copyText(dlg.after).then(() => toast('Comando copiato'))}>
+                    Copia comando
+                  </button>
+                )}
+              </>
+            ) : (
+              <div className="ricerca-diff">
+                <div>
+                  <p className="muted">Prima</p>
+                  <pre className="ricerca-snippet">{dlg.before || '(file assente)'}</pre>
+                </div>
+                <div>
+                  <p className="muted">Dopo</p>
+                  <pre className="ricerca-snippet">{dlg.after}</pre>
+                </div>
+              </div>
+            )}
           </>
-        ) : null}
+        )}
       </Dialog>
-    </div>
+    </section>
   );
 }

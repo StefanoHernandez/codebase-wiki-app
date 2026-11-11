@@ -573,12 +573,13 @@ pub async fn workflow_prompt(
     .await
 }
 
+/// The app's own bundled sidecar (always the same version as the app); the stable copy in
+/// `<data>/bin` is for the agents and may be stale on Windows.
 fn rag_bin() -> Result<PathBuf, String> {
-    let stable = rag_core::bin_path();
-    if stable.is_file() {
-        return Ok(stable);
-    }
-    crate::rag_sidecar::rag_sidecar_path()
+    crate::rag_sidecar::rag_sidecar_path().or_else(|e| {
+        let stable = rag_core::bin_path();
+        if stable.is_file() { Ok(stable) } else { Err(e) }
+    })
 }
 
 fn run_sidecar_output(bin: &PathBuf, args: &[&str]) -> Result<Vec<u8>, String> {
@@ -616,7 +617,7 @@ fn parse_sidecar_error(stdout: &[u8]) -> Option<String> {
             }
         }
     }
-  None
+    None
 }
 
 #[tauri::command]
@@ -758,6 +759,16 @@ pub async fn rag_harness_apply(harness: String, action: String) -> Result<(), St
     blocking(move || {
         let act = parse_harness_action(&action)?;
         rag_core::harness::harness_apply(&harness, act)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn rag_models_add(hf_repo: String) -> Result<serde_json::Value, String> {
+    blocking(move || {
+        let bin = rag_bin()?;
+        let stdout = run_sidecar_output(&bin, &["models", "add", &hf_repo, "--json"])?;
+        serde_json::from_slice(&stdout).map_err(|e| e.to_string())
     })
     .await
 }

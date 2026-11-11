@@ -44,9 +44,10 @@ impl RagJobs {
         }
         let mut child = spawn_sidecar(bin, &["index", "--repo", &repo, "--json"])?;
         let stdout = child.stdout.take().ok_or("stdout")?;
+        let pid = child.id();
         self.index.lock().unwrap().insert(repo.clone(), child);
         let jobs = Arc::clone(self);
-        std::thread::spawn(move || read_stdout(app, jobs, repo, stdout, JobKind::Index));
+        std::thread::spawn(move || read_stdout(app, jobs, repo, pid, stdout, JobKind::Index));
         Ok(())
     }
 
@@ -87,9 +88,10 @@ impl RagJobs {
         }
         let mut child = spawn_sidecar(bin, &["models", "pull", &model_id, "--json"])?;
         let stdout = child.stdout.take().ok_or("stdout")?;
+        let pid = child.id();
         *self.pull.lock().unwrap() = Some((model_id.clone(), child));
         let jobs = Arc::clone(self);
-        std::thread::spawn(move || read_stdout(app, jobs, model_id, stdout, JobKind::Pull));
+        std::thread::spawn(move || read_stdout(app, jobs, model_id, pid, stdout, JobKind::Pull));
         Ok(())
     }
 }
@@ -111,82 +113,101 @@ fn spawn_sidecar(bin: &std::path::Path, args: &[&str]) -> Result<Child, String> 
     cmd.spawn().map_err(|e| e.to_string())
 }
 
+/// Forwards every stdout line on `rag://progress`, tagged with `job` ("index"/"pull") and
+/// `repo` or `model`, then reaps the child and emits `exit`.
 fn read_stdout(
     app: AppHandle,
     jobs: Arc<RagJobs>,
     key: String,
+    pid: u32,
     stdout: impl std::io::Read + Send + 'static,
     kind: JobKind,
 ) {
+    let tag = match kind {
+        JobKind::Index => ("index", "repo"),
+        JobKind::Pull => ("pull", "model"),
+    };
     let reader = BufReader::new(stdout);
     for line in reader.lines().map_while(Result::ok) {
-        let _ = app.emit("rag://progress", enrich_line(&key, &line));
+        let _ = app.emit("rag://progress", enrich_line(tag, &key, &line));
     }
-    let code = reap_child(&jobs, &key, kind);
-    let _ = app.emit(
-        "rag://progress",
-        serde_json::json!({"event":"exit","code":code,"repo":key}).to_string(),
-    );
+    let code = jobs.reap(&kind, &key, pid);
+    let exit = serde_json::json!({"event": "exit", "code": code});
+    let _ = app.emit("rag://progress", enrich_line(tag, &key, &exit.to_string()));
 }
 
-fn reap_child(jobs: &RagJobs, key: &str, kind: JobKind) -> i32 {
-    match kind {
-        JobKind::Index => jobs
-            .index
-            .lock()
-            .unwrap()
-            .remove(key)
-            .and_then(|mut c| c.wait().ok().map(|s| s.code().unwrap_or(-1)))
-            .unwrap_or(-1),
-        JobKind::Pull => jobs
-            .pull
-            .lock()
-            .unwrap()
-            .take()
-            .and_then(|(_, mut c)| c.wait().ok().map(|s| s.code().unwrap_or(-1)))
-            .unwrap_or(-1),
-    }
-}
-
-fn enrich_line(repo: &str, line: &str) -> String {
-    match serde_json::from_str::<Value>(line) {
-        Ok(mut v) => {
-            if let Some(obj) = v.as_object_mut() {
-                obj.insert("repo".into(), Value::String(repo.to_string()));
+impl RagJobs {
+    /// Removes and waits for the child `pid` only: after a cancel, a new job for the same key
+    /// may already be in the slot and must stay there. Returns the exit code, -1 when unknown.
+    fn reap(&self, kind: &JobKind, key: &str, pid: u32) -> i32 {
+        let child = match kind {
+            JobKind::Index => {
+                let mut map = self.index.lock().unwrap();
+                match map.get(key) {
+                    Some(c) if c.id() == pid => map.remove(key),
+                    _ => None,
+                }
             }
-            v.to_string()
-        }
-        Err(_) => serde_json::json!({"repo": repo, "raw": line}).to_string(),
+            JobKind::Pull => {
+                let mut slot = self.pull.lock().unwrap();
+                match slot.as_ref() {
+                    Some((_, c)) if c.id() == pid => slot.take().map(|(_, c)| c),
+                    _ => None,
+                }
+            }
+        };
+        child
+            .and_then(|mut c| c.wait().ok())
+            .and_then(|s| s.code())
+            .unwrap_or(-1)
     }
+}
+
+fn enrich_line((job, field): (&str, &str), key: &str, line: &str) -> String {
+    let mut v = serde_json::from_str::<Value>(line)
+        .ok()
+        .filter(Value::is_object)
+        .unwrap_or_else(|| serde_json::json!({"raw": line}));
+    let obj = v.as_object_mut().expect("object");
+    obj.insert("job".into(), Value::String(job.into()));
+    obj.insert(field.into(), Value::String(key.into()));
+    v.to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn start_index_refuses_when_already_running() {
-        let jobs = Arc::new(RagJobs::new());
-        let child = Command::new("sleep")
-            .arg("30")
-            .stdout(Stdio::null())
-            .spawn()
-            .expect("sleep");
-        jobs.index.lock().unwrap().insert("/repo".into(), child);
-        assert!(jobs.index_running("/repo"));
+    fn sleeper() -> Child {
+        Command::new("sleep").arg("30").stdout(Stdio::null()).spawn().expect("sleep")
     }
 
     #[test]
-    fn index_running_detects_live_child() {
+    fn index_running_detects_live_child_and_cancel_clears_it() {
         let jobs = RagJobs::new();
-        let child = std::process::Command::new("sleep")
-            .arg("30")
-            .stdout(Stdio::null())
-            .spawn()
-            .expect("sleep");
-        jobs.index.lock().unwrap().insert("/tmp/r".into(), child);
-        assert!(jobs.index_running("/tmp/r"));
-        let mut c = jobs.index.lock().unwrap().remove("/tmp/r").unwrap();
-        let _ = c.kill();
+        jobs.index.lock().unwrap().insert("/repo".into(), sleeper());
+        assert!(jobs.index_running("/repo"));
+        jobs.cancel_index("/repo").unwrap();
+        assert!(!jobs.index_running("/repo"));
+    }
+
+    #[test]
+    fn reap_leaves_a_newer_job_for_the_same_repo() {
+        let jobs = RagJobs::new();
+        let newer = sleeper();
+        let newer_pid = newer.id();
+        jobs.index.lock().unwrap().insert("/repo".into(), newer);
+        assert_eq!(jobs.reap(&JobKind::Index, "/repo", newer_pid.wrapping_add(1)), -1);
+        assert!(jobs.index_running("/repo"));
+        jobs.cancel_index("/repo").unwrap();
+    }
+
+    #[test]
+    fn enrich_tags_job_and_key() {
+        let v: Value = serde_json::from_str(&enrich_line(("pull", "model"), "e5", r#"{"event":"done"}"#)).unwrap();
+        assert_eq!(v["job"], "pull");
+        assert_eq!(v["model"], "e5");
+        let raw: Value = serde_json::from_str(&enrich_line(("index", "repo"), "/r", "boom")).unwrap();
+        assert_eq!(raw["raw"], "boom");
     }
 }

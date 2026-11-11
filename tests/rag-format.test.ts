@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatIndexState, reduceRagProgress, shouldAutoIndex } from '../src/lib/rag-format.ts';
+import { formatIndexState, parseIndexStatus, reduceRagProgress, shouldAutoIndex } from '../src/lib/rag-format.ts';
 
 test('formatIndexState formats counters and shas', () => {
   const s = formatIndexState({
@@ -47,4 +47,16 @@ test('shouldAutoIndex table', () => {
   assert.equal(shouldAutoIndex(base, true, false, true), false);
   assert.equal(shouldAutoIndex(base, false, true, true), false);
   assert.equal(shouldAutoIndex(base, false, false, false), false);
+});
+
+test('parseIndexStatus reads the sidecar snake_case JSON', () => {
+  const s = parseIndexStatus({
+    model: 'e5', indexed: true, indexed_model: 'e5', head: 'b', indexed_head: 'a',
+    changed_since_index: 2, files: 3, chunks: 9, error: null, stale_install: true,
+  });
+  assert.equal(s.indexedHead, 'a');
+  assert.equal(s.changedSinceIndex, 2);
+  assert.equal(s.staleInstall, true);
+  assert.equal(shouldAutoIndex(s, false, false, true), true);
+  assert.equal(parseIndexStatus({ indexed: false, error: 'Nessun indice' }).error, 'Nessun indice');
 });

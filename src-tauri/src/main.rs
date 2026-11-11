@@ -48,6 +48,7 @@ fn main() {
             commands::rag_harness_preview,
             commands::rag_harness_apply,
             commands::rag_models_search,
+            commands::rag_models_add,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Codebase Wiki");
