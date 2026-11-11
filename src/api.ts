@@ -49,8 +49,8 @@ export function sourceDiff(repo: string, relPath: string, commit: string): Promi
   return invoke('source_diff', { repo, relPath, commit });
 }
 
-export function runLint(repo: string): Promise<LintReport> {
-  return invoke('run_lint', { repo });
+export function runLint(repo: string, pythonPath?: string | null): Promise<LintReport> {
+  return invoke('run_lint', { repo, pythonPath: pythonPath?.trim() || null });
 }
 
 export function gitUserName(repo: string): Promise<string | null> {

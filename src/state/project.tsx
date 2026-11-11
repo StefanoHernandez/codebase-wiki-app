@@ -58,6 +58,7 @@ export interface ProjectState extends Derived {
 }
 
 const ACTOR_KEY = 'cw.actor';
+export const PYTHON_KEY = 'cw.python';
 const RELOAD_DEBOUNCE_MS = 300;
 
 const EMPTY: Derived = {
@@ -77,6 +78,14 @@ function message(e: unknown): string {
 function readStoredActor(): string {
   try {
     return localStorage.getItem(ACTOR_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function readStoredPythonPath(): string {
+  try {
+    return localStorage.getItem(PYTHON_KEY) ?? '';
   } catch {
     return '';
   }
@@ -231,7 +240,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     if (!repo) return null;
     setLintRunning(true);
     try {
-      const report = await api.runLint(repo);
+      const report = await api.runLint(repo, readStoredPythonPath());
       if (currentRef.current === repo) setLint(report);
       return report;
     } finally {

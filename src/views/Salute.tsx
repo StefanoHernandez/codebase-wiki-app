@@ -80,12 +80,7 @@ export default function Salute() {
       await project.runLint();
       setLastLintAt(new Date());
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes('Python 3 not found')) {
-        setLintError('Python 3 non trovato: installalo per usare il controllo di struttura.');
-      } else {
-        setLintError(msg);
-      }
+      setLintError(e instanceof Error ? e.message : String(e));
     }
   };
 

@@ -9,10 +9,11 @@ use tauri_plugin_store::StoreExt;
 use wiki_core::{
     build_workflow_prompt, collect_repo_files_recursive, file_diff_since_commit, inspect_git_state,
     is_git_repo, load_wiki_snapshot, read_repo_file_safe, resolve_wiki_root,
-    read_wiki_file_safe, run_structural_lint_with, watch_repo, write_wiki_file_safe, LintReport,
-    RepoFilePayload,
-    WatchHandle, WikiSnapshot,
+    read_wiki_file_safe, run_structural_lint_with, watch_repo,
+    write_wiki_file_safe, LintReport, RepoFilePayload, WatchHandle, WikiSnapshot,
 };
+
+pub const PYTHON_NOT_FOUND_MSG: &str = "Il controllo strutturale richiede Python 3.10 o più recente. Installalo (python.org, oppure `brew install python` su macOS) o indica il percorso nelle impostazioni.";
 
 const RECENTS_FILE: &str = "recent.json";
 const RECENTS_KEY: &str = "recents";
@@ -182,26 +183,208 @@ fn resource(app: &AppHandle, rel: &str) -> Result<PathBuf, String> {
     Err(format!("Resource not found: resources/{rel}"))
 }
 
-static PYTHON_BIN: OnceLock<Option<&'static str>> = OnceLock::new();
+const PYTHON_VERSION_SNIPPET: &str = "import sys;print(sys.version_info[0],sys.version_info[1])";
 
-/// First working `python3`, then `python` (Windows); both must report Python 3.
-fn find_python() -> Option<&'static str> {
-    *PYTHON_BIN.get_or_init(|| {
-        ["python3", "python"].into_iter().find(|bin| {
-            Command::new(bin)
-                .arg("--version")
-                .output()
-                .map(|o| {
-                    let text = format!(
-                        "{}{}",
-                        String::from_utf8_lossy(&o.stdout),
-                        String::from_utf8_lossy(&o.stderr)
-                    );
-                    o.status.success() && text.contains("Python 3")
-                })
-                .unwrap_or(false)
-        })
-    })
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ResolvedPython {
+    Executable(PathBuf),
+    #[cfg(windows)]
+    PyDash3,
+}
+
+#[derive(Clone, Debug, Default)]
+struct PythonCache {
+    setting: Option<String>,
+    resolved: Option<ResolvedPython>,
+}
+
+static PYTHON_CACHE: OnceLock<Mutex<PythonCache>> = OnceLock::new();
+
+fn python_cache() -> &'static Mutex<PythonCache> {
+    PYTHON_CACHE.get_or_init(|| Mutex::new(PythonCache::default()))
+}
+
+fn python_meets_minimum(major: u32, minor: u32) -> bool {
+    major > 3 || (major == 3 && minor >= 10)
+}
+
+fn parse_version_stdout(text: &str) -> Option<(u32, u32)> {
+    let parts: Vec<&str> = text.split_whitespace().collect();
+    if parts.len() < 2 {
+        return None;
+    }
+    let major = parts[0].parse().ok()?;
+    let minor = parts[1].parse().ok()?;
+    Some((major, minor))
+}
+
+fn python_version_at(path: &Path) -> Option<(u32, u32)> {
+    let output = Command::new(path)
+        .arg("-c")
+        .arg(PYTHON_VERSION_SNIPPET)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    parse_version_stdout(&String::from_utf8_lossy(&output.stdout))
+}
+
+#[cfg(windows)]
+fn python_version_py_dash_3() -> Option<(u32, u32)> {
+    let output = Command::new("py")
+        .arg("-3")
+        .arg("-c")
+        .arg(PYTHON_VERSION_SNIPPET)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    parse_version_stdout(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// Returns the first candidate whose reported version is ≥ Python 3.10.
+pub fn choose_python(
+    candidates: &[PathBuf],
+    version: impl Fn(&Path) -> Option<(u32, u32)>,
+) -> Option<PathBuf> {
+    for path in candidates {
+        let (major, minor) = version(path)?;
+        if python_meets_minimum(major, minor) {
+            return Some(path.clone());
+        }
+    }
+    None
+}
+
+fn executable_on_path(name: &str) -> Option<PathBuf> {
+    let paths = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&paths) {
+        let plain = dir.join(name);
+        if plain.is_file() {
+            return Some(plain);
+        }
+        #[cfg(windows)]
+        {
+            let with_exe = dir.join(format!("{name}.exe"));
+            if with_exe.is_file() {
+                return Some(with_exe);
+            }
+        }
+    }
+    None
+}
+
+fn push_candidate(list: &mut Vec<PathBuf>, path: PathBuf) {
+    let dup = list.iter().any(|existing| {
+        match (
+            dunce::canonicalize(existing),
+            dunce::canonicalize(&path),
+        ) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => existing == &path,
+        }
+    });
+    if !dup {
+        list.push(path);
+    }
+}
+
+fn python_path_candidates(setting: Option<&Path>) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Some(p) = setting {
+        if !p.as_os_str().is_empty() {
+            push_candidate(&mut out, p.to_path_buf());
+        }
+    }
+    for name in [
+        "python3.13",
+        "python3.12",
+        "python3.11",
+        "python3.10",
+        "python3",
+        "python",
+    ] {
+        if let Some(p) = executable_on_path(name) {
+            push_candidate(&mut out, p);
+        }
+    }
+    for p in ["/opt/homebrew/bin/python3", "/usr/local/bin/python3"] {
+        let path = PathBuf::from(p);
+        if path.is_file() {
+            push_candidate(&mut out, path);
+        }
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let shim = PathBuf::from(home).join(".pyenv/shims/python3");
+        if shim.is_file() {
+            push_candidate(&mut out, shim);
+        }
+    }
+    out
+}
+
+fn resolve_python(setting: Option<&str>) -> Result<ResolvedPython, String> {
+    let setting_path = setting
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from);
+    let candidates = python_path_candidates(setting_path.as_deref());
+    if let Some(path) = choose_python(&candidates, python_version_at) {
+        return Ok(ResolvedPython::Executable(path));
+    }
+    #[cfg(windows)]
+    if python_version_py_dash_3()
+        .map(|(maj, min)| python_meets_minimum(maj, min))
+        .unwrap_or(false)
+    {
+        return Ok(ResolvedPython::PyDash3);
+    }
+    Err(PYTHON_NOT_FOUND_MSG.to_string())
+}
+
+fn find_python(setting: Option<&str>) -> Result<ResolvedPython, String> {
+    let normalized = setting
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
+    let mut cache = python_cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if cache.setting == normalized {
+        if let Some(resolved) = cache.resolved.clone() {
+            return Ok(resolved);
+        }
+    } else {
+        cache.setting = normalized.clone();
+        cache.resolved = None;
+    }
+    let resolved = resolve_python(normalized.as_deref())?;
+    cache.resolved = Some(resolved.clone());
+    Ok(resolved)
+}
+
+fn run_lint_with_python(
+    resolved: &ResolvedPython,
+    repo: &Path,
+    wiki_root: &str,
+    script: &Path,
+) -> LintReport {
+    match resolved {
+        ResolvedPython::Executable(path) => {
+            let bin = path.to_string_lossy();
+            run_structural_lint_with(&bin, repo, wiki_root, script)
+        }
+        #[cfg(windows)]
+        ResolvedPython::PyDash3 => wiki_core::run_structural_lint_with_args(
+            "py",
+            &["-3"],
+            repo,
+            wiki_root,
+            script,
+        ),
+    }
 }
 
 #[tauri::command]
@@ -322,13 +505,17 @@ pub async fn source_diff(
 }
 
 #[tauri::command]
-pub async fn run_lint(app: AppHandle, repo: String) -> Result<LintReport, String> {
+pub async fn run_lint(
+    app: AppHandle,
+    repo: String,
+    python_path: Option<String>,
+) -> Result<LintReport, String> {
     blocking(move || {
         let repo = opened_repo(&app, &repo)?;
         let root = wiki_root_of(&repo)?;
-        let python = find_python().ok_or_else(|| "Python 3 not found".to_string())?;
+        let python = find_python(python_path.as_deref())?;
         let script = resource(&app, "validate-wiki.py")?;
-        Ok(run_structural_lint_with(python, &repo, &root, &script))
+        Ok(run_lint_with_python(&python, &repo, &root, &script))
     })
     .await
 }
@@ -416,5 +603,33 @@ mod tests {
         let out = with_recent(&[rp(&canon)], rp(&via_dot));
         assert_eq!(out.len(), 1);
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn choose_python_skips_below_3_10() {
+        let candidates = vec![
+            PathBuf::from("/opt/python3.9"),
+            PathBuf::from("/opt/python3.11"),
+        ];
+        let chosen = choose_python(&candidates, |p| {
+            if p.ends_with("python3.9") {
+                Some((3, 9))
+            } else if p.ends_with("python3.11") {
+                Some((3, 11))
+            } else {
+                None
+            }
+        });
+        assert_eq!(chosen, Some(PathBuf::from("/opt/python3.11")));
+    }
+
+    #[test]
+    fn choose_python_returns_none_when_no_suitable_candidate() {
+        let candidates = vec![PathBuf::from("/opt/python3.9")];
+        assert_eq!(
+            choose_python(&candidates, |_| Some((3, 9))),
+            None
+        );
+        assert_eq!(choose_python(&candidates, |_| None), None);
     }
 }

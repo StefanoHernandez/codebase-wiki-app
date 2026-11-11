@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { copyText, pickFolder, workflowPrompt } from '../api';
-import { useProject } from '../state/project';
+import { PYTHON_KEY, useProject } from '../state/project';
 import { useNav } from '../state/nav';
 import type { RecentProject } from '../types/snapshot';
 import { useTheme, type ThemeChoice } from '../state/theme';
@@ -386,7 +386,23 @@ function Settings({ theme, setTheme, onClose }: { theme: ThemeChoice; setTheme(t
   const { actor, actorError, setActor } = useProject();
   // Draft keeps what is typed (spaces between names); the context exposes it trimmed.
   const [draft, setDraft] = useState(actor);
+  const [pythonDraft, setPythonDraft] = useState(() => {
+    try {
+      return localStorage.getItem(PYTHON_KEY) ?? '';
+    } catch {
+      return '';
+    }
+  });
   const ref = useRef<HTMLDivElement>(null);
+
+  const savePythonPath = (value: string) => {
+    setPythonDraft(value);
+    try {
+      localStorage.setItem(PYTHON_KEY, value);
+    } catch {
+      // Storage unavailable: path still applies for this session via draft.
+    }
+  };
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -420,6 +436,18 @@ function Settings({ theme, setTheme, onClose }: { theme: ThemeChoice; setTheme(t
         />
         <span className={actorError ? 'field-hint error-text' : 'field-hint'}>
           {actorError ?? 'Firma le azioni che fai qui (approvato da, chiuso da).'}
+        </span>
+      </label>
+      <label className="field">
+        <span className="field-label">Percorso di Python (facoltativo)</span>
+        <input
+          className="input mono"
+          value={pythonDraft}
+          onChange={(e) => savePythonPath(e.target.value)}
+          placeholder="/opt/homebrew/bin/python3"
+        />
+        <span className="field-hint">
+          Usato per il controllo strutturale in Salute; lascia vuoto per la ricerca automatica (Python 3.10+).
         </span>
       </label>
       <fieldset className="field">

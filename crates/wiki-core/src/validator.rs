@@ -37,8 +37,23 @@ pub fn run_structural_lint_with(
     wiki_root: &str,
     validator_script: &Path,
 ) -> LintReport {
+    run_structural_lint_with_args(python, &[], repo_path, wiki_root, validator_script)
+}
+
+/// Like `run_structural_lint_with`, but allows a prefix before the script (e.g. `py -3` on Windows).
+pub fn run_structural_lint_with_args(
+    python: &str,
+    python_args: &[&str],
+    repo_path: &Path,
+    wiki_root: &str,
+    validator_script: &Path,
+) -> LintReport {
     let target_wiki = repo_path.join(wiki_root);
-    let output = Command::new(python)
+    let mut cmd = Command::new(python);
+    for a in python_args {
+        cmd.arg(a);
+    }
+    let output = cmd
         .arg(validator_script)
         .arg(&target_wiki)
         .current_dir(repo_path)
