@@ -176,6 +176,30 @@ test('parseSchemaMarkdown parses actual resources/default-schema.md file', () =>
   assert.deepEqual(config.excludedGlobs, []);
 });
 
+test('parseSchemaMarkdown reads profile table outside fences only when a fence splits the section', () => {
+  const schemaMd = `# Schema
+
+## Project profile
+
+| Setting | Value |
+| --- | --- |
+| Language | Italian |
+
+\`\`\`
+| Setting | Value |
+| --- | --- |
+| Language | FencedWrong |
+\`\`\`
+
+| Setting | Value |
+| --- | --- |
+| Sensitive data | yes |
+`;
+  const config = parseSchemaMarkdown(schemaMd);
+  assert.equal(config.language, 'Italian');
+  assert.equal(config.sensitiveData, true);
+});
+
 test('parseSchemaMarkdown ignores example globs inside fenced blocks in SCHEMA fixtures', () => {
   const fixturePath = path.resolve(import.meta.dirname, '../tests/fixtures/wiki-v2/SCHEMA.md');
   const content = fs.readFileSync(fixturePath, 'utf-8');

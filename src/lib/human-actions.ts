@@ -158,16 +158,15 @@ export function appendLogEntry(params: {
     `- What: ${params.what}`,
     `- Evidence: ${params.evidence}`,
     `- IDs: ${params.ids.length > 0 ? params.ids.join(', ') : 'none'}`,
-    '',
   ];
-  const entry = entryLines.join('\n');
+  const doc = parseDoc(params.logMarkdown);
 
   if (order === 'oldest-first') {
-    const previous = params.logMarkdown.trimEnd();
-    return previous ? `${previous}\n\n${entry}` : entry;
+    const tail =
+      doc.lines.length > 0 && doc.lines[doc.lines.length - 1]?.trim() ? ['', ...entryLines] : entryLines;
+    return renderDoc({ ...doc, lines: [...doc.lines, ...tail] });
   }
 
-  const doc = parseDoc(params.logMarkdown);
   const masked = fenceMask(doc.lines);
   let insertAt = doc.lines.length;
   for (let i = 0; i < doc.lines.length; i++) {
@@ -335,6 +334,7 @@ export function promoteProposalToOpen(params: {
     params.proposalBy,
     params.proposalDate,
   );
+  assertRowWidth(propTable, proposalRow, params.proposalText);
 
   const { table: openTable } = findOpenTable(doc);
   const assignedId = computeNextTrackerId(params.trackerMarkdown, params.logMarkdown);

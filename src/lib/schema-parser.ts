@@ -2,6 +2,12 @@ import type { CoreRole, SchemaConfig, SchemaTopic, SchemaBudgets } from '../type
 import { extractTableFromLines } from './markdown-tables.ts';
 import { fenceMask } from './md-edit.ts';
 
+export const DEFAULT_SCHEMA_BUDGETS: SchemaBudgets = {
+  singlePageBytes: 20 * 1024,
+  coreReadBytes: 60 * 1024,
+  logBytes: 30 * 1024,
+};
+
 export const DEFAULT_CORE_MAP: Record<CoreRole, string> = {
   index: 'index.md',
   log: 'log.md',
@@ -15,11 +21,32 @@ export const DEFAULT_CORE_MAP: Record<CoreRole, string> = {
   glossary: 'glossary.md',
 };
 
-/** Data rows of the first table outside fences in the lines (header and delimiter excluded), or []. */
-function tableRows(lines: string[]): string[][] {
+/** Splits section body into ranges outside fenced code. */
+function unfencedChunks(lines: string[]): string[][] {
   const masked = fenceMask(lines);
-  const visible = lines.filter((_, i) => !masked[i]);
-  return extractTableFromLines(visible)?.rows ?? [];
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (masked[i]) {
+      if (current.length > 0) {
+        chunks.push(current);
+        current = [];
+      }
+      continue;
+    }
+    current.push(lines[i]!);
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
+/** Data rows of tables outside fences (header and delimiter excluded), or []. */
+function tableRows(lines: string[]): string[][] {
+  const rows: string[][] = [];
+  for (const chunk of unfencedChunks(lines)) {
+    rows.push(...(extractTableFromLines(chunk)?.rows ?? []));
+  }
+  return rows;
 }
 
 function backtickToken(text: string): string | null {
@@ -164,11 +191,7 @@ export function parseSchemaMarkdown(markdown: string): SchemaConfig {
   }
   const coreMap = { ...DEFAULT_CORE_MAP, ...parsedCoreMap };
 
-  const budgets: SchemaBudgets = {
-    singlePageBytes: 20 * 1024,
-    coreReadBytes: 60 * 1024,
-    logBytes: 30 * 1024,
-  };
+  const budgets: SchemaBudgets = { ...DEFAULT_SCHEMA_BUDGETS };
 
   const budgetLines = findSection(sections, ['budgets']);
   if (budgetLines.length > 0) {

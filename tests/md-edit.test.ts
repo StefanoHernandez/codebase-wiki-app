@@ -107,6 +107,41 @@ title: Tracker
   assert.match(res.trackerMarkdown, /T2.*Mario/);
 });
 
+test('regression 2c: unescaped pipe on proposal blocks promote', () => {
+  const tracker = `---
+title: Tracker
+---
+# Tracker
+
+## Proposals
+<!-- wiki:proposals -->
+| Proposal | By | Date | Why |
+| --- | --- | --- | --- |
+| bad | a | 2026-11-10 | extra | col |
+
+## Open
+<!-- wiki:open -->
+| ID | Status | Goal | Done when | Owner | Next verification | Evidence |
+| --- | --- | --- | --- | --- | --- | --- |
+`;
+  assert.throws(
+    () =>
+      promoteProposalToOpen({
+        trackerMarkdown: tracker,
+        logMarkdown: '',
+        proposalText: 'bad',
+        proposalBy: 'a',
+        proposalDate: '2026-11-10',
+        person: 'S',
+        owner: 'o',
+        doneWhen: 'd',
+        nextVerification: 'n',
+        dateIso: '2026-11-10',
+      }),
+    /non protetta/,
+  );
+});
+
 test('regression 2b: unescaped pipe on T1 blocks edit; T2 still edits', () => {
   const before = `---
 title: Tracker
@@ -360,6 +395,42 @@ test('md-edit: parseDoc and renderDoc round-trip', () => {
   const text = '\uFEFFline1\nline2\n';
   const doc = parseDoc(text);
   assert.equal(renderDoc(doc), text);
+});
+
+test('md-edit: findTable stops at first non-table line (does not merge two tables)', () => {
+  const md = `# T
+
+## Open
+<!-- wiki:open -->
+
+| ID | Goal |
+| --- | --- |
+| T1 | first |
+
+Not a table row
+
+| ID | Goal |
+| --- | --- |
+| T2 | second |
+`;
+  const doc = parseDoc(md);
+  const section = findSection(doc, 'open', ['Open'])!;
+  const table = findTable(doc, section)!;
+  assert.equal(table.rows.length, 1);
+  assert.equal(table.rows[0]!.cells[0], 'T1');
+});
+
+test('md-edit: fenceMask allows up to 3 spaces indent and rejects backtick in info string', () => {
+  const indented = ['   ```', '| not a table |', '   ```', '| A | B |'];
+  const indMask = fenceMask(indented);
+  assert.equal(indMask[0], true);
+  assert.equal(indMask[1], true);
+  assert.equal(indMask[2], true);
+  assert.equal(indMask[3], false);
+
+  const badInfo = ['| A | B |', '```foo`bar', '| still | table |'];
+  const badMask = fenceMask(badInfo);
+  assert.deepEqual(badMask, [false, false, false]);
 });
 
 test('md-edit: fenceMask and findTable skip fenced tables', () => {

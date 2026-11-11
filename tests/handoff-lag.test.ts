@@ -45,6 +45,28 @@ test('handoffLag does not warn on promote when baton has tasks and noOpenWork is
   assert.equal(msg, null);
 });
 
+test('handoffLag warns on close when baton task uses colon or em dash id prefix', () => {
+  for (const task of ['T1: Finish parser', 'T1 — Finish parser']) {
+    const msg = handoffLag(
+      handoff({
+        baton: [
+          {
+            order: '1',
+            task,
+            startFiles: '`src/x.ts`',
+            doneWhen: 'tests green',
+            verificationCommand: 'npm test',
+            notes: '',
+          },
+        ],
+      }),
+      { kind: 'close', taskId: 'T1' },
+    );
+    assert.ok(msg, task);
+    assert.match(msg!, /T1/);
+  }
+});
+
 test('handoffLag warns on close when task id is still in the baton', () => {
   const msg = handoffLag(
     handoff({

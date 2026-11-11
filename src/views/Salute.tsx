@@ -6,7 +6,7 @@ import { SidePanel } from '../components/SidePanel';
 import { useStamp } from '../components/stamp';
 import { SIGN_HINT } from '../components/TrackerDialogs';
 import { useToast } from '../components/Toast';
-import { DEFAULT_CORE_MAP } from '../lib/schema-parser';
+import { DEFAULT_CORE_MAP, DEFAULT_SCHEMA_BUDGETS } from '../lib/schema-parser';
 import type { TrustTier } from '../lib/trust';
 import { useProject } from '../state/project';
 import { useNav } from '../state/nav';
@@ -66,7 +66,7 @@ export default function Salute() {
 
   const signable = !project.actorError;
   const core = project.schema?.coreMap ?? DEFAULT_CORE_MAP;
-  const budgets = project.schema?.budgets;
+  const budgets = project.schema?.budgets ?? DEFAULT_SCHEMA_BUDGETS;
 
   useEffect(() => {
     if (!nav.ref || nav.section !== 'salute') return;
@@ -98,18 +98,16 @@ export default function Salute() {
 
   const logRel = core.log;
 
-  const overBudget = budgets
-    ? project.pages.filter(
-        (p) => p.relPath !== logRel && p.sizeBytes > budgets.singlePageBytes,
-      )
-    : [];
+  const overBudget = project.pages.filter(
+    (p) => p.relPath !== logRel && p.sizeBytes > budgets.singlePageBytes,
+  );
 
   const corePaths = useMemo(() => coreReadPaths(core), [core]);
 
-  const coreReadBytes = useMemo(() => {
-    if (!budgets) return 0;
-    return project.pages.filter((p) => corePaths.has(p.relPath)).reduce((s, p) => s + p.sizeBytes, 0);
-  }, [project.pages, corePaths, budgets]);
+  const coreReadBytes = useMemo(
+    () => project.pages.filter((p) => corePaths.has(p.relPath)).reduce((s, p) => s + p.sizeBytes, 0),
+    [project.pages, corePaths],
+  );
 
   const logPage = project.pages.find((p) => p.relPath === core.log);
   const logBytes = logPage?.sizeBytes ?? 0;
@@ -257,9 +255,8 @@ export default function Salute() {
         </table>
       </section>
 
-      {budgets && (
-        <section className="group">
-          <h2 className="group-title">Budget</h2>
+      <section className="group">
+        <h2 className="group-title">Budget</h2>
           {overBudget.length > 0 && (
             <>
               <p className="muted">Pagine oltre il limite ({formatBytes(budgets.singlePageBytes)})</p>
@@ -321,8 +318,7 @@ export default function Salute() {
               />
             </div>
           </div>
-        </section>
-      )}
+      </section>
 
       <section className="group">
         <h2 className="group-title">Rischi</h2>

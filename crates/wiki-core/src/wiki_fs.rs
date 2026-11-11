@@ -14,6 +14,8 @@ pub struct WikiPageEntry {
     pub wiki_rel_path: String,
     pub content: String,
     pub size_bytes: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -590,6 +592,40 @@ mod tests {
         assert!(!err.to_lowercase().contains("ultra_secret"));
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn snapshot_skips_symlink_whose_target_is_private_terms() {
+        let td = TestDir::new("snap_terms_link");
+        let repo = td.path();
+        let wiki = repo.join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        fs::write(wiki.join("SCHEMA.md"), "# Schema\n").unwrap();
+        fs::write(wiki.join(".private-terms"), "secret\n").unwrap();
+        std::os::unix::fs::symlink(wiki.join(".private-terms"), wiki.join("alias.md")).unwrap();
+        let snapshot = load_wiki_snapshot(repo, "wiki").unwrap();
+        let paths: Vec<_> = snapshot.pages.iter().map(|p| p.wiki_rel_path.as_str()).collect();
+        assert!(!paths.iter().any(|p| *p == "alias.md"));
+        assert!(!paths.iter().any(|p| *p == ".private-terms"));
+    }
+
+    #[test]
+    fn snapshot_lists_unreadable_page_with_read_error() {
+        let td = TestDir::new("snap_read_err");
+        let repo = td.path();
+        let wiki = repo.join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        fs::write(wiki.join("SCHEMA.md"), "# Schema\n").unwrap();
+        fs::write(wiki.join("bad.md"), [0xFF, 0xFE, b'x', 0]).unwrap();
+        let snapshot = load_wiki_snapshot(repo, "wiki").unwrap();
+        let bad = snapshot
+            .pages
+            .iter()
+            .find(|p| p.wiki_rel_path == "bad.md")
+            .expect("bad.md listed");
+        assert!(bad.read_error.is_some());
+        assert_eq!(bad.content, "");
+    }
+
     #[test]
     fn symlinked_dir_outside_wiki_is_not_snapshotted() {
         let td = TestDir::new("snap_symlink");
@@ -710,14 +746,26 @@ fn collect_wiki_pages_recursive(
         if !keep {
             continue;
         }
+        if let Ok(canon_path) = path.canonicalize() {
+            if canon_path
+                .components()
+                .any(|c| is_private_terms_name(c.as_os_str()))
+            {
+                continue;
+            }
+        }
         if let Ok(rel) = path.strip_prefix(base_dir) {
             let wiki_rel_path = rel.to_string_lossy().replace('\\', "/");
-            let content = fs::read_to_string(&path).unwrap_or_default();
             let size_bytes = path.metadata().map(|m| m.len()).unwrap_or(0);
+            let (content, read_error) = match fs::read_to_string(&path) {
+                Ok(text) => (text, None),
+                Err(e) => (String::new(), Some(format!("Failed to read wiki page: {}", e))),
+            };
             pages.push(WikiPageEntry {
                 wiki_rel_path,
                 content,
                 size_bytes,
+                read_error,
             });
         }
     }

@@ -374,6 +374,20 @@ test('appendLogEntry appends exactly one blank-line-separated entry at the end o
   assert.equal(log, '# Log\n\n## 2026-11-10 · Something · human\n- What: Stefano did it\n- Evidence: chat\n- IDs: T2, T3\n');
 });
 
+test('appendLogEntry oldest-first preserves CRLF and final newline', () => {
+  const before = '# Log\r\n\r\n## 2026-11-01 · Old · human\r\n- What: x\r\n- Evidence: y\r\n- IDs: none\r\n';
+  const log = appendLogEntry({
+    logMarkdown: before,
+    date: '2026-11-10',
+    title: 'Fresh',
+    what: 'new',
+    evidence: 'chat',
+    ids: ['T1'],
+    order: 'oldest-first',
+  });
+  assert.equal(log, `${before}\r\n## 2026-11-10 · Fresh · human\r\n- What: new\r\n- Evidence: chat\r\n- IDs: T1\r\n`);
+});
+
 test('appendLogEntry newest-first inserts above first dated heading outside fences', () => {
   const log = appendLogEntry({
     logMarkdown: `# Log

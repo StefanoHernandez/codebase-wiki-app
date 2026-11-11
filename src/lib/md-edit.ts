@@ -45,18 +45,24 @@ export function fenceMask(lines: string[]): boolean[] {
   let open: { char: string; len: number; start: number } | null = null;
 
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^(\s*)(`{3,}|~{3,})(.*)$/);
+    const m = lines[i].match(/^(\s{0,3})(`{3,}|~{3,})(.*)$/);
     if (!open) {
-      if (m) {
+      if (m && m[1].length <= 3) {
         const fence = m[2];
+        if (fence[0] === '`' && (m[3] ?? '').includes('`')) {
+          continue;
+        }
         open = { char: fence[0], len: fence.length, start: i };
         mask[i] = true;
       }
       continue;
     }
     mask[i] = true;
-    if (m && (m[3] ?? '').trim() === '') {
+    if (m && m[1].length <= 3 && (m[3] ?? '').trim() === '') {
       const fence = m[2];
+      if (fence[0] === '`' && (m[3] ?? '').includes('`')) {
+        continue;
+      }
       if (fence[0] === open.char && fence.length >= open.len) {
         open = null;
       }
@@ -140,8 +146,8 @@ export function findTable(doc: Doc, section: { start: number; end: number }): Ta
       if (masked[r]) break;
       const cells = splitTableRow(lines[r]);
       if (!cells) {
-        if (!lines[r].trim()) break;
-        continue;
+        if (lines[r].trim()) break;
+        break;
       }
       rows.push({ line: r, cells });
     }

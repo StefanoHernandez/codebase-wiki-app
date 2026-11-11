@@ -49,6 +49,8 @@ test('markPageReviewed on fixture page passes validator with one then two verifi
       commit: head,
     });
     assert.match(twice.pageMarkdown, /^verified: \[\{/m);
+    assert.match(twice.pageMarkdown, /^verified: \[\{[^\n]*\}, \{[^\n]*\}\]$/m);
+    assert.match(twice.pageMarkdown, new RegExp(`commit: ${head}`));
     assert.doesNotMatch(twice.pageMarkdown, /at: 2026-11-11T10:00:00\.000Z/);
     assert.match(twice.pageMarkdown, /at: 2026-11-11T10:00:00Z/);
     assert.equal(twice.pageMarkdown.match(/^verified:/gm)!.length, 1);

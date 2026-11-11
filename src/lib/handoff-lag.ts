@@ -2,7 +2,7 @@ import type { HandoffData } from '../types/wiki.ts';
 
 export type HandoffLagAction = { kind: 'promote' } | { kind: 'close'; taskId: string };
 
-const BATON_ID = /^(T[1-9]\d*)\s*-\s*\S/;
+const BATON_ID = /^(T[1-9]\d*)(?:\s*-\s*|\s*:\s*|\s+—\s*)\S/;
 
 function batonTaskId(task: string): string | null {
   const m = BATON_ID.exec(task.trim());

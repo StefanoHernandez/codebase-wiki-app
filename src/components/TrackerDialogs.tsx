@@ -106,7 +106,7 @@ function HandoffLagNotice({ action }: { action: HandoffLagAction }) {
   return (
     <div className="handoff-freshness handoff-freshness--stale">
       <p className="handoff-freshness-text">{warning}</p>
-      <button type="button" className="btn btn-human" onClick={() => void copySync()} disabled={!project.current}>
+      <button type="button" className="btn" onClick={() => void copySync()} disabled={!project.current}>
         Copia prompt /wiki-sync
       </button>
     </div>

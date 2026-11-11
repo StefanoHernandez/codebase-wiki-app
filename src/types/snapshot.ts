@@ -12,6 +12,7 @@ export interface WikiPageEntry {
   wikiRelPath: string;
   content: string;
   sizeBytes: number;
+  readError?: string | null;
 }
 
 export interface WikiSnapshot {
