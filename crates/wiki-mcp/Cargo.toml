@@ -24,4 +24,5 @@ rmcp = { version = "=3.9.0", default-features = false, features = [
     "transport-io",
     "schemars",
 ] }
-tokio = { version = "=1.54.1", features = ["rt", "macros", "io-std", "io-util"] }
+tokio = { version = "=1.54.1", features = ["rt", "rt-multi-thread", "macros", "io-std", "io-util"] }
+serde = { version = "=1.0.229", features = ["derive"] }

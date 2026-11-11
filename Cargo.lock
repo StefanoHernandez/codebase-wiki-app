@@ -2943,9 +2943,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.21.4"
+version = "1.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+checksum = "c2806eaa3524762875e21c3dcd057bc4b7bfa01ce4da8d46be1cd43649e1cc6b"
 
 [[package]]
 name = "onig"
@@ -3467,6 +3467,7 @@ dependencies = [
  "tempfile",
  "text-splitter",
  "toml_edit 0.22.24",
+ "tree-sitter",
  "tree-sitter-go",
  "tree-sitter-javascript",
  "tree-sitter-python",
@@ -5903,7 +5904,11 @@ version = "0.1.0"
 dependencies = [
  "rag-core",
  "rmcp",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
  "tokio",
+ "wiki-core",
 ]
 
 [[package]]
