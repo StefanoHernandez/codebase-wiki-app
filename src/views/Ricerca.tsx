@@ -8,7 +8,7 @@ type CatalogRow = { id: string; languages: string; sizeMb: number; note: string;
 
 export default function Ricerca() {
   const project = useProject();
-  const repo = project.repoPath;
+  const repo = project.snapshot?.repoPath ?? null;
   const [status, setStatus] = useState<IndexStatus | null>(null);
   const [indexing, setIndexing] = useState(false);
   const [progress, setProgress] = useState<string>('');
