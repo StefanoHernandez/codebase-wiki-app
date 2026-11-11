@@ -368,6 +368,36 @@ test('appendLogEntry appends exactly one blank-line-separated entry at the end o
   assert.equal(log, '# Log\n\n## 2026-11-10 · Something · human\n- What: Stefano did it\n- Evidence: chat\n- IDs: T2, T3\n');
 });
 
+test('appendLogEntry newest-first inserts above first dated heading outside fences', () => {
+  const log = appendLogEntry({
+    logMarkdown: `# Log
+
+## Rules
+- Be brief
+
+\`\`\`
+## 2099-01-01 · Example · human
+\`\`\`
+
+## 2026-11-01 · Old · human
+- What: old
+- Evidence: x
+- IDs: none
+
+`,
+    date: '2026-11-10',
+    title: 'Fresh',
+    what: 'new entry',
+    evidence: 'test',
+    ids: [],
+    order: 'newest-first',
+  });
+  const idxNew = log.indexOf('2026-11-10 · Fresh');
+  const idxOld = log.indexOf('2026-11-01 · Old');
+  const idxRules = log.indexOf('## Rules');
+  assert.ok(idxRules < idxNew && idxNew < idxOld);
+});
+
 test('parseHandoffMarkdown parses state bullets, baton rows, and blockers', () => {
   const handoffMd = `---
 type: AgentNote

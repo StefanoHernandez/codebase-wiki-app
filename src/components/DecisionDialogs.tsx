@@ -3,6 +3,7 @@ import { Dialog, Field } from './Dialog';
 import { localIsoDate, SIGN_HINT } from './TrackerDialogs';
 import { useProject, type ProjectState } from '../state/project';
 import { DEFAULT_CORE_MAP } from '../lib/schema-parser';
+import { peer } from '../lib/apply-edits';
 import { acceptDecisionHuman, rejectDecisionHuman } from '../lib/human-actions';
 import { parseFrontmatter } from '../lib/frontmatter';
 import type { Decision } from '../types/wiki';
@@ -16,24 +17,17 @@ class StaleError extends Error {
   }
 }
 
-interface DecisionFiles {
+interface DecisionPaths {
   decisionPath: string;
-  decisionMarkdown: string;
   logPath: string;
-  logMarkdown: string;
 }
 
-function decisionFiles(project: ProjectState, relPath: string): DecisionFiles | null {
+function decisionPaths(project: ProjectState, relPath: string): DecisionPaths | null {
   const core = project.schema?.coreMap ?? DEFAULT_CORE_MAP;
   const decision = project.pages.find((p) => p.relPath === relPath);
   const log = project.pages.find((p) => p.relPath === core.log);
   if (!decision || !log) return null;
-  return {
-    decisionPath: decision.relPath,
-    decisionMarkdown: decision.markdown,
-    logPath: log.relPath,
-    logMarkdown: log.markdown,
-  };
+  return { decisionPath: decision.relPath, logPath: log.relPath };
 }
 
 function errorText(e: unknown): string {
@@ -48,22 +42,21 @@ function useDecisionSigned(onDone: (number: string) => void) {
   const run = async (
     relPath: string,
     check: string | null,
-    write: (files: DecisionFiles, freshMarkdown: string) => Promise<string>,
+    write: (paths: DecisionPaths) => Promise<string>,
   ) => {
     if (check) {
       setError(check);
       return;
     }
-    const files = decisionFiles(project, relPath);
-    if (!files) {
+    const paths = decisionPaths(project, relPath);
+    if (!paths) {
       setError(NOT_READY);
       return;
     }
     setError(null);
     setBusy(true);
     try {
-      const fresh = project.pages.find((p) => p.relPath === relPath)?.markdown ?? files.decisionMarkdown;
-      const id = await write(files, fresh);
+      const id = await write(paths);
       onDone(id);
     } catch (e) {
       if (e instanceof StaleError) setError(e.message);
@@ -94,20 +87,30 @@ export function DecideDialog({ decision, verdict, onClose, onDone }: DecideDialo
     run(
       decision.relPath,
       !where.trim() ? "Scrivi dove l'hai decisa: messaggio, riunione, PR…" : null,
-      async (files, freshMarkdown) => {
-        if (parseFrontmatter(freshMarkdown).fields.status !== 'proposed') throw new StaleError();
-        const date = localIsoDate();
-        const fn = accept ? acceptDecisionHuman : rejectDecisionHuman;
-        const result = fn({
-          decisionMarkdown: freshMarkdown,
-          logMarkdown: files.logMarkdown,
-          person: project.actor,
-          whereContext: where.trim(),
-          dateIso: date,
-        });
+      async (paths) => {
+        let logOut = '';
         await project.act([
-          { relPath: files.decisionPath, content: result.decisionMarkdown },
-          { relPath: files.logPath, content: result.logMarkdown },
+          {
+            relPath: paths.decisionPath,
+            apply: (currentDecision) => {
+              if (parseFrontmatter(currentDecision).fields.status !== 'proposed') throw new StaleError();
+              const date = localIsoDate();
+              const fn = accept ? acceptDecisionHuman : rejectDecisionHuman;
+              const result = fn({
+                decisionMarkdown: currentDecision,
+                logMarkdown: peer(paths.logPath),
+                person: project.actor,
+                whereContext: where.trim(),
+                dateIso: date,
+              });
+              logOut = result.logMarkdown;
+              return result.decisionMarkdown;
+            },
+          },
+          {
+            relPath: paths.logPath,
+            apply: () => logOut,
+          },
         ]);
         return decision.number;
       },

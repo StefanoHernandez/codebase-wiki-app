@@ -3,16 +3,16 @@ import { Dialog } from './Dialog';
 import { SIGN_HINT } from './TrackerDialogs';
 import { useProject } from '../state/project';
 import { DEFAULT_CORE_MAP } from '../lib/schema-parser';
+import { peer } from '../lib/apply-edits';
 import { markPageReviewed } from '../lib/human-actions';
 
 const NOT_READY = 'La wiki non è ancora caricata. Premi Ricarica e riprova.';
-const STALE = 'La pagina è cambiata. Ricarica e riprova.';
 
 function errorText(e: unknown): string {
   return `Non riesco a salvare. ${e instanceof Error ? e.message : String(e)}`;
 }
 
-function useReviewSigned(pageRelPath: string, pageMarkdown: string, onDone: () => void) {
+function useReviewSigned(pageRelPath: string, onDone: () => void) {
   const project = useProject();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -29,25 +29,31 @@ function useReviewSigned(pageRelPath: string, pageMarkdown: string, onDone: () =
       setError(NOT_READY);
       return;
     }
-    if (page.markdown !== pageMarkdown) {
-      setError(STALE);
-      return;
-    }
     const head = project.snapshot?.gitState.headSha?.slice(0, 7) ?? '';
     const atIso = new Date().toISOString();
     setError(null);
     setBusy(true);
     try {
-      const r = markPageReviewed({
-        pageMarkdown: page.markdown,
-        logMarkdown: logPage.markdown,
-        person: project.actor,
-        atIso,
-        commit: head,
-      });
+      let logOut = '';
       await project.act([
-        { relPath: pageRelPath, content: r.pageMarkdown },
-        { relPath: logPage.relPath, content: r.logMarkdown },
+        {
+          relPath: pageRelPath,
+          apply: (currentPage) => {
+            const r = markPageReviewed({
+              pageMarkdown: currentPage,
+              logMarkdown: peer(logPage.relPath),
+              person: project.actor,
+              atIso,
+              commit: head,
+            });
+            logOut = r.logMarkdown;
+            return r.pageMarkdown;
+          },
+        },
+        {
+          relPath: logPage.relPath,
+          apply: () => logOut,
+        },
       ]);
       onDone();
     } catch (e) {
@@ -70,8 +76,9 @@ export function ReviewDialog({
   onClose(): void;
   onDone(): void;
 }) {
-  const { project, error, busy, run } = useReviewSigned(pageRelPath, pageMarkdown, onDone);
+  const { project, error, busy, run } = useReviewSigned(pageRelPath, onDone);
   const head = project.snapshot?.gitState.headSha?.slice(0, 7) ?? '—';
+  void pageMarkdown;
 
   return (
     <Dialog

@@ -19,6 +19,7 @@ fn main() {
             commands::remove_recent,
             commands::load_snapshot,
             commands::write_wiki_file,
+            commands::read_wiki_file,
             commands::read_source_file,
             commands::source_diff,
             commands::run_lint,

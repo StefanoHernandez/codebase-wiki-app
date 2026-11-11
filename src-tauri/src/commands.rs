@@ -9,7 +9,8 @@ use tauri_plugin_store::StoreExt;
 use wiki_core::{
     build_workflow_prompt, collect_repo_files_recursive, file_diff_since_commit, inspect_git_state,
     is_git_repo, load_wiki_snapshot, read_repo_file_safe, resolve_wiki_root,
-    run_structural_lint_with, watch_repo, write_wiki_file_safe, LintReport, RepoFilePayload,
+    read_wiki_file_safe, run_structural_lint_with, watch_repo, write_wiki_file_safe, LintReport,
+    RepoFilePayload,
     WatchHandle, WikiSnapshot,
 };
 
@@ -283,6 +284,20 @@ pub async fn write_wiki_file(
         let repo = opened_repo(&app, &repo)?;
         let root = wiki_root_of(&repo)?;
         write_wiki_file_safe(&repo, &root, &rel_path, &content)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn read_wiki_file(
+    app: AppHandle,
+    repo: String,
+    rel_path: String,
+) -> Result<String, String> {
+    blocking(move || {
+        let repo = opened_repo(&app, &repo)?;
+        let root = wiki_root_of(&repo)?;
+        read_wiki_file_safe(&repo, &root, &rel_path)
     })
     .await
 }

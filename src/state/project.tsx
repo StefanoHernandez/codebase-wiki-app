@@ -8,6 +8,7 @@ import { DEFAULT_CORE_MAP, parseSchemaMarkdown } from '../lib/schema-parser';
 import { listDecisions } from '../lib/decisions';
 import { trustTier, type TrustTier } from '../lib/trust';
 import { computeAttention, type AttentionItem } from '../lib/attention';
+import { applyEdits, type FileEdit } from '../lib/apply-edits';
 import { validateHumanActor } from '../lib/human-actions';
 import { clearNavRef } from './nav';
 
@@ -21,10 +22,7 @@ export interface WikiPage {
   trust: TrustTier;
 }
 
-export interface FileWrite {
-  relPath: string;
-  content: string;
-}
+export type { FileEdit };
 
 interface Derived {
   schema: SchemaConfig | null;
@@ -55,8 +53,8 @@ export interface ProjectState extends Derived {
   reload(): Promise<void>;
   open(path: string): Promise<void>;
   forget(path: string): Promise<void>;
-  /** Writes wiki files in order, then reloads. Throws on the first failed write. */
-  act(writes: FileWrite[]): Promise<void>;
+  /** Reads wiki files from disk, applies edits, writes atomically, then reloads. */
+  act(edits: FileEdit[]): Promise<void>;
 }
 
 const ACTOR_KEY = 'cw.actor';
@@ -242,16 +240,20 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const act = useCallback(
-    async (writes: FileWrite[]) => {
+    async (edits: FileEdit[]) => {
       const repo = currentRef.current;
       if (!repo) throw new Error('Nessun progetto aperto.');
+      const logRel = derived.schema?.coreMap.log ?? DEFAULT_CORE_MAP.log;
       let failed: unknown;
       let attempted = false;
       try {
-        for (const w of writes) {
-          attempted = true;
-          await api.writeWikiFile(repo, w.relPath, w.content);
-        }
+        attempted = edits.length > 0;
+        await applyEdits(
+          edits,
+          (relPath) => api.readWikiFile(repo, relPath),
+          (relPath, content) => api.writeWikiFile(repo, relPath, content),
+          logRel,
+        );
       } catch (e) {
         failed = e;
       } finally {
@@ -259,7 +261,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       }
       if (failed) throw failed;
     },
-    [reload],
+    [reload, derived.schema?.coreMap.log],
   );
 
   const setActor = useCallback((name: string) => {

@@ -37,6 +37,10 @@ export function writeWikiFile(repo: string, relPath: string, content: string): P
   return invoke('write_wiki_file', { repo, relPath, content });
 }
 
+export function readWikiFile(repo: string, relPath: string): Promise<string> {
+  return invoke('read_wiki_file', { repo, relPath });
+}
+
 export function readSourceFile(repo: string, relPath: string): Promise<RepoFilePayload> {
   return invoke('read_source_file', { repo, relPath });
 }

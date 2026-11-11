@@ -10,6 +10,7 @@ import type { Attribution, TrackerDoneRow, TrackerOpenRow } from '../types/wiki.
 import {
   parseDoc,
   renderDoc,
+  fenceMask,
   findSection,
   findTable,
   setCells,
@@ -94,7 +95,9 @@ export function personId(person: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-/** Appends one `## date · title · human` entry at the end of the log, separated by one blank line. */
+const DATE_LOG_HEADING = /^## \d{4}-\d{2}-\d{2}\b/;
+
+/** Appends one `## date · title · human` entry (oldest-first at EOF, or newest-first above the first dated heading). */
 export function appendLogEntry(params: {
   logMarkdown: string;
   date: string;
@@ -102,16 +105,40 @@ export function appendLogEntry(params: {
   what: string;
   evidence: string;
   ids: string[];
+  order?: 'oldest-first' | 'newest-first';
 }): string {
-  const entry = [
+  const order = params.order ?? 'oldest-first';
+  const entryLines = [
     `## ${params.date} · ${params.title} · human`,
     `- What: ${params.what}`,
     `- Evidence: ${params.evidence}`,
     `- IDs: ${params.ids.length > 0 ? params.ids.join(', ') : 'none'}`,
     '',
-  ].join('\n');
-  const previous = params.logMarkdown.trimEnd();
-  return previous ? `${previous}\n\n${entry}` : entry;
+  ];
+  const entry = entryLines.join('\n');
+
+  if (order === 'oldest-first') {
+    const previous = params.logMarkdown.trimEnd();
+    return previous ? `${previous}\n\n${entry}` : entry;
+  }
+
+  const doc = parseDoc(params.logMarkdown);
+  const masked = fenceMask(doc.lines);
+  let insertAt = doc.lines.length;
+  for (let i = 0; i < doc.lines.length; i++) {
+    if (masked[i]) continue;
+    if (DATE_LOG_HEADING.test(doc.lines[i]!.trim())) {
+      insertAt = i;
+      break;
+    }
+  }
+  const prefix = doc.lines.slice(0, insertAt);
+  const suffix = doc.lines.slice(insertAt);
+  const merged =
+    prefix.length > 0
+      ? [...prefix, ...(prefix[prefix.length - 1]?.trim() ? ['', ...entryLines] : entryLines), ...suffix]
+      : [...entryLines, ...suffix];
+  return renderDoc({ ...doc, lines: merged });
 }
 
 const PROPOSAL_FIELD_INDEX: Record<(typeof PROPOSAL_COLS)[number], number> = {

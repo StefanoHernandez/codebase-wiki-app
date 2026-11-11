@@ -13,7 +13,7 @@ pub use git_ops::{
 pub use validator::{run_structural_lint, run_structural_lint_with, LintFinding, LintReport};
 pub use watcher::{watch_repo, WatchHandle};
 pub use wiki_fs::{
-    collect_repo_files_recursive, load_wiki_snapshot, read_repo_file_safe,
+    collect_repo_files_recursive, load_wiki_snapshot, read_repo_file_safe, read_wiki_file_safe,
     write_wiki_file_safe, RepoFilePayload, WikiPageEntry, WikiSnapshot,
 };
 pub use wiki_resolver::{is_valid_wiki_folder_name, resolve_wiki_root, WikiResolution};

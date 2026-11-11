@@ -2,11 +2,12 @@ import { useState, type ReactNode } from 'react';
 import { Dialog, Field } from './Dialog';
 import { useProject, type ProjectState } from '../state/project';
 import { DEFAULT_CORE_MAP } from '../lib/schema-parser';
+import { peer } from '../lib/apply-edits';
 import {
-  appendLogEntry,
   closeTrackerItemHumanUnproven,
   promoteProposalToOpen,
   updateOpenRowField,
+  appendLogEntry,
   StaleError,
 } from '../lib/human-actions';
 import { parseTrackerMarkdown } from '../lib/markdown-tables';
@@ -25,25 +26,18 @@ export function localIsoDate(d = new Date()): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-interface TrackerFiles {
+interface TrackerPaths {
   trackerPath: string;
-  trackerMarkdown: string;
   logPath: string;
-  logMarkdown: string;
 }
 
-/** Current tracker and log text from the open snapshot, or null when either page is missing. */
-function trackerFiles(project: ProjectState): TrackerFiles | null {
+/** Paths to tracker and log in the open wiki, or null when either page is missing. */
+function trackerPaths(project: ProjectState): TrackerPaths | null {
   const core = project.schema?.coreMap ?? DEFAULT_CORE_MAP;
   const tracker = project.pages.find((p) => p.relPath === core.tracker);
   const log = project.pages.find((p) => p.relPath === core.log);
   if (!tracker || !log) return null;
-  return {
-    trackerPath: tracker.relPath,
-    trackerMarkdown: tracker.markdown,
-    logPath: log.relPath,
-    logMarkdown: log.markdown,
-  };
+  return { trackerPath: tracker.relPath, logPath: log.relPath };
 }
 
 function errorText(e: unknown): string {
@@ -64,21 +58,21 @@ function useSigned(onDone: (id: string) => void) {
 
   const run = async (
     check: string | null,
-    write: (files: TrackerFiles) => Promise<string>,
+    write: (paths: TrackerPaths) => Promise<string>,
   ) => {
     if (check) {
       setError(check);
       return;
     }
-    const files = trackerFiles(project);
-    if (!files) {
+    const paths = trackerPaths(project);
+    if (!paths) {
       setError(NOT_READY);
       return;
     }
     setError(null);
     setBusy(true);
     try {
-      onDone(await write(files));
+      onDone(await write(paths));
     } catch (e) {
       if (e instanceof StaleError) setError(e.message);
       else if (e instanceof Error && /not found in open tracker/.test(e.message)) setError(STALE_ROW);
@@ -110,28 +104,42 @@ export function PromoteDialog({ proposal, onClose, onDone }: Handlers & { propos
           : !nextVerification.trim()
             ? 'Scrivi come verificherai il lavoro.'
             : null,
-      async (files) => {
-        const live = parseTrackerMarkdown(files.trackerMarkdown).proposals.filter(
+      async (paths) => {
+        const snap = project.pages.find((p) => p.relPath === paths.trackerPath)?.markdown ?? '';
+        const onSnap = parseTrackerMarkdown(snap).proposals.filter(
           (p) => p.proposal === proposal.proposal && p.by === proposal.by && p.date === proposal.date,
         );
-        if (live.length !== 1) throw new StaleError(STALE_PROPOSAL);
-        const r = promoteProposalToOpen({
-          trackerMarkdown: files.trackerMarkdown,
-          logMarkdown: files.logMarkdown,
-          proposalText: proposal.proposal,
-          proposalBy: proposal.by,
-          proposalDate: proposal.date,
-          person: project.actor,
-          owner,
-          doneWhen,
-          nextVerification,
-          dateIso: localIsoDate(),
-        });
+        if (onSnap.length !== 1) throw new StaleError(STALE_PROPOSAL);
+
+        let assignedId = '';
+        let logOut = '';
         await project.act([
-          { relPath: files.trackerPath, content: r.trackerMarkdown },
-          { relPath: files.logPath, content: r.logMarkdown },
+          {
+            relPath: paths.trackerPath,
+            apply: (currentTracker) => {
+              const r = promoteProposalToOpen({
+                trackerMarkdown: currentTracker,
+                logMarkdown: peer(paths.logPath),
+                proposalText: proposal.proposal,
+                proposalBy: proposal.by,
+                proposalDate: proposal.date,
+                person: project.actor,
+                owner,
+                doneWhen,
+                nextVerification,
+                dateIso: localIsoDate(),
+              });
+              assignedId = r.assignedId;
+              logOut = r.logMarkdown;
+              return r.trackerMarkdown;
+            },
+          },
+          {
+            relPath: paths.logPath,
+            apply: () => logOut,
+          },
         ]);
-        return r.assignedId;
+        return assignedId;
       },
     );
 
@@ -175,19 +183,29 @@ export function CloseDialog({ row, onClose, onDone }: Handlers & { row: TrackerO
         : !source.trim()
           ? "Scrivi dove l'hai deciso: messaggio, riunione, PR."
           : null,
-      async (files) => {
-        const r = closeTrackerItemHumanUnproven({
-          trackerMarkdown: files.trackerMarkdown,
-          logMarkdown: files.logMarkdown,
-          taskId: row.id,
-          person: project.actor,
-          notProvenReason: notProven,
-          closureSource: source,
-          dateIso: localIsoDate(),
-        });
+      async (paths) => {
+        let logOut = '';
         await project.act([
-          { relPath: files.trackerPath, content: r.trackerMarkdown },
-          { relPath: files.logPath, content: r.logMarkdown },
+          {
+            relPath: paths.trackerPath,
+            apply: (currentTracker) => {
+              const r = closeTrackerItemHumanUnproven({
+                trackerMarkdown: currentTracker,
+                logMarkdown: peer(paths.logPath),
+                taskId: row.id,
+                person: project.actor,
+                notProvenReason: notProven,
+                closureSource: source,
+                dateIso: localIsoDate(),
+              });
+              logOut = r.logMarkdown;
+              return r.trackerMarkdown;
+            },
+          },
+          {
+            relPath: paths.logPath,
+            apply: () => logOut,
+          },
         ]);
         return row.id;
       },
@@ -232,25 +250,34 @@ export function FieldDialog({
   const [value, setValue] = useState(initial);
 
   const submit = () =>
-    run(!value.trim() ? `Scrivi ${label.toLowerCase()}.` : null, async (files) => {
-      const next = updateOpenRowField({
-        trackerMarkdown: files.trackerMarkdown,
-        id: row.id,
-        field: column,
-        value,
-      });
+    run(!value.trim() ? `Scrivi ${label.toLowerCase()}.` : null, async (paths) => {
       const date = localIsoDate();
-      const logMarkdown = appendLogEntry({
-        logMarkdown: files.logMarkdown,
-        date,
-        title: `Change ${column.toLowerCase()} of ${row.id}`,
-        what: `${project.actor} set ${column.toLowerCase()} of ${row.id} to ${value.trim()}`,
-        evidence: `changed by ${project.actor} ${date}`,
-        ids: [row.id],
-      });
+      let logOut = '';
       await project.act([
-        { relPath: files.trackerPath, content: next.trackerMarkdown },
-        { relPath: files.logPath, content: logMarkdown },
+        {
+          relPath: paths.trackerPath,
+          apply: (currentTracker) => {
+            const next = updateOpenRowField({
+              trackerMarkdown: currentTracker,
+              id: row.id,
+              field: column,
+              value,
+            });
+            logOut = appendLogEntry({
+              logMarkdown: peer(paths.logPath),
+              date,
+              title: `Change ${column.toLowerCase()} of ${row.id}`,
+              what: `${project.actor} set ${column.toLowerCase()} of ${row.id} to ${value.trim()}`,
+              evidence: `changed by ${project.actor} ${date}`,
+              ids: [row.id],
+            });
+            return next.trackerMarkdown;
+          },
+        },
+        {
+          relPath: paths.logPath,
+          apply: () => logOut,
+        },
       ]);
       return row.id;
     });

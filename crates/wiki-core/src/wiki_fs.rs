@@ -107,15 +107,12 @@ pub fn read_repo_file_safe(
     })
 }
 
-/// Writes `content` to `<repo>/<wiki_root>/<wiki_rel_path>`. Refuses paths that
-/// escape the wiki root, any `.private-terms` target, and content containing a
-/// term listed in `<wiki_root>/.private-terms` (case-insensitive).
-pub fn write_wiki_file_safe(
+fn resolve_wiki_target(
     repo_path: &Path,
     wiki_root: &str,
     wiki_rel_path: &str,
-    content: &str,
-) -> Result<(), String> {
+    access: &str,
+) -> Result<std::path::PathBuf, String> {
     if !wiki_resolver::is_valid_wiki_folder_name(wiki_root) {
         return Err(format!("Invalid wiki root: {}", wiki_root));
     }
@@ -126,8 +123,6 @@ pub fn write_wiki_file_safe(
     let wiki_dir = repo_path.join(wiki_root);
     let target_path = wiki_dir.join(wiki_rel_path);
 
-    // Containment check before any filesystem mutation: the nearest existing
-    // ancestor (or the target itself, symlinks included) must resolve inside the wiki.
     let canon_wiki = wiki_dir
         .canonicalize()
         .map_err(|e| format!("Wiki directory not found: {}", e))?;
@@ -138,11 +133,37 @@ pub fn write_wiki_file_safe(
     match probe.canonicalize() {
         Ok(canon) if canon.starts_with(&canon_wiki) => {
             if canon.components().any(|c| is_private_terms_name(c.as_os_str())) {
-                return Err("Access denied: .private-terms cannot be written".into());
+                return Err(format!("Access denied: .private-terms cannot be {}", access));
             }
         }
         _ => return Err("Target path escapes wiki root".into()),
     }
+
+    Ok(target_path)
+}
+
+/// Reads `<repo>/<wiki_root>/<wiki_rel_path>` with the same confinement rules as
+/// [`write_wiki_file_safe`]. Refuses `.private-terms` and non-UTF-8 content.
+pub fn read_wiki_file_safe(
+    repo_path: &Path,
+    wiki_root: &str,
+    wiki_rel_path: &str,
+) -> Result<String, String> {
+    let target_path = resolve_wiki_target(repo_path, wiki_root, wiki_rel_path, "read")?;
+    fs::read_to_string(&target_path).map_err(|e| format!("Failed to read file {}: {}", wiki_rel_path, e))
+}
+
+/// Writes `content` to `<repo>/<wiki_root>/<wiki_rel_path>`. Refuses paths that
+/// escape the wiki root, any `.private-terms` target, and content containing a
+/// term listed in `<wiki_root>/.private-terms` (case-insensitive).
+pub fn write_wiki_file_safe(
+    repo_path: &Path,
+    wiki_root: &str,
+    wiki_rel_path: &str,
+    content: &str,
+) -> Result<(), String> {
+    let target_path = resolve_wiki_target(repo_path, wiki_root, wiki_rel_path, "written")?;
+    let wiki_dir = repo_path.join(wiki_root);
 
     // `.private-terms` in the wiki root is the source of truth for forbidden terms.
     let private_terms_path = wiki_dir.join(".private-terms");
@@ -171,10 +192,111 @@ pub fn write_wiki_file_safe(
             .map_err(|e| format!("Failed to create parent directories: {}", e))?;
     }
 
-    fs::write(&target_path, content)
+    let file_name = target_path
+        .file_name()
+        .ok_or("Invalid wiki file name")?
+        .to_string_lossy();
+    let parent = target_path
+        .parent()
+        .ok_or("Invalid wiki file path")?;
+    let pid = std::process::id();
+    let tmp_name = format!(".{}.tmp-{}", file_name, pid);
+    let tmp_path = parent.join(&tmp_name);
+
+    fs::write(&tmp_path, content.as_bytes())
+        .map_err(|e| format!("Failed to write temp file {}: {}", tmp_path.display(), e))?;
+    fs::rename(&tmp_path, &target_path)
         .map_err(|e| format!("Failed to write file {}: {}", target_path.display(), e))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new(name: &str) -> Self {
+            static COUNTER: AtomicU64 = AtomicU64::new(200);
+            let count = COUNTER.fetch_add(1, Ordering::SeqCst);
+            let dir = std::env::temp_dir().join(format!(
+                "wiki_fs_{}_{}_{}",
+                name,
+                std::process::id(),
+                count
+            ));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+            Self { path: dir }
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    impl TestDir {
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    #[test]
+    fn read_wiki_refuses_private_terms_and_escape() {
+        let td = TestDir::new("read_guard");
+        let repo = td.path();
+        let wiki = repo.join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        fs::write(wiki.join("ok.md"), "hello").unwrap();
+        fs::write(wiki.join(".private-terms"), "secret\n").unwrap();
+
+        assert_eq!(read_wiki_file_safe(repo, "wiki", "ok.md").unwrap(), "hello");
+        assert!(read_wiki_file_safe(repo, "wiki", ".private-terms").is_err());
+        assert!(read_wiki_file_safe(repo, "wiki", "../outside.md").is_err());
+    }
+
+    #[test]
+    fn read_wiki_rejects_non_utf8() {
+        let td = TestDir::new("read_utf8");
+        let repo = td.path();
+        let wiki = repo.join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        let path = wiki.join("bin.md");
+        let mut f = fs::File::create(&path).unwrap();
+        f.write_all(&[0xFF, 0xFE, 0x41]).unwrap();
+        assert!(read_wiki_file_safe(repo, "wiki", "bin.md").is_err());
+    }
+
+    #[test]
+    fn write_wiki_atomic_leaves_no_tmp_file() {
+        let td = TestDir::new("atomic");
+        let repo = td.path();
+        let wiki = repo.join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        let pid = std::process::id();
+
+        write_wiki_file_safe(repo, "wiki", "log.md", "v1").unwrap();
+        write_wiki_file_safe(repo, "wiki", "log.md", "v2").unwrap();
+        assert_eq!(fs::read_to_string(wiki.join("log.md")).unwrap(), "v2");
+
+        let mut leftovers = Vec::new();
+        for entry in fs::read_dir(&wiki).unwrap() {
+            let name = entry.unwrap().file_name().to_string_lossy().into_owned();
+            if name.contains(&format!(".tmp-{}", pid)) {
+                leftovers.push(name);
+            }
+        }
+        assert!(leftovers.is_empty(), "temp files left behind: {:?}", leftovers);
+    }
 }
 
 fn clean_source_path(raw: &str) -> String {
