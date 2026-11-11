@@ -30,10 +30,9 @@ pub fn propose_codex_patch(existing: &str, command: &Path) -> Result<String, Str
         .ok_or("mcp_servers non è una tabella")?;
     let mut srv = Table::new();
     srv.insert("command", Item::Value(toml_edit::Value::from(command.to_string_lossy().as_ref())));
-    srv.insert(
-        "args",
-        Item::Value(toml_edit::Value::from(vec!["serve"])),
-    );
+    let mut args = toml_edit::Array::new();
+    args.push("serve");
+    srv.insert("args", Item::Value(toml_edit::Value::Array(args)));
     table.insert(SERVER_KEY, Item::Table(srv));
     Ok(doc.to_string())
 }
