@@ -1,6 +1,11 @@
 [workspace]
-resolver = "2"
-members = ["crates/wiki-core", "src-tauri"]
+resolver = "3"
+members = [
+    "crates/wiki-core",
+    "crates/rag-core",
+    "crates/wiki-mcp",
+    "src-tauri",
+]
 
 [workspace.package]
 rust-version = "1.90"
