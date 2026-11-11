@@ -7,7 +7,7 @@ use std::time::Instant;
 
 #[cfg(all(feature = "embed", feature = "download"))]
 use rag_core::{
-    chunk::{chunk_file, filter_private_chunks, terms_hash},
+    chunk::{chunk_file_tokens, filter_private_chunks, terms_hash},
     embed::load_embedder,
     excluded_globs_from_wiki, list_files, model_by_id, read_config, FileSource,
     head_sha, index_path, model_dir, repo_id, resolve_repo, wiki_root, Store,
@@ -121,10 +121,14 @@ fn run_index_with_store(
         Ok(e) => e,
         Err(e) => return err(&e),
     };
+    let tok = match embedder.chunk_tokenizer() {
+        Ok(t) => t,
+        Err(e) => return err(&e),
+    };
     let mut skipped_private = 0u32;
     let mut done_wiki = 0usize;
     for entry in &wiki_files {
-        if index_one(&store, &root, entry, &mut embedder, terms.as_deref(), &mut skipped_private).is_err() {
+        if index_one(&store, &root, entry, &mut embedder, &tok, terms.as_deref(), &mut skipped_private).is_err() {
             return err("Indicizzazione file wiki fallita");
         }
         done_wiki += 1;
@@ -133,7 +137,7 @@ fn run_index_with_store(
     emit(serde_json::json!({"event":"phase","phase":"code","total":code_files.len()}));
     let mut done_code = 0usize;
     for entry in &code_files {
-        if index_one(&store, &root, entry, &mut embedder, terms.as_deref(), &mut skipped_private).is_err() {
+        if index_one(&store, &root, entry, &mut embedder, &tok, terms.as_deref(), &mut skipped_private).is_err() {
             return err("Indicizzazione file codice fallita");
         }
         done_code += 1;
@@ -158,6 +162,7 @@ fn index_one(
     root: &Path,
     entry: &rag_core::FileEntry,
     embedder: &mut rag_core::embed::Embedder,
+    tok: &rag_core::tokenizers::Tokenizer,
     terms: Option<&str>,
     skipped_private: &mut u32,
 ) -> Result<(), String> {
@@ -176,7 +181,7 @@ fn index_one(
         }
     }
     let Ok(text) = String::from_utf8(bytes) else { return Ok(()) };
-    let chunks = chunk_file(&entry.rel_path, &text, entry.source);
+    let chunks = chunk_file_tokens(&entry.rel_path, &text, entry.source, tok);
     let (chunks, sk) = filter_private_chunks(chunks, terms);
     *skipped_private += sk;
     let embed_texts: Vec<String> = chunks.iter().map(|c| c.embed_text.clone()).collect();

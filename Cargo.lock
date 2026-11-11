@@ -3455,6 +3455,7 @@ dependencies = [
  "sqlite-vec",
  "tempfile",
  "text-splitter",
+ "tokenizers",
  "toml_edit 0.22.24",
  "tree-sitter",
  "tree-sitter-go",
@@ -4888,6 +4889,7 @@ dependencies = [
  "pulldown-cmark",
  "strum",
  "thiserror 2.0.21",
+ "tokenizers",
  "tree-sitter",
 ]
 

@@ -7,7 +7,8 @@ use wiki_core::glob_match;
 use crate::chunk::Chunk;
 use crate::files::{FileEntry, FileSource};
 
-const SCHEMA_VERSION: &str = "2";
+// 3: token-sized chunks with `path › symbols/headings` headers (0.1.3).
+const SCHEMA_VERSION: &str = "3";
 
 /// Shown when a reader finds no index for this repo.
 pub const NO_INDEX_MSG: &str = "Indice assente per questo repo: apri Codebase Wiki → Ricerca → Indicizza";

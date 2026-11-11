@@ -83,21 +83,30 @@ impl Embedder {
         Ok(v)
     }
 
+    /// The model's tokenizer without truncation or padding, for sizing chunks.
+    pub fn chunk_tokenizer(&self) -> Result<tokenizers::Tokenizer, String> {
+        let mut tok = self.inner.tokenizer.clone();
+        tok.with_truncation(None).map_err(|e| e.to_string())?;
+        tok.with_padding(None);
+        Ok(tok)
+    }
+
+    /// Batches of similar length: a batch is padded to its longest text, and that padded
+    /// tensor is what drives ONNX memory. Output order matches `texts`.
     fn embed_batch(&mut self, texts: &[String]) -> Result<Vec<Vec<f32>>, String> {
-        const BATCH: usize = 32;
-        let mut out = Vec::new();
-        for chunk in texts.chunks(BATCH) {
-            let refs: Vec<&str> = chunk.iter().map(String::as_str).collect();
-            let mut batch = self
-                .inner
-                .embed(refs, None)
-                .map_err(|e| e.to_string())?;
-            if self.spec.normalize {
-                for v in &mut batch {
-                    normalize(v);
+        const BATCH: usize = 16;
+        let mut order: Vec<usize> = (0..texts.len()).collect();
+        order.sort_by_key(|&i| texts[i].len());
+        let mut out = vec![Vec::new(); texts.len()];
+        for idx in order.chunks(BATCH) {
+            let refs: Vec<&str> = idx.iter().map(|&i| texts[i].as_str()).collect();
+            let batch = self.inner.embed(refs, None).map_err(|e| e.to_string())?;
+            for (&i, mut v) in idx.iter().zip(batch) {
+                if self.spec.normalize {
+                    normalize(&mut v);
                 }
+                out[i] = v;
             }
-            out.extend(batch);
         }
         Ok(out)
     }

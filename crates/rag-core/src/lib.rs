@@ -4,6 +4,8 @@
 pub mod models;
 #[cfg(feature = "embed")]
 pub mod embed;
+#[cfg(feature = "embed")]
+pub use tokenizers;
 pub mod catalog;
 pub mod chunk;
 pub mod files;

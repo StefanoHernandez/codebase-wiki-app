@@ -6,7 +6,7 @@ rust-version.workspace = true
 
 [features]
 default = []
-embed = ["dep:fastembed", "dep:ndarray"]
+embed = ["dep:fastembed", "dep:ndarray", "dep:tokenizers", "text-splitter/tokenizers"]
 download = ["dep:ureq"]
 
 [dependencies]
@@ -30,6 +30,8 @@ fastembed = { version = "=7.0.0", optional = true, default-features = false, fea
     "ort-download-binaries-native-tls",
 ] }
 ndarray = { version = "=0.17.2", optional = true }
+# Same version fastembed uses: chunks are sized with the embedding model's own tokenizer.
+tokenizers = { version = "=0.23.2", optional = true, default-features = false, features = ["onig"] }
 
 [dev-dependencies]
 tempfile = "=3.23.0"
