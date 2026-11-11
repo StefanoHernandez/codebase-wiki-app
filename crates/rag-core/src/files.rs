@@ -43,10 +43,26 @@ pub fn list_files(
         return Err("git ls-files fallito".into());
     }
     let wiki_prefix = wiki_root.map(|w| format!("{}/", w.trim_end_matches('/')));
+    let mut stdout = out.stdout;
+    // A wiki the project keeps out of git (`wiki` in .gitignore) is still the wiki: list it too.
+    if let Some(w) = wiki_root {
+        let ignored = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--"])
+            .arg(w)
+            .output()
+            .map_err(|e| e.to_string())?;
+        if ignored.status.success() {
+            stdout.push(0);
+            stdout.extend(ignored.stdout);
+        }
+    }
     let mut entries = Vec::new();
     let mut paths: Vec<PathBuf> = Vec::new();
-    for chunk in out.stdout.split(|&b| b == 0) {
-        if chunk.is_empty() {
+    let mut seen = std::collections::HashSet::new();
+    for chunk in stdout.split(|&b| b == 0) {
+        if chunk.is_empty() || !seen.insert(chunk) {
             continue;
         }
         let rel = String::from_utf8_lossy(chunk).to_string();
@@ -203,6 +219,24 @@ mod tests {
         assert!(paths.contains(&"wiki/ok.md"));
         let src = |p: &str| files.iter().find(|f| f.rel_path == p).map(|f| f.source);
         assert_eq!(src("tracked.rs"), Some(FileSource::Code));
+    }
+
+    #[test]
+    fn gitignored_wiki_is_still_listed() {
+        let td = tempfile::tempdir().unwrap();
+        let root = td.path();
+        git(root, &["init", "-q"]);
+        fs::write(root.join(".gitignore"), "wiki\nbuild/\n").unwrap();
+        fs::write(root.join("main.rs"), "fn main() {}\n").unwrap();
+        fs::create_dir_all(root.join("wiki/project")).unwrap();
+        fs::write(root.join("wiki/project/status.md"), "# Status\n").unwrap();
+        fs::write(root.join("wiki/.private-terms"), "secret\n").unwrap();
+        fs::create_dir_all(root.join("build")).unwrap();
+        fs::write(root.join("build/out.rs"), "x").unwrap();
+        let files = list_files(root, Some("wiki"), &[]).unwrap();
+        let paths: Vec<_> = files.iter().map(|f| f.rel_path.as_str()).collect();
+        assert_eq!(paths, [".gitignore", "main.rs", "wiki/project/status.md"]);
+        assert_eq!(files[2].source, FileSource::Wiki);
     }
 
     #[test]

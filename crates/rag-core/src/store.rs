@@ -438,6 +438,8 @@ impl Store {
         let mut ranked: Vec<(i64, f64)> = scores.into_iter().collect();
         ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0)));
         let mut out = Vec::new();
+        // Generated copies (one package per host) hold the same text: one slot each, not k.
+        let mut seen_text = std::collections::HashSet::new();
         for (pos, (chunk_id, score)) in ranked.into_iter().enumerate() {
             let hit = self
                 .conn
@@ -466,6 +468,9 @@ impl Store {
             let Some(hit) = hit else { continue };
             // ponytail: the glob filters the 100-candidate pool; a narrow glob may return fewer than k.
             if path_glob.is_some_and(|g| !glob_match(g, &hit.path)) {
+                continue;
+            }
+            if !seen_text.insert(hit.text.clone()) {
                 continue;
             }
             out.push(hit);
@@ -531,6 +536,21 @@ mod tests {
             .unwrap();
         assert!(!hits.is_empty());
         assert_eq!(hits[0].path, "a.rs");
+    }
+
+    #[test]
+    fn identical_copies_take_one_slot() {
+        let td = tempfile::tempdir().unwrap();
+        let store = Store::open_writer(&td.path().join("t.sqlite"), 4, "m").unwrap();
+        for (p, text) in [("canonical/a.py", "def lock(): pass"), ("plugins/x/a.py", "def lock(): pass"), ("b.py", "def lock_other(): pass")] {
+            let entry = FileEntry { rel_path: p.into(), source: FileSource::Code, size: 1, mtime: 1 };
+            let c = Chunk { start_line: 1, end_line: 1, text: text.into(), embed_text: p.into() };
+            store.replace_file(&entry, "sha", &[c], &[fake_vec(1.0)]).unwrap();
+        }
+        let hits = store.search(&fake_vec(1.0), "lock", FileSource::Code, 5, None).unwrap();
+        let paths: Vec<_> = hits.iter().map(|h| h.path.as_str()).collect();
+        assert_eq!(paths.len(), 2, "{paths:?}");
+        assert!(paths.contains(&"b.py"));
     }
 
     #[test]
