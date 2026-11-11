@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Empty } from '../components/Empty';
-import { Markdown } from '../components/Markdown';
-import { SidePanel } from '../components/SidePanel';
 import { useToast } from '../components/Toast';
 import { formatBytes, parseIndexStatus, type IndexStatus } from '../lib/rag-format';
 import { useNav } from '../state/nav';
@@ -50,17 +48,14 @@ export default function Ricerca() {
   const nav = useNav();
   const toast = useToast();
   const repo = project.snapshot?.repoPath ?? null;
-  const wikiRoot = project.snapshot?.wikiRoot ?? null;
   const job = rag.indexJob(repo);
 
   const [status, setStatus] = useState<IndexStatus | null>(null);
   const [harness, setHarness] = useState<HarnessRow[]>([]);
   const [query, setQuery] = useState('');
-  const [wiki, setWiki] = useState(false);
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
-  const [panel, setPanel] = useState<{ path: string; markdown: string } | null>(null);
 
   const refresh = useCallback(async () => {
     if (!repo) return;
@@ -93,7 +88,6 @@ export default function Ricerca() {
   const busy = job.running || !!rag.download;
   const state = indexState(status, job.running);
   const code = status?.bySource?.code;
-  const docs = status?.bySource?.wiki;
   const connected = harness.filter((h) => h.status !== 'absent');
 
   const rebuild = async (andIndex: boolean) => {
@@ -116,7 +110,7 @@ export default function Ricerca() {
     setSearching(true);
     setSearchError(null);
     try {
-      setHits((await invoke('rag_preview', { repo, query, wiki })) as SearchHit[]);
+      setHits((await invoke('rag_preview', { repo, query })) as SearchHit[]);
     } catch (e) {
       setHits(null);
       setSearchError(message(e));
@@ -125,26 +119,11 @@ export default function Ricerca() {
     }
   };
 
-  const wikiRel = (path: string): string | null => {
-    if (!wikiRoot) return null;
-    const root = wikiRoot.replace(/\\/g, '/').replace(/\/+$/, '');
-    const p = path.replace(/\\/g, '/');
-    return p.startsWith(`${root}/`) ? p.slice(root.length + 1) : null;
-  };
-
-  const openHit = async (rel: string) => {
-    try {
-      setPanel({ path: rel, markdown: await invoke<string>('read_wiki_file', { repo, relPath: rel }) });
-    } catch (e) {
-      setSearchError(message(e));
-    }
-  };
-
   return (
     <section className="view">
       <h1 className="view-title">Ricerca locale</h1>
       <p className="muted">
-        Indice del codice e della wiki di questo progetto, usato dalla ricerca qui sotto e dagli agenti via MCP.
+        Indice del codice di questo progetto, usato dalla ricerca qui sotto e dagli agenti via MCP. La wiki non è indicizzata: gli agenti la leggono partendo dall'indice delle pagine.
       </p>
       {status?.staleInstall && (
         <p className="banner banner-drift">Chiudi gli agenti collegati e riapri l'app per aggiornare il server MCP.</p>
@@ -166,7 +145,7 @@ export default function Ricerca() {
             <span className="rag-tile-label">Contenuto</span>
             <span className="rag-tile-value">{(status?.chunks ?? 0).toLocaleString('it-IT')} frammenti</span>
             <span className="rag-tile-sub">
-              codice {code?.files ?? 0} file, wiki e docs {docs?.files ?? 0} file
+              {code?.files ?? 0} file di codice; esclusi wiki, Markdown, dati e log
             </span>
           </div>
           <div className="rag-tile">
@@ -229,7 +208,7 @@ export default function Ricerca() {
         {job.progress && (
           <div className="ricerca-progress">
             <span className="muted">
-              {job.progress.phase === 'wiki' ? 'Documentazione' : 'Codice'}: {job.progress.done}/{job.progress.total}
+              Codice: {job.progress.done}/{job.progress.total}
             </span>
             <progress value={job.progress.done} max={job.progress.total || 1} />
           </div>
@@ -239,7 +218,7 @@ export default function Ricerca() {
 
       <section className="group">
         <h2 className="group-title">Prova una ricerca</h2>
-        <p className="muted">Gli stessi risultati che riceve un agente con search_code o search_wiki.</p>
+        <p className="muted">Gli stessi risultati che riceve un agente con search_code.</p>
         <div className="toolbar">
           <input
             className="input"
@@ -249,14 +228,6 @@ export default function Ricerca() {
             placeholder="Dove viene gestito il watcher?"
             aria-label="Domanda"
           />
-          <div className="segmented" role="group" aria-label="Dove cercare">
-            <button type="button" aria-pressed={!wiki} onClick={() => setWiki(false)}>
-              Codice
-            </button>
-            <button type="button" aria-pressed={wiki} onClick={() => setWiki(true)}>
-              Documentazione
-            </button>
-          </div>
           <button type="button" className="btn btn-strong" disabled={searching || !query.trim()} onClick={() => void runSearch()}>
             Cerca
           </button>
@@ -271,19 +242,12 @@ export default function Ricerca() {
           </p>
         )}
         {hits?.map((h, i) => {
-          const rel = wikiRel(h.path);
           const label = `${h.path}:${h.startLine}-${h.endLine}`;
           return (
             <div key={`${h.path}:${h.startLine}`} className="ricerca-hit">
               <div className="ricerca-hit-head">
                 <span className="rag-rank">#{i + 1}</span>
-                {rel ? (
-                  <button type="button" className="btn btn-quiet mono" onClick={() => void openHit(rel)}>
-                    {label}
-                  </button>
-                ) : (
-                  <span className="mono">{label}</span>
-                )}
+                <span className="mono">{label}</span>
                 {h.stale && <span className="badge badge-drift">cambiato dopo l'indice</span>}
                 <span className="ricerca-hit-meta">
                   <span>{matchLabel(h)}</span>
@@ -297,11 +261,6 @@ export default function Ricerca() {
         })}
       </section>
 
-      {panel && (
-        <SidePanel title={panel.path} onClose={() => setPanel(null)}>
-          <Markdown markdown={panel.markdown} pagePath={panel.path} />
-        </SidePanel>
-      )}
     </section>
   );
 }

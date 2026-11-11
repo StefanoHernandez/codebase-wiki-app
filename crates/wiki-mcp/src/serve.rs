@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -13,7 +14,7 @@ use rag_core::{
 };
 use wiki_core::{content_has_forbidden_term, read_private_terms};
 
-const INSTRUCTIONS: &str = "Local search over this repository's code and its Codebase Wiki. Use `search_code` for *where/how* questions (where is X defined, how does Y work, what calls Z) before grepping. Use `search_wiki` or the wiki pages for status, decisions, risks and *why*; it also covers README and docs/. Results marked `stale: true` changed after indexing: re-read those lines from disk before relying on them. Outside a repository (e.g. a desktop chat), call `list_repos` and pass `repo` to the other tools.";
+const INSTRUCTIONS: &str = "Local search over this repository's source code. Use `search_code` for *where/how* questions (where is X defined, how does Y work, what calls Z) before grepping; then read or grep the lines it points to. It does not cover the wiki or other docs: for status, decisions, risks, handoff and *why*, read the Codebase Wiki starting from its index page (Core map). Results marked `stale: true` changed after indexing: re-read those lines from disk before relying on them. Outside a repository (e.g. a desktop chat), call `list_repos` and pass `repo` to the other tools.";
 
 /// The repo the server was started in, if any. A server started outside a repo (Claude Desktop
 /// chat, Cowork) has none and every tool takes `repo` instead.
@@ -23,6 +24,10 @@ static REPO: OnceLock<PathBuf> = OnceLock::new();
 static EMBEDDER: Mutex<Option<(&'static str, rag_core::embed::Embedder)>> = Mutex::new(None);
 /// The optional reranker, loaded at the first search after its model is installed.
 static RERANKER: Mutex<Option<rag_core::embed::Reranker>> = Mutex::new(None);
+/// Time of the last search. The models (1–2 GB once ONNX Runtime has run) are dropped after
+/// IDLE without searches, so an open agent session does not hold that memory all day.
+static LAST_SEARCH: Mutex<Option<Instant>> = Mutex::new(None);
+const IDLE: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Clone)]
 pub struct WikiMcp {
@@ -48,25 +53,9 @@ fn default_k_code() -> usize {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-struct WikiSearchParams {
-    /// What to look for in the wiki pages.
-    query: String,
-    /// Number of results (default 5, max 20).
-    #[serde(default = "default_k_wiki")]
-    k: usize,
-    /// Repository to search: its absolute path or its folder name from `list_repos`.
-    /// Omit when the session is already inside a repository.
-    repo: Option<String>,
-}
-
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct RepoParams {
     /// Repository: its absolute path or its folder name from `list_repos`. Omit inside a repository.
     repo: Option<String>,
-}
-
-fn default_k_wiki() -> usize {
-    5
 }
 
 fn active_spec() -> Result<&'static rag_core::ModelSpec, String> {
@@ -83,7 +72,10 @@ impl WikiMcp {
         Self { tool_router: Self::tool_router() }
     }
 
-    fn search_inner(&self, repo: Option<&str>, query: &str, k: usize, wiki: bool, path_glob: Option<&str>) -> Result<String, String> {
+    fn search_inner(&self, repo: Option<&str>, query: &str, k: usize, path_glob: Option<&str>) -> Result<String, String> {
+        if let Ok(mut t) = LAST_SEARCH.lock() {
+            *t = Some(Instant::now());
+        }
         let root = &pick_repo(repo)?;
         let spec = active_spec()?;
         let store = Store::open_reader(&index_path(&repo_id(root)), spec.dims, spec.id)?;
@@ -99,7 +91,7 @@ impl WikiMcp {
             }
             guard.as_mut().map(|(_, e)| e.embed_query(query)).ok_or("embedder")??
         };
-        let source = if wiki { FileSource::Wiki } else { FileSource::Code };
+        let source = FileSource::Code;
         let hits = {
             let mut rr = RERANKER.lock().map_err(|e| e.to_string())?;
             if rr.is_none() {
@@ -198,12 +190,7 @@ fn tool_result(r: Result<String, String>) -> Result<CallToolResult, McpError> {
 impl WikiMcp {
     #[tool(description = "Search this repository's source code (hybrid keyword + semantic). Use it for where/how questions before grepping. Returns a header line, then one JSON object per hit: path, start_line, end_line, score, stale, snippet.")]
     fn search_code(&self, Parameters(p): Parameters<SearchParams>) -> Result<CallToolResult, McpError> {
-        tool_result(self.search_inner(p.repo.as_deref(), &p.query, p.k, false, p.path_glob.as_deref()))
-    }
-
-    #[tool(description = "Search this repository's documentation: the Codebase Wiki pages (status, decisions, risks, why) and other Markdown docs (README, docs/). Same output shape as search_code.")]
-    fn search_wiki(&self, Parameters(p): Parameters<WikiSearchParams>) -> Result<CallToolResult, McpError> {
-        tool_result(self.search_inner(p.repo.as_deref(), &p.query, p.k, true, None))
+        tool_result(self.search_inner(p.repo.as_deref(), &p.query, p.k, p.path_glob.as_deref()))
     }
 
     #[tool(description = "State of the local index for this repository: model, indexed commit, HEAD, files, chunks, files changed since indexing.")]
@@ -251,6 +238,7 @@ pub fn run(repo: Option<&std::path::Path>) -> Result<(), String> {
         Err(e) if repo.is_some() => return Err(e),
         Err(_) => eprintln!("codebase-wiki: avviato fuori da un repo, i tool chiedono `repo` (vedi list_repos)"),
     }
+    std::thread::spawn(unload_when_idle);
     let server = WikiMcp::new();
     let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     rt.block_on(async {
@@ -263,4 +251,23 @@ pub fn run(repo: Option<&std::path::Path>) -> Result<(), String> {
             .map_err(|e| e.to_string())
     })?;
     Ok(())
+}
+
+/// Drops the models after IDLE without searches; the next search loads them again (a few seconds).
+fn unload_when_idle() {
+    loop {
+        std::thread::sleep(Duration::from_secs(30));
+        let idle = LAST_SEARCH.lock().map(|t| t.is_some_and(|t| t.elapsed() > IDLE)).unwrap_or(false);
+        if idle {
+            if let Ok(mut e) = EMBEDDER.lock() {
+                *e = None;
+            }
+            if let Ok(mut r) = RERANKER.lock() {
+                *r = None;
+            }
+            if let Ok(mut t) = LAST_SEARCH.lock() {
+                *t = None;
+            }
+        }
+    }
 }

@@ -7,7 +7,7 @@ use std::path::Path;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const USAGE: &str = "usage: codebase-wiki-mcp <index|search|status|models|serve> [--repo P] [--json]
   index  [--repo P] [--json]
-  search [--repo P] [--wiki] [-k N] [--glob G] [--json] \"query\"
+  search [--repo P] [-k N] [--glob G] [--json] \"query\"
   status [--repo P] [--json]
   models list [--json] | models pull <id> [--json] | models search <q> [--json] | models add <hf_repo> [--json]
   serve  [--repo P]";
@@ -16,21 +16,19 @@ const USAGE: &str = "usage: codebase-wiki-mcp <index|search|status|models|serve>
 struct Args {
     positional: Vec<String>,
     json: bool,
-    wiki: bool,
     repo: Option<String>,
     k: Option<usize>,
     glob: Option<String>,
 }
 
 fn parse(raw: &[String]) -> Result<Args, String> {
-    let mut a = Args { positional: Vec::new(), json: false, wiki: false, repo: None, k: None, glob: None };
+    let mut a = Args { positional: Vec::new(), json: false, repo: None, k: None, glob: None };
     let mut it = raw.iter();
     while let Some(arg) = it.next() {
         let mut value = |name: &str| it.next().cloned().ok_or(format!("{name} vuole un valore"));
         match arg.as_str() {
             "--json" => a.json = true,
-            "--wiki" => a.wiki = true,
-            "--repo" => a.repo = Some(value("--repo")?),
+                "--repo" => a.repo = Some(value("--repo")?),
             "--glob" => a.glob = Some(value("--glob")?),
             "-k" => a.k = Some(value("-k")?.parse().map_err(|_| "-k vuole un numero".to_string())?),
             s if s.starts_with('-') && s.len() > 1 => return Err(format!("opzione sconosciuta: {s}")),
@@ -68,7 +66,7 @@ fn main() {
             if query.trim().is_empty() {
                 fail(args.json, "search vuole una domanda");
             }
-            std::process::exit(run::run_search(repo, args.wiki, args.k.unwrap_or(8), args.glob.as_deref(), &query, args.json));
+            std::process::exit(run::run_search(repo, args.k.unwrap_or(8), args.glob.as_deref(), &query, args.json));
         }
         #[cfg(all(feature = "embed", feature = "download"))]
         "status" => std::process::exit(run::run_status(repo, args.json)),

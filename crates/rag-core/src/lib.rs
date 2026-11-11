@@ -15,7 +15,7 @@ pub mod store;
 pub mod harness;
 
 pub use catalog::{catalog, default_model_id, model_by_id, ModelSpec, Pooling};
-pub use files::{excluded_globs_from_wiki, list_files, FileEntry, FileSource};
+pub use files::{list_files, FileEntry, FileSource};
 pub use paths::{
     bin_path, config_path, data_dir, ensure_data_dirs, index_path, model_dir, models_dir,
     read_config, write_config, RagConfig,

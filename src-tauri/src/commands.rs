@@ -738,15 +738,10 @@ pub struct RagSearchHit {
 pub async fn rag_preview(
     repo: String,
     query: String,
-    wiki: bool,
 ) -> Result<Vec<RagSearchHit>, String> {
     blocking(move || {
         let bin = rag_bin()?;
-        let mut args = vec!["search", "--repo", &repo, "-k", "8", "--json"];
-        if wiki {
-            args.push("--wiki");
-        }
-        args.push(&query);
+        let args = ["search", "--repo", &repo, "-k", "8", "--json", &query];
         let stdout = run_sidecar_output(&bin, &args)?;
         let text = String::from_utf8_lossy(&stdout);
         let mut hits = Vec::new();

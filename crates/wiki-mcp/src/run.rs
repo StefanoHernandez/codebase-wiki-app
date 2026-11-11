@@ -9,7 +9,7 @@ use std::time::Instant;
 use rag_core::{
     chunk::{chunk_file_tokens, filter_private_chunks, terms_hash},
     embed::load_embedder,
-    excluded_globs_from_wiki, list_files, model_by_id, read_config, FileSource,
+    list_files, model_by_id, read_config, FileSource,
     head_sha, index_path, model_dir, repo_id, resolve_repo, wiki_root, Store,
 };
 #[cfg(all(feature = "embed", feature = "download"))]
@@ -110,17 +110,10 @@ fn run_index_with_store(
         1
     };
     let start = Instant::now();
-    let globs = wiki
-        .as_ref()
-        .map(|w| excluded_globs_from_wiki(&root, w))
-        .unwrap_or_default();
-    let all = match list_files(&root, wiki.as_deref(), &globs) {
+    let all = match list_files(&root, wiki.as_deref()) {
         Ok(f) => f,
         Err(e) => return err(&e),
     };
-    let wiki_files: Vec<_> = all.iter().filter(|f| f.source == FileSource::Wiki).cloned().collect();
-    let code_files: Vec<_> = all.iter().filter(|f| f.source == FileSource::Code).cloned().collect();
-    emit(serde_json::json!({"event":"phase","phase":"wiki","total":wiki_files.len()}));
     let mut embedder = match load_embedder(spec, &model_dir(spec.id)) {
         Ok(e) => e,
         Err(e) => return err(&e),
@@ -130,17 +123,10 @@ fn run_index_with_store(
         Err(e) => return err(&e),
     };
     let mut skipped_private = 0u32;
-    let mut done_wiki = 0usize;
-    for entry in &wiki_files {
-        if index_one(&store, &root, entry, &mut embedder, &tok, terms.as_deref(), &mut skipped_private).is_err() {
-            return err("Indicizzazione file wiki fallita");
-        }
-        done_wiki += 1;
-        emit(serde_json::json!({"event":"progress","phase":"wiki","done":done_wiki,"total":wiki_files.len()}));
-    }
+    let code_files = &all;
     emit(serde_json::json!({"event":"phase","phase":"code","total":code_files.len()}));
     let mut done_code = 0usize;
-    for entry in &code_files {
+    for entry in code_files {
         if index_one(&store, &root, entry, &mut embedder, &tok, terms.as_deref(), &mut skipped_private).is_err() {
             return err("Indicizzazione file codice fallita");
         }
@@ -194,8 +180,8 @@ fn index_one(
 }
 
 #[cfg(all(feature = "embed", feature = "download"))]
-pub fn run_search(repo: Option<&Path>, wiki: bool, k: usize, glob: Option<&str>, query: &str, json: bool) -> i32 {
-    match search_hits(repo, wiki, k, glob, query) {
+pub fn run_search(repo: Option<&Path>, k: usize, glob: Option<&str>, query: &str, json: bool) -> i32 {
+    match search_hits(repo, k, glob, query) {
         Ok((hits, reranked)) => {
             for (h, stale) in hits {
                 if json {
@@ -229,7 +215,6 @@ pub fn run_search(repo: Option<&Path>, wiki: bool, k: usize, glob: Option<&str>,
 #[cfg(all(feature = "embed", feature = "download"))]
 fn search_hits(
     repo: Option<&Path>,
-    wiki: bool,
     k: usize,
     glob: Option<&str>,
     query: &str,
@@ -239,7 +224,7 @@ fn search_hits(
     let store = Store::open_reader(&index_path(&repo_id(&root)), spec.dims, spec.id)?;
     let mut embedder = load_embedder(spec, &model_dir(spec.id))?;
     let qv = embedder.embed_query(query)?;
-    let source = if wiki { FileSource::Wiki } else { FileSource::Code };
+    let source = FileSource::Code;
     let mut reranker = rag_core::embed::load_installed_reranker().unwrap_or_else(|e| {
         eprintln!("reranker: {e}");
         None

@@ -274,7 +274,7 @@ function Modelli() {
                 <td>
                   <span className="mono">{reranker.id}</span>
                   {reranker.installed && <span className="badge badge-ok ricerca-badge">attivo</span>}
-                  <div className="muted">Facoltativo: si attiva appena scaricato. Più preciso, ricerca un po' più lenta.</div>
+                  <div className="muted">Facoltativo, si attiva appena scaricato. Nelle nostre prove sul codice non migliora il primo risultato e usa circa 1 GB di memoria in più: puoi lasciarlo non installato.</div>
                 </td>
                 <td>{reranker.languages}</td>
                 <td>{reranker.sizeMb} MB</td>
@@ -373,7 +373,7 @@ function Agenti() {
     <section className="group">
       <h2 className="group-title">Collega agli agenti (MCP)</h2>
       <p className="muted">
-        Dà agli agenti gli strumenti search_code e search_wiki sull'indice locale. Dove app e CLI leggono lo stesso
+        Dà agli agenti lo strumento search_code sull'indice locale del codice. Dove app e CLI leggono lo stesso
         file basta un collegamento per entrambe; riavvia l'agente dopo aver collegato.
       </p>
       <table className="table">
