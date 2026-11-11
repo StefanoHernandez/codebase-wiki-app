@@ -152,7 +152,10 @@ fn is_lock_or_noise(rel: &str) -> bool {
     if lower.contains(".min.") || lower.ends_with(".map") {
         return true;
     }
-    false
+    // Data and logs: rows of numbers, not something a question is answered from. A 90 MB
+    // benchmark folder turned one repo into 77k chunks and a half-hour index.
+    const DATA: [&str; 7] = [".csv", ".tsv", ".jsonl", ".ndjson", ".log", ".err", ".out"];
+    DATA.iter().any(|e| lower.ends_with(e))
 }
 
 fn file_mtime(meta: &fs::Metadata) -> i64 {
@@ -195,6 +198,8 @@ mod tests {
         fs::create_dir_all(root.join("ignored")).unwrap();
         fs::write(root.join("ignored/x.rs"), "x").unwrap();
         fs::write(root.join("Cargo.lock"), "v1").unwrap();
+        fs::write(root.join("runs.csv"), "a,b\n1,2\n").unwrap();
+        fs::write(root.join("run.err"), "boom\n").unwrap();
         let mut bin = vec![0u8];
         bin.extend_from_slice(b"BIN");
         fs::write(root.join("bin.dat"), &bin).unwrap();
@@ -213,6 +218,7 @@ mod tests {
         assert!(paths.contains(&"untracked.rs"));
         assert!(!paths.iter().any(|p| p.contains("ignored/")));
         assert!(!paths.contains(&"Cargo.lock"));
+        assert!(!paths.contains(&"runs.csv") && !paths.contains(&"run.err"));
         assert!(!paths.contains(&"bin.dat"));
         assert!(!paths.iter().any(|p| p.contains(".private-terms")));
         assert!(!paths.contains(&"wiki/reports/hidden.md"));
