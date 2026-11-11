@@ -197,7 +197,12 @@ enum ResolvedPython {
 struct PythonCache {
     setting: Option<String>,
     resolved: Option<ResolvedPython>,
+    /// Last failed lookup for this setting. Lint now runs on every load, so without this every
+    /// watcher event would probe all candidates again; it expires so an install is picked up.
+    failed_at: Option<std::time::Instant>,
 }
+
+const PYTHON_RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
 
 static PYTHON_CACHE: OnceLock<Mutex<PythonCache>> = OnceLock::new();
 
@@ -359,13 +364,25 @@ fn find_python(setting: Option<&str>) -> Result<ResolvedPython, String> {
         if let Some(resolved) = cache.resolved.clone() {
             return Ok(resolved);
         }
+        if cache.failed_at.is_some_and(|t| t.elapsed() < PYTHON_RETRY_AFTER) {
+            return Err(PYTHON_NOT_FOUND_MSG.to_string());
+        }
     } else {
         cache.setting = normalized.clone();
         cache.resolved = None;
+        cache.failed_at = None;
     }
-    let resolved = resolve_python(normalized.as_deref())?;
-    cache.resolved = Some(resolved.clone());
-    Ok(resolved)
+    match resolve_python(normalized.as_deref()) {
+        Ok(resolved) => {
+            cache.resolved = Some(resolved.clone());
+            cache.failed_at = None;
+            Ok(resolved)
+        }
+        Err(e) => {
+            cache.failed_at = Some(std::time::Instant::now());
+            Err(e)
+        }
+    }
 }
 
 fn run_lint_with_python(
@@ -550,8 +567,7 @@ pub async fn workflow_prompt(
 ) -> Result<String, String> {
     blocking(move || {
         opened_repo(&app, &repo)?;
-        let dir = resource(&app, "workflows")?;
-        build_workflow_prompt(&workflow, None, &dir)
+        build_workflow_prompt(&workflow, None)
     })
     .await
 }

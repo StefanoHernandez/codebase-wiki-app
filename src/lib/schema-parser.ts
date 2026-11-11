@@ -238,6 +238,7 @@ export function parseSchemaMarkdown(markdown: string): SchemaConfig {
     agentEntryFile,
     logOrder,
     coreMap,
+    hasCoreMap: sections.has('core map'),
     budgets,
     topics,
     excludedGlobs,

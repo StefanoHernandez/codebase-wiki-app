@@ -494,24 +494,4 @@ sources:
         assert!(report.get("exitCode").is_some() && report.get("rawOutput").is_some());
         assert!(report["findings"][0].get("wikiRelPath").is_some());
     }
-
-    #[test]
-    fn test_build_workflow_prompt() {
-        let workflow_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("resources")
-            .join("workflows");
-
-        let p1 = build_workflow_prompt("wiki-init", None, &workflow_dir);
-        assert!(p1.is_ok());
-        assert!(p1.unwrap().contains("# /wiki-init"));
-
-        let p2 = build_workflow_prompt("wiki-ingest", Some("src/main.rs"), &workflow_dir);
-        assert!(p2.is_ok());
-        let p2_str = p2.unwrap();
-        assert!(p2_str.contains("# /wiki-ingest src/main.rs") || p2_str.contains("Target: src/main.rs"));
-
-        let p_bad = build_workflow_prompt("nonexistent-wf", None, &workflow_dir);
-        assert!(p_bad.is_err());
-    }
 }

@@ -242,3 +242,10 @@ test('no browser code imports Node modules (they are empty in the Tauri webview)
   walk(path.resolve(process.cwd(), 'src'));
   assert.deepEqual(offenders, []);
 });
+
+test('newest-first log: one blank line between the new entry and the next one', () => {
+  const log = '---\ntitle: Log\n---\n# Log\n\n## 2026-11-01 · Old · agent\n- What: x\n';
+  const out = appendLogEntry({ logMarkdown: log, date: '2026-11-11', title: 'New', what: 'w', evidence: 'e', ids: [], order: 'newest-first' });
+  assert.match(out, /- IDs: none\n\n## 2026-11-01 · Old · agent/);
+  assertOnlyChanged(log, out, [], ['## 2026-11-11 · New · human', '- What: w', '- Evidence: e', '- IDs: none', '']);
+});

@@ -9,7 +9,7 @@ import { listDecisions } from '../lib/decisions';
 import { trustTier, type TrustTier } from '../lib/trust';
 import { computeAttention, type AttentionItem } from '../lib/attention';
 import { applyEdits, type FileEdit } from '../lib/apply-edits';
-import { validateHumanActor } from '../lib/human-actions';
+import { personId, validateHumanActor } from '../lib/human-actions';
 import { wikiCompat, type WikiCompat } from '../lib/wiki-compat';
 import { parseNextSteps, parseRiskRegister, type NextSteps, type RiskRow } from '../lib/wiki-extras';
 import { clearNavRef } from './nav';
@@ -55,7 +55,10 @@ export interface ProjectState extends Derived {
   runLint(): Promise<LintReport | null>;
   /** Signing person, trimmed; '' when unset. Valid only when `actorError` is null. */
   actor: string;
+  /** Why the signing actions are disabled now (wiki state or name), or null. */
   actorError: string | null;
+  /** Problem with the name typed in settings only. */
+  nameError: string | null;
   setActor(name: string): void;
   loading: boolean;
   error: string | null;
@@ -108,6 +111,7 @@ export function readStoredPythonPath(): string {
 function actorProblem(name: string): string | null {
   try {
     validateHumanActor(name);
+    if (!personId(name)) return 'Il nome deve contenere almeno una lettera o una cifra latina (serve per human:<id>).';
     return null;
   } catch (e) {
     return message(e);
@@ -183,7 +187,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   currentRef.current = current;
 
   const derived = useMemo(() => derive(snapshot, lint), [snapshot, lint]);
-  const compat = useMemo(() => wikiCompat(lint), [lint]);
+  const compat = useMemo(() => wikiCompat(lint, derived.schema), [lint, derived.schema]);
   const clearLint = () => {
     lintSeq.current++;
     setLint(null);
@@ -280,7 +284,11 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       }
       return report;
     } catch (e) {
-      if (latest()) setLintError(message(e));
+      if (latest()) {
+        // A failed run must not leave an older report driving the gating.
+        setLint(null);
+        setLintError(message(e));
+      }
       throw e;
     } finally {
       if (seq === lintSeq.current) setLintRunning(false);
@@ -298,6 +306,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     async (edits: FileEdit[]) => {
       const repo = currentRef.current;
       if (!repo) throw new Error('Nessun progetto aperto.');
+      // Last line of defence: buttons are disabled too, but no write may slip through.
+      if (compat.writesBlocked) throw new Error(compat.writesBlocked);
       const logRel = derived.schema?.coreMap.log ?? DEFAULT_CORE_MAP.log;
       let failed: unknown;
       let attempted = false;
@@ -318,7 +328,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       }
       if (threw) throw failed;
     },
-    [reload, derived.schema?.coreMap.log],
+    [reload, derived.schema?.coreMap.log, compat.writesBlocked],
   );
 
   const setActor = useCallback((name: string) => {
@@ -379,7 +389,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       compat,
       runLint,
       actor: actor.trim(),
-      actorError: actor.trim() ? actorProblem(actor.trim()) : 'Imposta il tuo nome nelle impostazioni.',
+      nameError: actor.trim() ? actorProblem(actor.trim()) : 'Imposta il tuo nome nelle impostazioni.',
+      actorError:
+        compat.writesBlocked ??
+        (actor.trim() ? actorProblem(actor.trim()) : 'Imposta il tuo nome nelle impostazioni.'),
       setActor,
       loading,
       error,

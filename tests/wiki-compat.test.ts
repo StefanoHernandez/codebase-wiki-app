@@ -75,3 +75,17 @@ test('captured 0.13 JSON fixture: one banner upgrade, nothing blocked', () => {
 test('adopt prompt names the wiki root', () => {
   assert.equal(adoptPrompt('wiki'), '/wiki-init --adopt wiki');
 });
+
+test('a v1 SCHEMA (no Core map) is incompatible before any lint, and blocks writes', () => {
+  const c = wikiCompat(null, { hasCoreMap: false });
+  assert.equal(c.incompatible, true);
+  assert.match(c.writesBlocked ?? '', /formato vecchio/);
+  assert.equal(wikiCompat(null, { hasCoreMap: true }).writesBlocked, null);
+});
+
+test('a wiki newer than the plugin blocks writes and keeps update-plugin out of the adopt banner', () => {
+  const c = wikiCompat(report([up('format-version-newer')]), { hasCoreMap: true });
+  assert.equal(c.pluginOutdated, true);
+  assert.deepEqual(c.banner, []);
+  assert.match(c.writesBlocked ?? '', /aggiorna il plugin/);
+});

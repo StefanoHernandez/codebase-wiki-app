@@ -390,7 +390,7 @@ const THEMES: Array<{ id: ThemeChoice; label: string }> = [
 ];
 
 function Settings({ theme, setTheme, onClose }: { theme: ThemeChoice; setTheme(t: ThemeChoice): void; onClose(): void }) {
-  const { actor, actorError, setActor } = useProject();
+  const { actor, nameError, setActor } = useProject();
   // Draft keeps what is typed (spaces between names); the context exposes it trimmed.
   const [draft, setDraft] = useState(actor);
   const [pythonDraft, setPythonDraft] = useState(() => {
@@ -438,11 +438,11 @@ function Settings({ theme, setTheme, onClose }: { theme: ThemeChoice; setTheme(t
             setDraft(e.target.value);
             setActor(e.target.value);
           }}
-          aria-invalid={!!actorError}
+          aria-invalid={!!nameError}
           placeholder="Nome e cognome"
         />
-        <span className={actorError ? 'field-hint error-text' : 'field-hint'}>
-          {actorError ?? 'Firma le azioni che fai qui (approvato da, chiuso da).'}
+        <span className={nameError ? 'field-hint error-text' : 'field-hint'}>
+          {nameError ?? 'Firma le azioni che fai qui (approvato da, chiuso da).'}
         </span>
       </label>
       <label className="field">

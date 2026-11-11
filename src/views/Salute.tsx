@@ -351,6 +351,14 @@ export default function Salute() {
 
       <section className="group">
         <h2 className="group-title">Rischi</h2>
+        {project.risks && risksPage && (
+          <p className="muted">
+            Il registro mostra solo la tabella.{' '}
+            <button type="button" className="btn" onClick={() => openPage(risksPage.relPath)}>
+              Apri la pagina dei rischi
+            </button>
+          </p>
+        )}
         {project.risks ? (
           project.risks.length === 0 ? (
             <p className="muted">Il registro dei rischi è vuoto.</p>

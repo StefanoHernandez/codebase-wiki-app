@@ -15,7 +15,9 @@ Applicazione desktop **Tauri v2** + React: pannello di controllo per una persona
 
 - **Node.js** ≥ 22
 - **Rust** (toolchain stable) e **Cargo**
-- **Python 3** — per il lint strutturale (`resources/validate-wiki.py`, stdlib): l’app prova `python3` e, in alternativa, `python` (Windows); accetta solo interpreti che rispondono con «Python 3» a `--version`.
+- **Python 3.10 o più recente** — per il controllo strutturale (`resources/validate-wiki.py`, copia identica di quello del plugin Codebase Wiki LLM 0.13.0, solo stdlib). L’app cerca, in ordine: il percorso indicato nelle impostazioni, `python3.13`…`python3.10`, `python3` e `python` nel PATH, poi `/opt/homebrew/bin`, `/usr/local/bin`, `~/.pyenv/shims` e, su Windows, `py -3`. Su macOS, aperta dal Finder, non usa il `python3` di sistema se è più vecchio della 3.10. Senza Python l’app funziona ma non controlla la struttura: lo dice in Salute.
+- **Plugin Codebase Wiki LLM** nell’agente che usi (Claude Code, Codex, Antigravity): i bottoni «Copia prompt» copiano il comando del plugin (`/wiki-sync`, `/wiki-init --adopt <wiki>`), da incollare nell’agente.
+- **Wiki in formato 0.12.0 o più recente.** Una wiki v1 (senza `## Core map`) si apre in sola lettura con la schermata «Wiki non compatibile» e il prompt per aggiornarla.
 - **Git**
 - **Linux (build desktop):** `libwebkit2gtk-4.1-dev`, `libappindicator3-dev`, `librsvg2-dev`, `patchelf`, `libgtk-3-dev`
 

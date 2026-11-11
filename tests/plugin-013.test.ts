@@ -89,3 +89,10 @@ test('personId output matches the validator ACTOR_ID', () => {
     assert.match(personId(name), ACTOR_ID, name);
   }
 });
+
+test('validateHumanActor reads names like the validator: backticks stripped, no <…> anywhere', () => {
+  assert.throws(() => validateHumanActor('`unknown`'), /persona|segnaposto/);
+  assert.throws(() => validateHumanActor('Mario <PM>'), /segnaposto/);
+  assert.throws(() => validateHumanActor('``'), /segnaposto/);
+  assert.doesNotThrow(() => validateHumanActor('Mario Rossi'));
+});

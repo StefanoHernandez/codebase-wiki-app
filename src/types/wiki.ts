@@ -48,6 +48,8 @@ export interface SchemaConfig {
   /** SCHEMA Project profile `Log order`; default oldest-first. */
   logOrder: 'oldest-first' | 'newest-first';
   coreMap: Record<string, string>;
+  /** SCHEMA has a `## Core map` (or `<!-- wiki:core-map -->`). Without it the wiki is v1. */
+  hasCoreMap: boolean;
   budgets: SchemaBudgets;
   topics: SchemaTopic[];
   excludedGlobs: string[];

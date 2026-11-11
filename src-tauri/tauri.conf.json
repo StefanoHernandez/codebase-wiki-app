@@ -36,8 +36,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../resources/validate-wiki.py": "resources/validate-wiki.py",
-      "../resources/workflows/": "resources/workflows/"
+      "../resources/validate-wiki.py": "resources/validate-wiki.py"
     }
   }
 }

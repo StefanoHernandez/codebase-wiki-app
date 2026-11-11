@@ -39,8 +39,13 @@ test('parseNextSteps: translated heading with marker; missing section → null',
   assert.equal(parseNextSteps('# Tracker\n\n## Open\n'), null);
 });
 
-test('parseNextSteps: heading without marker still counts; plain summary line', () => {
-  assert.deepEqual(parseNextSteps('## Next steps\n\nAll calm.\n'), { summary: 'All calm.', steps: [] });
+test('parseNextSteps: a heading without the marker is ignored, as in the validator', () => {
+  assert.equal(parseNextSteps('## Next steps\n\nAll calm.\n'), null);
+});
+
+test('parseNextSteps: bullets and later prose are kept as steps', () => {
+  const md = '## Next steps\n<!-- wiki:next -->\n\n**In one line:** calm.\n\n- check T1\n* check T2\nthen ship\n';
+  assert.deepEqual(parseNextSteps(md), { summary: 'calm.', steps: ['check T1', 'check T2', 'then ship'] });
 });
 
 const RISKS = `# Risks

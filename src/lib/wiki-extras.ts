@@ -6,10 +6,14 @@ export interface NextSteps {
   steps: string[];
 }
 
-/** Tracker `## Next steps` (`<!-- wiki:next -->`): one-line state plus numbered steps. Null when absent. */
+/**
+ * Tracker `## Next steps`, read only when `<!-- wiki:next -->` is present (as the validator does):
+ * one-line state plus steps (numbered or `-`/`*` bullets). Other prose lines after the summary are
+ * kept as steps too, so nothing the agent wrote disappears silently. Null when absent.
+ */
 export function parseNextSteps(trackerMarkdown: string): NextSteps | null {
   const doc = parseDoc(trackerMarkdown);
-  const section = findSection(doc, 'next', ['Next steps']);
+  const section = findSection(doc, 'next', []);
   if (!section) return null;
   const masked = fenceMask(doc.lines);
   let summary: string | null = null;
@@ -17,9 +21,10 @@ export function parseNextSteps(trackerMarkdown: string): NextSteps | null {
   for (let i = section.start + 1; i < section.end; i++) {
     const line = doc.lines[i]!.trim();
     if (masked[i] || !line || line.startsWith('<!--')) continue;
-    const step = /^\d+[.)]\s+(.+)$/.exec(line);
+    const step = /^(?:\d+[.)]|[-*])\s+(.+)$/.exec(line);
     if (step) steps.push(step[1]!.trim());
-    else if (summary === null) summary = line.replace(/^\*\*[^*]+\*\*\s*/, '').trim() || null;
+    else if (summary === null && steps.length === 0) summary = line.replace(/^\*\*[^*]+\*\*\s*/, '').trim() || null;
+    else steps.push(line);
   }
   return { summary, steps };
 }

@@ -135,9 +135,10 @@ export function validateHumanActor(person: string): void {
   if (!person || typeof person !== 'string' || !person.trim()) {
     throw new Error('Serve il nome di una persona.');
   }
-  const trimmed = person.trim();
-  if (/^<.*>$/.test(trimmed)) {
-    throw new Error(`Il nome non può essere un segnaposto ('${trimmed}').`);
+  // Same reading as the validator's `unresolved()`: outer backticks stripped, no `<…>` anywhere.
+  const trimmed = person.trim().replace(/^`+|`+$/g, '').trim();
+  if (!trimmed || /<[^<>]+>/.test(trimmed)) {
+    throw new Error(`Il nome non può essere un segnaposto ('${person.trim()}').`);
   }
   if (DISALLOWED_ACTORS.has(trimmed.toLowerCase()) || isAgentName(trimmed)) {
     throw new Error(`'${trimmed}' non è una persona: firma con il tuo nome (niente agenti, process: o /).`);
@@ -212,10 +213,12 @@ export function appendLogEntry(params: {
   }
   const prefix = doc.lines.slice(0, insertAt);
   const suffix = doc.lines.slice(insertAt);
+  // One blank line between the new entry and the next one, as between every other entry.
+  const gap = suffix[0]?.trim() ? [''] : [];
   const merged =
     prefix.length > 0
-      ? [...prefix, ...(prefix[prefix.length - 1]?.trim() ? ['', ...entryLines] : entryLines), ...suffix]
-      : [...entryLines, ...suffix];
+      ? [...prefix, ...(prefix[prefix.length - 1]?.trim() ? ['', ...entryLines] : entryLines), ...gap, ...suffix]
+      : [...entryLines, ...gap, ...suffix];
   return renderDoc({ ...doc, lines: merged });
 }
 

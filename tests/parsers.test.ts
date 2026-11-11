@@ -155,8 +155,9 @@ test('parseSchemaMarkdown applies default fallback values when sections are miss
   assert.deepEqual(config.excludedGlobs, []);
 });
 
-test('parseSchemaMarkdown parses actual resources/default-schema.md file', () => {
-  const filePath = path.resolve(import.meta.dirname, '../resources/default-schema.md');
+// Copy of the plugin's v0.13.0 default schema (format 0.12.0), kept as a fixture: the app does not ship it.
+test('parseSchemaMarkdown parses the plugin default schema (v0.13.0)', () => {
+  const filePath = path.resolve(import.meta.dirname, 'fixtures/default-schema-0.13.0.md');
   const content = fs.readFileSync(filePath, 'utf-8');
   const config = parseSchemaMarkdown(content);
   assert.equal(config.language, 'English');
@@ -174,6 +175,8 @@ test('parseSchemaMarkdown parses actual resources/default-schema.md file', () =>
   assert.equal(config.topics[0].name, 'architecture');
   assert.equal(config.topics[0].path, 'architecture.md');
   assert.deepEqual(config.excludedGlobs, []);
+  assert.equal(config.hasCoreMap, true);
+  assert.equal(config.logOrder, 'oldest-first');
 });
 
 test('parseSchemaMarkdown reads profile table outside fences only when a fence splits the section', () => {
