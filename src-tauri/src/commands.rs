@@ -762,6 +762,16 @@ pub async fn rag_harness_apply(harness: String, action: String) -> Result<(), St
     .await
 }
 
+#[tauri::command]
+pub async fn rag_models_search(q: String) -> Result<serde_json::Value, String> {
+    blocking(move || {
+        let bin = rag_bin()?;
+        let stdout = run_sidecar_output(&bin, &["models", "search", &q, "--json"])?;
+        serde_json::from_slice(&stdout).map_err(|e| e.to_string())
+    })
+    .await
+}
+
 fn parse_harness_action(action: &str) -> Result<rag_core::harness::HarnessAction, String> {
     use rag_core::harness::HarnessAction;
     match action {

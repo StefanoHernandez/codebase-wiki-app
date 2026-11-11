@@ -50,6 +50,8 @@ export default function Ricerca() {
     after: string;
   } | null>(null);
   const [harnessBusy, setHarnessBusy] = useState(false);
+  const [hfQuery, setHfQuery] = useState('');
+  const [hfHits, setHfHits] = useState<Array<{ id: string; downloads: number }>>([]);
 
   const job = rag.jobFor(repo);
 
@@ -122,6 +124,16 @@ export default function Ricerca() {
       setSearchError(e instanceof Error ? e.message : String(e));
     } finally {
       setHarnessBusy(false);
+    }
+  };
+
+  const searchHf = async () => {
+    if (!hfQuery.trim()) return;
+    try {
+      const hits = (await invoke('rag_models_search', { q: hfQuery })) as Array<{ id: string; downloads: number }>;
+      setHfHits(hits);
+    } catch (e) {
+      setSearchError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -264,6 +276,26 @@ export default function Ricerca() {
             ))}
           </tbody>
         </table>
+        <div className="field">
+          <input
+            className="input"
+            value={hfQuery}
+            onChange={(e) => setHfQuery(e.target.value)}
+            placeholder="Cerca modelli su Hugging Face"
+          />
+          <button type="button" className="btn" onClick={() => void searchHf()}>
+            Cerca su Hugging Face
+          </button>
+        </div>
+        {hfHits.length ? (
+          <ul>
+            {hfHits.map((h) => (
+              <li key={h.id}>
+                {h.id} ({h.downloads} download)
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
       <section className="card">
         <h2>Collega agli agenti</h2>

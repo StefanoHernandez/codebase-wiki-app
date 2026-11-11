@@ -9,7 +9,7 @@ const USAGE: &str = "usage: codebase-wiki-mcp <index|search|status|models|serve>
   index  [--repo P] [--json]
   search [--repo P] [--wiki] [-k N] [--glob G] [--json] \"query\"
   status [--repo P] [--json]
-  models list [--json] | models pull <id> [--json] | models search <q> [--json]
+  models list [--json] | models pull <id> [--json] | models search <q> [--json] | models add <hf_repo> [--json]
   serve  [--repo P]";
 
 /// Parsed command line: flags anywhere, everything else positional (in order).
@@ -92,13 +92,24 @@ fn models_cmd(args: &Args) {
         Some("list") => {
             let installed = rag_core::models::installed_ids();
             if json {
-                let catalog: Vec<_> = rag_core::catalog()
+                let mut catalog: Vec<_> = rag_core::catalog()
                     .iter()
                     .map(|m| {
                         serde_json::json!({"id": m.id, "dims": m.dims, "size_mb": m.size_mb, "languages": m.languages,
                             "note": m.note, "tested": m.tested, "installed": installed.iter().any(|i| i == m.id)})
                     })
                     .collect();
+                for custom in rag_core::models::custom_catalog_rows() {
+                    catalog.push(serde_json::json!({
+                        "id": custom.id,
+                        "dims": custom.dims,
+                        "size_mb": custom.size_mb,
+                        "languages": custom.languages,
+                        "note": custom.note,
+                        "tested": custom.tested,
+                        "installed": installed.iter().any(|i| i == &custom.id),
+                    }));
+                }
                 println!("{}", serde_json::json!({"installed": installed, "catalog": catalog}));
             } else {
                 println!("Installati: {}", installed.join(", "));
@@ -126,6 +137,16 @@ fn models_cmd(args: &Args) {
             match rag_core::models::hf_search(&q) {
                 Ok(hits) if json => println!("{}", serde_json::to_string(&hits).unwrap_or_default()),
                 Ok(hits) => hits.iter().for_each(|h| println!("{} ({})", h.id, h.downloads)),
+                Err(e) => fail(json, &e.to_string()),
+            }
+        }
+        Some("add") => {
+            let Some(repo_name) = args.positional.get(2) else {
+                fail(json, "models add vuole un repo Hugging Face");
+            };
+            match rag_core::models::add_custom(repo_name) {
+                Ok(id) if json => println!("{}", serde_json::json!({"event":"done","model":id})),
+                Ok(id) => println!("Aggiunto modello {id}"),
                 Err(e) => fail(json, &e.to_string()),
             }
         }
