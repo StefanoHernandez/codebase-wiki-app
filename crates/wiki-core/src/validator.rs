@@ -199,7 +199,7 @@ mod tests {
         let report = run_structural_lint_with(python, &repo, "wiki", &script);
         let _ = fs::remove_dir_all(&repo);
         assert_eq!(report.error, None, "{}", report.raw_output);
-        assert_eq!(report.validator.as_deref(), Some("0.13.0"));
+        assert_eq!(report.validator.as_deref(), Some("0.13.1"));
         assert!(report.upgrades.iter().any(|u| u.code == "core-map-missing"));
     }
 }
