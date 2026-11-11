@@ -26,6 +26,26 @@ const RESERVED_NAMES: &[&str] = &[
     ".wikidir",
 ];
 
+pub const WIKI_OUTSIDE_REPO: &str = "La cartella della wiki punta fuori dal repository.";
+
+/// Canonical wiki directory must lie inside the canonical repository root.
+pub fn ensure_wiki_inside_repo(repo_path: &Path, wiki_root: &str) -> Result<(), String> {
+    if !is_valid_wiki_folder_name(wiki_root) {
+        return Err(format!("Invalid wiki root: {}", wiki_root));
+    }
+    let wiki_dir = repo_path.join(wiki_root);
+    let canon_repo = repo_path
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize repo path: {}", e))?;
+    let canon_wiki = wiki_dir
+        .canonicalize()
+        .map_err(|e| format!("Wiki directory not found: {}", e))?;
+    if !canon_wiki.starts_with(&canon_repo) {
+        return Err(WIKI_OUTSIDE_REPO.to_string());
+    }
+    Ok(())
+}
+
 pub fn is_valid_wiki_folder_name(name: &str) -> bool {
     if name.is_empty() {
         return false;

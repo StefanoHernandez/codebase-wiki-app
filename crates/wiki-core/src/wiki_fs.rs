@@ -107,12 +107,17 @@ pub fn read_repo_file_safe(
     })
 }
 
+const PRIVATE_TERMS_SYMLINK_MSG: &str =
+    "`.private-terms` è un collegamento simbolico: scrittura rifiutata.";
+const FORBIDDEN_TERM_MSG: &str = "Il testo contiene un termine vietato da .private-terms.";
+
 fn resolve_wiki_target(
     repo_path: &Path,
     wiki_root: &str,
     wiki_rel_path: &str,
     access: &str,
 ) -> Result<std::path::PathBuf, String> {
+    wiki_resolver::ensure_wiki_inside_repo(repo_path, wiki_root)?;
     if !wiki_resolver::is_valid_wiki_folder_name(wiki_root) {
         return Err(format!("Invalid wiki root: {}", wiki_root));
     }
@@ -167,6 +172,14 @@ pub fn write_wiki_file_safe(
 
     // `.private-terms` in the wiki root is the source of truth for forbidden terms.
     let private_terms_path = wiki_dir.join(".private-terms");
+    match fs::symlink_metadata(&private_terms_path) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            return Err(PRIVATE_TERMS_SYMLINK_MSG.into());
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("Cannot read .private-terms, write refused: {}", e)),
+    }
     // Fail closed: an existing but unreadable terms file refuses the write.
     let terms_content = match fs::read_to_string(&private_terms_path) {
         Ok(text) => Some(text),
@@ -182,7 +195,7 @@ pub fn write_wiki_file_safe(
                 continue;
             }
             if lower_content.contains(&term.to_lowercase()) {
-                return Err(format!("Content contains forbidden sensitive term: '{}'", term));
+                return Err(FORBIDDEN_TERM_MSG.into());
             }
         }
     }
@@ -297,6 +310,87 @@ mod tests {
         }
         assert!(leftovers.is_empty(), "temp files left behind: {:?}", leftovers);
     }
+
+    #[test]
+    fn wiki_symlink_outside_repo_is_rejected() {
+        let td = TestDir::new("wiki_outside");
+        let repo = td.path();
+        #[cfg(unix)]
+        {
+            let outside = td.path().parent().unwrap().join(format!(
+                "outside_wiki_{}_{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            let _ = fs::remove_dir_all(&outside);
+            fs::create_dir_all(&outside).unwrap();
+            fs::write(outside.join("SCHEMA.md"), "# Schema\n").unwrap();
+            std::os::unix::fs::symlink(&outside, repo.join("wiki")).unwrap();
+            let err = load_wiki_snapshot(repo, "wiki").unwrap_err();
+            assert_eq!(err, wiki_resolver::WIKI_OUTSIDE_REPO);
+        }
+    }
+
+    #[test]
+    fn private_terms_symlink_refuses_write() {
+        let td = TestDir::new("terms_symlink");
+        let repo = td.path();
+        let wiki = repo.join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(wiki.join("terms.txt"), wiki.join(".private-terms")).unwrap();
+            fs::write(wiki.join("terms.txt"), "secret\n").unwrap();
+            let err = write_wiki_file_safe(repo, "wiki", "p.md", "clean").unwrap_err();
+            assert_eq!(err, PRIVATE_TERMS_SYMLINK_MSG);
+        }
+    }
+
+    #[test]
+    fn forbidden_term_error_never_contains_term() {
+        let td = TestDir::new("term_leak");
+        let repo = td.path();
+        let wiki = repo.join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        fs::write(wiki.join(".private-terms"), "ULTRA_SECRET_CODENAME\n").unwrap();
+        let err =
+            write_wiki_file_safe(repo, "wiki", "p.md", "mentions ULTRA_SECRET_CODENAME here")
+                .unwrap_err();
+        assert_eq!(err, FORBIDDEN_TERM_MSG);
+        assert!(!err.to_lowercase().contains("ultra_secret"));
+    }
+
+    #[test]
+    fn symlinked_dir_outside_wiki_is_not_snapshotted() {
+        let td = TestDir::new("snap_symlink");
+        let repo = td.path();
+        let wiki = repo.join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        fs::write(wiki.join("SCHEMA.md"), "# Schema\n").unwrap();
+        fs::write(wiki.join("inside.md"), "in").unwrap();
+        #[cfg(unix)]
+        {
+            let outside = repo.parent().unwrap().join(format!(
+                "leak_{}_{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            let _ = fs::remove_dir_all(&outside);
+            fs::create_dir_all(&outside).unwrap();
+            fs::write(outside.join("leaked.md"), "oops").unwrap();
+            std::os::unix::fs::symlink(&outside, wiki.join("link")).unwrap();
+            let snapshot = load_wiki_snapshot(repo, "wiki").unwrap();
+            let paths: Vec<_> = snapshot.pages.iter().map(|p| p.wiki_rel_path.as_str()).collect();
+            assert!(paths.iter().any(|p| *p == "inside.md"));
+            assert!(!paths.iter().any(|p| p.contains("leaked")));
+        }
+    }
 }
 
 fn clean_source_path(raw: &str) -> String {
@@ -358,31 +452,46 @@ fn collect_wiki_pages_recursive(
         Err(_) => return,
     };
 
+    let canon_base = base_dir.canonicalize().ok();
+
     for entry in entries.flatten() {
         let path = entry.path();
         if path.file_name().map(|n| n == ".private-terms").unwrap_or(false) {
             continue;
         }
-        if path.is_dir() {
+        let is_symlink = fs::symlink_metadata(&path)
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false);
+        if is_symlink {
+            if fs::metadata(&path).map(|m| m.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            if !path.extension().map(|ext| ext == "md").unwrap_or(false) {
+                continue;
+            }
+        } else if path.is_dir() {
             collect_wiki_pages_recursive(&path, base_dir, pages);
-        } else if path.is_file() && path.extension().map(|ext| ext == "md").unwrap_or(false) {
-            if let Ok(canon_base) = base_dir.canonicalize() {
-                if let Ok(canon_path) = path.canonicalize() {
-                    if !canon_path.starts_with(&canon_base) {
-                        continue;
-                    }
-                }
-            }
-            if let Ok(rel) = path.strip_prefix(base_dir) {
-                let wiki_rel_path = rel.to_string_lossy().replace('\\', "/");
-                let content = fs::read_to_string(&path).unwrap_or_default();
-                let size_bytes = path.metadata().map(|m| m.len()).unwrap_or(0);
-                pages.push(WikiPageEntry {
-                    wiki_rel_path,
-                    content,
-                    size_bytes,
-                });
-            }
+            continue;
+        } else if !path.is_file() || !path.extension().map(|ext| ext == "md").unwrap_or(false) {
+            continue;
+        }
+
+        let keep = match (&canon_base, path.canonicalize()) {
+            (Some(base), Ok(canon_path)) => canon_path.starts_with(base),
+            _ => false,
+        };
+        if !keep {
+            continue;
+        }
+        if let Ok(rel) = path.strip_prefix(base_dir) {
+            let wiki_rel_path = rel.to_string_lossy().replace('\\', "/");
+            let content = fs::read_to_string(&path).unwrap_or_default();
+            let size_bytes = path.metadata().map(|m| m.len()).unwrap_or(0);
+            pages.push(WikiPageEntry {
+                wiki_rel_path,
+                content,
+                size_bytes,
+            });
         }
     }
 }
@@ -429,6 +538,7 @@ pub fn collect_repo_files_recursive(
 /// Reads every wiki page plus git/drift state. Lint is not run here; call
 /// `validator::run_structural_lint` separately.
 pub fn load_wiki_snapshot(repo_path: &Path, wiki_root: &str) -> Result<WikiSnapshot, String> {
+    wiki_resolver::ensure_wiki_inside_repo(repo_path, wiki_root)?;
     let wiki_dir = repo_path.join(wiki_root);
     if !wiki_dir.is_dir() {
         return Err(format!("Wiki directory '{}' not found", wiki_root));

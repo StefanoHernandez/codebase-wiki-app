@@ -16,7 +16,10 @@ pub use wiki_fs::{
     collect_repo_files_recursive, load_wiki_snapshot, read_repo_file_safe, read_wiki_file_safe,
     write_wiki_file_safe, RepoFilePayload, WikiPageEntry, WikiSnapshot,
 };
-pub use wiki_resolver::{is_valid_wiki_folder_name, resolve_wiki_root, WikiResolution};
+pub use wiki_resolver::{
+    ensure_wiki_inside_repo, is_valid_wiki_folder_name, resolve_wiki_root, WikiResolution,
+    WIKI_OUTSIDE_REPO,
+};
 
 #[cfg(test)]
 mod tests {
@@ -178,7 +181,7 @@ mod tests {
             "This document has secret_api_key in it.",
         );
         assert!(write_bad.is_err(), "Must reject write containing forbidden term");
-        assert!(write_bad.unwrap_err().contains("SECRET_API_KEY"));
+        assert_eq!(write_bad.unwrap_err(), "Il testo contiene un termine vietato da .private-terms.");
 
         let write_ok = write_wiki_file_safe(
             repo,
@@ -414,7 +417,7 @@ sources:
         assert!(write_wiki_file_safe(repo, "wiki", "p.md", "Acme inc").is_ok());
         fs::write(wiki.join(".private-terms"), "# comment\nacme\n").unwrap();
         let err = write_wiki_file_safe(repo, "wiki", "p.md", "Acme inc").unwrap_err();
-        assert!(err.contains("acme"));
+        assert_eq!(err, "Il testo contiene un termine vietato da .private-terms.");
         assert!(write_wiki_file_safe(repo, "wiki", "p.md", "clean").is_ok());
         assert!(write_wiki_file_safe(repo, "wiki", ".private-terms", "x").is_err());
         assert!(write_wiki_file_safe(repo, "wiki", "sub/.private-terms", "x").is_err());

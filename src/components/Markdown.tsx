@@ -36,6 +36,18 @@ export function Markdown({ markdown, pagePath = '', onOpenPage, wikiLinkTargets 
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
+          img({ src, alt }) {
+            const url = src ?? '';
+            if (/^https?:/i.test(url)) {
+              const label = alt?.trim() || url;
+              return (
+                <a href={url} rel="noreferrer" target="_blank">
+                  {label}
+                </a>
+              );
+            }
+            return <img src={url} alt={alt} />;
+          },
           a({ href = '', children }) {
             const internal = !isExternal(href) && /\.md(#.*)?$/i.test(href);
             if (internal && onOpenPage) {
