@@ -64,16 +64,17 @@ pub fn list_files(
             continue;
         }
         let full = root.join(&rel_path);
-        if !full.is_file() {
+        // A symlink is never followed: it could point outside the repo (~/.ssh, another project).
+        let Ok(meta) = fs::symlink_metadata(&full) else { continue };
+        if !meta.file_type().is_file() {
             continue;
         }
-        let meta = fs::metadata(&full).map_err(|e| e.to_string())?;
         let size = meta.len();
         if size > MAX_BYTES {
             continue;
         }
         let mtime = file_mtime(&meta);
-        if is_binary_or_non_utf8(&full)? {
+        if is_binary_or_non_utf8(&full).unwrap_or(true) {
             continue;
         }
         let source = if let Some(ref wp) = wiki_prefix {
@@ -87,10 +88,10 @@ pub fn list_files(
                 }
                 FileSource::Wiki
             } else {
-                FileSource::Code
+                prose_or_code(&rel_str)
             }
         } else {
-            FileSource::Code
+            prose_or_code(&rel_str)
         };
         entries.push(FileEntry {
             rel_path: rel_str,
@@ -109,6 +110,17 @@ pub fn excluded_globs_from_wiki(root: &Path, wiki_root: &str) -> Vec<String> {
         return Vec::new();
     };
     parse_excluded_globs(&text)
+}
+
+/// Prose outside the wiki (README, docs/, plans) is searched with the wiki, not with the code:
+/// `search_code` answers "where is it in the code", `search_wiki` "what do the docs say".
+fn prose_or_code(rel: &str) -> FileSource {
+    let lower = rel.to_lowercase();
+    if [".md", ".mdx", ".markdown", ".rst", ".txt", ".adoc"].iter().any(|e| lower.ends_with(e)) {
+        FileSource::Wiki
+    } else {
+        FileSource::Code
+    }
 }
 
 fn is_lock_or_noise(rel: &str) -> bool {
@@ -189,5 +201,30 @@ mod tests {
         assert!(!paths.iter().any(|p| p.contains(".private-terms")));
         assert!(!paths.contains(&"wiki/reports/hidden.md"));
         assert!(paths.contains(&"wiki/ok.md"));
+        let src = |p: &str| files.iter().find(|f| f.rel_path == p).map(|f| f.source);
+        assert_eq!(src("tracked.rs"), Some(FileSource::Code));
+    }
+
+    #[test]
+    fn prose_goes_with_the_wiki() {
+        assert_eq!(prose_or_code("docs/plan.md"), FileSource::Wiki);
+        assert_eq!(prose_or_code("README.MD"), FileSource::Wiki);
+        assert_eq!(prose_or_code("src/a.tsx"), FileSource::Code);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn symlinks_are_not_followed() {
+        let td = tempfile::tempdir().unwrap();
+        let root = td.path().join("repo");
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q"]);
+        let outside = td.path().join("secret.rs");
+        fs::write(&outside, "fn secret() {}").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("link.rs")).unwrap();
+        fs::write(root.join("real.rs"), "fn real() {}").unwrap();
+        let files = list_files(&root, None, &[]).unwrap();
+        let paths: Vec<_> = files.iter().map(|f| f.rel_path.as_str()).collect();
+        assert_eq!(paths, vec!["real.rs"]);
     }
 }

@@ -50,6 +50,9 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Sidecar placeholder (tauri-build checks externalBin; tests do not run it)
+        run: node scripts/build-sidecar.mjs --stub
+
       - name: Cargo tests
         run: cargo test --workspace
 
@@ -107,6 +110,12 @@ jobs:
       # macOS notarization / signing: set APPLE_CERTIFICATE, APPLE_SIGNING_IDENTITY, etc.
       # Windows code signing: set WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD, etc.
 
+      # beforeBuildCommand builds the sidecar for TAURI_ENV_TARGET_TRIPLE (or the host). The macOS
+      # universal bundle also needs the lipo'd binary, built here explicitly.
+      - name: MCP sidecar (macOS universal)
+        if: matrix.platform == 'macos-latest'
+        run: node scripts/build-sidecar.mjs universal-apple-darwin
+
       - name: Build Tauri bundles (draft release)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: tauri-apps/tauri-action@v0
@@ -118,9 +127,6 @@ jobs:
           releaseName: Release ${{ github.ref_name }}
           releaseDraft: true
           prerelease: false
-
-      - name: Build MCP sidecar
-        run: node scripts/build-sidecar.mjs
 
       - name: Build Tauri bundles
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}

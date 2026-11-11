@@ -1,13 +1,16 @@
 use std::path::Path;
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use sqlite_vec::sqlite3_vec_init;
 use wiki_core::glob_match;
 
 use crate::chunk::Chunk;
 use crate::files::{FileEntry, FileSource};
 
-const SCHEMA_VERSION: &str = "1";
+const SCHEMA_VERSION: &str = "2";
+
+/// Shown when a reader finds no index for this repo.
+pub const NO_INDEX_MSG: &str = "Indice assente per questo repo: apri Codebase Wiki → Ricerca → Indicizza";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hit {
@@ -26,47 +29,105 @@ pub struct Store {
 }
 
 fn load_sqlite_vec() {
-    unsafe {
-        rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
-            sqlite3_vec_init as *const (),
-        )));
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| unsafe {
+        #[allow(clippy::missing_transmute_annotations)]
+        rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(sqlite3_vec_init as *const ())));
+    });
+}
+
+fn source_str(s: FileSource) -> &'static str {
+    match s {
+        FileSource::Code => "code",
+        FileSource::Wiki => "wiki",
     }
 }
 
+/// Deletes the DB and its WAL side files. The caller must have dropped every connection first.
+pub fn delete_index(path: &Path) -> Result<(), String> {
+    for suffix in ["", "-wal", "-shm"] {
+        let mut s = path.as_os_str().to_owned();
+        s.push(suffix);
+        match std::fs::remove_file(std::path::PathBuf::from(s)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("Impossibile cancellare l'indice: {e}")),
+        }
+    }
+    Ok(())
+}
+
 impl Store {
-    pub fn open(path: &Path, dims: u32, model_id: &str) -> Result<Self, String> {
+    /// Writer (only `index`): opens the index, rebuilding it when the model, dims or schema changed.
+    pub fn open_writer(path: &Path, dims: u32, model_id: &str) -> Result<Self, String> {
         if path.exists() {
-            if let Ok(existing) = Self::open_existing(path) {
-                let meta_model = existing.meta_get("model_id")?;
-                let meta_dims = existing.meta_get("dims")?;
-                if meta_model.as_deref() != Some(model_id) || meta_dims.as_deref() != Some(&dims.to_string()) {
-                    std::fs::remove_file(path).map_err(|e| e.to_string())?;
-                } else {
-                    return Ok(existing);
+            let keep = match Self::connect(path, false) {
+                Ok(existing) => {
+                    let ok = existing.meta_get("model_id").ok().flatten().as_deref() == Some(model_id)
+                        && existing.meta_get("dims").ok().flatten() == Some(dims.to_string())
+                        && existing.meta_get("schema_version").ok().flatten().as_deref() == Some(SCHEMA_VERSION);
+                    drop(existing);
+                    ok
                 }
-            } else {
-                let _ = std::fs::remove_file(path);
+                Err(_) => false,
+            };
+            if keep {
+                let mut s = Self::connect(path, false)?;
+                s.dims = dims;
+                return Ok(s);
             }
+            delete_index(path)?;
         }
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        load_sqlite_vec();
-        let conn = Connection::open(path).map_err(|e| e.to_string())?;
-        conn.pragma_update(None, "journal_mode", "WAL")
-            .map_err(|e| e.to_string())?;
-        let s = Self { conn, dims };
+        let mut s = Self::connect(path, false)?;
+        s.dims = dims;
         s.init_schema(model_id)?;
         Ok(s)
     }
 
-    fn open_existing(path: &Path) -> Result<Self, String> {
+    /// Reader (`serve`, `search`, `status`, the app): never creates, deletes or migrates anything.
+    pub fn open_reader(path: &Path, dims: u32, model_id: &str) -> Result<Self, String> {
+        if !path.exists() {
+            return Err(NO_INDEX_MSG.into());
+        }
+        let mut s = Self::connect(path, true)?;
+        let model = s.meta_get("model_id").ok().flatten();
+        let ok = model.as_deref() == Some(model_id)
+            && s.meta_get("dims").ok().flatten() == Some(dims.to_string())
+            && s.meta_get("schema_version").ok().flatten().as_deref() == Some(SCHEMA_VERSION);
+        if !ok {
+            return Err(format!(
+                "L'indice è stato creato con un altro modello o formato ({}): apri Codebase Wiki → Ricerca → Indicizza",
+                model.unwrap_or_else(|| "sconosciuto".into())
+            ));
+        }
+        s.dims = dims;
+        Ok(s)
+    }
+
+    fn connect(path: &Path, read_only: bool) -> Result<Self, String> {
         load_sqlite_vec();
-        let conn = Connection::open(path).map_err(|e| e.to_string())?;
+        let conn = if read_only {
+            Connection::open_with_flags(
+                path,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            )
+        } else {
+            Connection::open(path)
+        }
+        .map_err(|e| e.to_string())?;
+        if !read_only {
+            conn.pragma_update(None, "journal_mode", "WAL").map_err(|e| e.to_string())?;
+        }
+        conn.pragma_update(None, "foreign_keys", "ON").map_err(|e| e.to_string())?;
+        conn.busy_timeout(std::time::Duration::from_secs(5)).map_err(|e| e.to_string())?;
         Ok(Self { conn, dims: 0 })
     }
 
     fn init_schema(&self, model_id: &str) -> Result<(), String> {
+        // FTS holds the embedded text (path + heading + chunk), so a file name or path finds its chunks.
         self.conn
             .execute_batch(
                 "CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
@@ -76,19 +137,17 @@ impl Store {
                    id INTEGER PRIMARY KEY, file_id INTEGER REFERENCES files(id) ON DELETE CASCADE,
                    start_line INTEGER, end_line INTEGER, text TEXT);
                  CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
-                   text, content='chunks', content_rowid='id', tokenize='unicode61 remove_diacritics 2');",
+                   body, source UNINDEXED, tokenize='unicode61 remove_diacritics 2');",
             )
             .map_err(|e| e.to_string())?;
-        let vec_code = format!(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS vec_code USING vec0(embedding float[{}] distance_metric=cosine);",
-            self.dims
-        );
-        let vec_wiki = format!(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS vec_wiki USING vec0(embedding float[{}] distance_metric=cosine);",
-            self.dims
-        );
-        self.conn.execute_batch(&vec_code).map_err(|e| e.to_string())?;
-        self.conn.execute_batch(&vec_wiki).map_err(|e| e.to_string())?;
+        for table in ["vec_code", "vec_wiki"] {
+            self.conn
+                .execute_batch(&format!(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS {table} USING vec0(embedding float[{}] distance_metric=cosine);",
+                    self.dims
+                ))
+                .map_err(|e| e.to_string())?;
+        }
         self.meta_set("schema_version", SCHEMA_VERSION)?;
         self.meta_set("model_id", model_id)?;
         self.meta_set("dims", &self.dims.to_string())?;
@@ -105,104 +164,110 @@ impl Store {
         Ok(())
     }
 
+    pub fn meta_get(&self, key: &str) -> Result<Option<String>, String> {
+        self.conn
+            .query_row("SELECT value FROM meta WHERE key=?1", params![key], |r| r.get(0))
+            .optional()
+            .map_err(|e| e.to_string())
+    }
+
     pub fn file_record(&self, path: &str) -> Result<Option<(u64, i64, String)>, String> {
-        let mut stmt = self
+        self.conn
+            .query_row("SELECT size, mtime, sha256 FROM files WHERE path=?1", params![path], |r| {
+                Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)?, r.get::<_, String>(2)?))
+            })
+            .optional()
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn file_source(&self, path: &str) -> Result<Option<FileSource>, String> {
+        let s: Option<String> = self
             .conn
-            .prepare("SELECT size, mtime, sha256 FROM files WHERE path=?1")
+            .query_row("SELECT source FROM files WHERE path=?1", params![path], |r| r.get(0))
+            .optional()
             .map_err(|e| e.to_string())?;
-        let mut rows = stmt.query(params![path]).map_err(|e| e.to_string())?;
-        if let Some(row) = rows.next().map_err(|e| e.to_string())? {
-            let size: i64 = row.get(0).map_err(|e| e.to_string())?;
-            let mtime: i64 = row.get(1).map_err(|e| e.to_string())?;
-            let sha: String = row.get(2).map_err(|e| e.to_string())?;
-            return Ok(Some((size as u64, mtime, sha)));
-        }
-        Ok(None)
+        Ok(s.map(|s| if s == "wiki" { FileSource::Wiki } else { FileSource::Code }))
+    }
+
+    /// Same content, new mtime (checkout, touch): remember it so the next run skips the hash.
+    pub fn touch_file(&self, path: &str, size: u64, mtime: i64) -> Result<(), String> {
+        self.conn
+            .execute("UPDATE files SET size=?2, mtime=?3 WHERE path=?1", params![path, size as i64, mtime])
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     pub fn counts(&self) -> Result<(u64, u64), String> {
-        let files: i64 = self
-            .conn
-            .query_row("SELECT count(*) FROM files", [], |r| r.get(0))
-            .map_err(|e| e.to_string())?;
-        let chunks: i64 = self
-            .conn
-            .query_row("SELECT count(*) FROM chunks", [], |r| r.get(0))
-            .map_err(|e| e.to_string())?;
+        let files: i64 = self.conn.query_row("SELECT count(*) FROM files", [], |r| r.get(0)).map_err(|e| e.to_string())?;
+        let chunks: i64 = self.conn.query_row("SELECT count(*) FROM chunks", [], |r| r.get(0)).map_err(|e| e.to_string())?;
         Ok((files as u64, chunks as u64))
     }
 
-    pub fn meta_get(&self, key: &str) -> Result<Option<String>, String> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT value FROM meta WHERE key=?1")
+    /// Indexed files whose size or mtime differ on disk now, or that are gone. No hashing: cheap enough per search.
+    pub fn count_changed(&self, root: &Path) -> Result<u64, String> {
+        let mut stmt = self.conn.prepare("SELECT path, size, mtime FROM files").map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)))
             .map_err(|e| e.to_string())?;
-        let mut rows = stmt.query(params![key]).map_err(|e| e.to_string())?;
-        if let Some(row) = rows.next().map_err(|e| e.to_string())? {
-            return Ok(row.get(0).ok());
+        let mut n = 0;
+        for (path, size, mtime) in rows.flatten() {
+            if file_changed(root, &path, size as u64, mtime) {
+                n += 1;
+            }
         }
-        Ok(None)
+        Ok(n)
     }
 
-    pub fn replace_file(
-        &self,
-        entry: &FileEntry,
-        sha: &str,
-        chunks: &[Chunk],
-        vectors: &[Vec<f32>],
-    ) -> Result<(), String> {
+    fn delete_file_rows(tx: &rusqlite::Transaction<'_>, file_id: i64) -> Result<(), String> {
+        let chunk_ids: Vec<i64> = {
+            let mut stmt = tx.prepare("SELECT id FROM chunks WHERE file_id=?1").map_err(|e| e.to_string())?;
+            let ids = stmt
+                .query_map(params![file_id], |r| r.get(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<i64>, _>>()
+                .map_err(|e| e.to_string())?;
+            ids
+        };
+        for cid in chunk_ids {
+            for table in ["chunks_fts", "vec_code", "vec_wiki"] {
+                tx.execute(&format!("DELETE FROM {table} WHERE rowid=?1"), params![cid])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        tx.execute("DELETE FROM chunks WHERE file_id=?1", params![file_id]).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// One transaction per file: a killed run leaves every file either old or new, never half.
+    pub fn replace_file(&self, entry: &FileEntry, sha: &str, chunks: &[Chunk], vectors: &[Vec<f32>]) -> Result<(), String> {
         if chunks.len() != vectors.len() {
             return Err("chunks/vectors length mismatch".into());
         }
         let tx = self.conn.unchecked_transaction().map_err(|e| e.to_string())?;
-        let file_id: i64 = tx
-            .query_row(
-                "SELECT id FROM files WHERE path=?1",
-                params![entry.rel_path],
-                |r| r.get(0),
-            )
-            .unwrap_or(0);
-        if file_id != 0 {
-            let mut ids_stmt = tx
-                .prepare("SELECT id FROM chunks WHERE file_id=?1")
-                .map_err(|e| e.to_string())?;
-            let chunk_ids: Vec<i64> = ids_stmt
-                .query_map(params![file_id], |r| r.get(0))
-                .map_err(|e| e.to_string())?
-                .filter_map(Result::ok)
-                .collect();
-            for cid in chunk_ids {
-                tx.execute("DELETE FROM chunks_fts WHERE rowid=?1", params![cid])
-                    .ok();
-                tx.execute("DELETE FROM vec_code WHERE rowid=?1", params![cid]).ok();
-                tx.execute("DELETE FROM vec_wiki WHERE rowid=?1", params![cid]).ok();
-            }
-            tx.execute("DELETE FROM chunks WHERE file_id=?1", params![file_id])
-                .map_err(|e| e.to_string())?;
+        let old: Option<i64> = tx
+            .query_row("SELECT id FROM files WHERE path=?1", params![entry.rel_path], |r| r.get(0))
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if let Some(fid) = old {
+            Self::delete_file_rows(&tx, fid)?;
         }
         tx.execute(
             "INSERT INTO files(path,source,size,mtime,sha256) VALUES(?1,?2,?3,?4,?5)
              ON CONFLICT(path) DO UPDATE SET source=excluded.source,size=excluded.size,mtime=excluded.mtime,sha256=excluded.sha256",
-            params![
-                entry.rel_path,
-                match entry.source {
-                    FileSource::Code => "code",
-                    FileSource::Wiki => "wiki",
-                },
-                entry.size as i64,
-                entry.mtime,
-                sha
-            ],
+            params![entry.rel_path, source_str(entry.source), entry.size as i64, entry.mtime, sha],
         )
         .map_err(|e| e.to_string())?;
         let file_id: i64 = tx
-            .query_row(
-                "SELECT id FROM files WHERE path=?1",
-                params![entry.rel_path],
-                |r| r.get(0),
-            )
+            .query_row("SELECT id FROM files WHERE path=?1", params![entry.rel_path], |r| r.get(0))
             .map_err(|e| e.to_string())?;
+        let vec_table = match entry.source {
+            FileSource::Code => "vec_code",
+            FileSource::Wiki => "vec_wiki",
+        };
         for (chunk, vec) in chunks.iter().zip(vectors.iter()) {
+            if vec.len() != self.dims as usize {
+                return Err(format!("vector has {} dims, index has {}", vec.len(), self.dims));
+            }
             tx.execute(
                 "INSERT INTO chunks(file_id,start_line,end_line,text) VALUES(?1,?2,?3,?4)",
                 params![file_id, chunk.start_line, chunk.end_line, chunk.text],
@@ -210,59 +275,58 @@ impl Store {
             .map_err(|e| e.to_string())?;
             let chunk_id = tx.last_insert_rowid();
             tx.execute(
-                "INSERT INTO chunks_fts(rowid,text) VALUES(?1,?2)",
-                params![chunk_id, chunk.text],
+                "INSERT INTO chunks_fts(rowid,body,source) VALUES(?1,?2,?3)",
+                params![chunk_id, chunk.embed_text, source_str(entry.source)],
             )
             .map_err(|e| e.to_string())?;
-            let blob = vector_to_blob(vec);
-            let vec_table = match entry.source {
-                FileSource::Code => "vec_code",
-                FileSource::Wiki => "vec_wiki",
-            };
             tx.execute(
                 &format!("INSERT INTO {vec_table}(rowid, embedding) VALUES (?1, ?2)"),
-                params![chunk_id, blob],
+                params![chunk_id, vector_to_blob(vec)],
             )
             .map_err(|e| e.to_string())?;
         }
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    /// Drops files (and their chunks, FTS rows and vectors) that are no longer in the file list.
+    pub fn remove_missing(&self, paths_now: &[String]) -> Result<u64, String> {
+        let keep: std::collections::HashSet<&str> = paths_now.iter().map(String::as_str).collect();
+        let gone: Vec<i64> = {
+            let mut stmt = self.conn.prepare("SELECT id, path FROM files").map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            rows.into_iter().filter(|(_, p)| !keep.contains(p.as_str())).map(|(id, _)| id).collect()
+        };
+        let tx = self.conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        for fid in &gone {
+            Self::delete_file_rows(&tx, *fid)?;
+            tx.execute("DELETE FROM files WHERE id=?1", params![fid]).map_err(|e| e.to_string())?;
+        }
         tx.commit().map_err(|e| e.to_string())?;
-        Ok(())
+        Ok(gone.len() as u64)
     }
 
-    pub fn remove_missing(&self, paths_now: &[String]) -> Result<(), String> {
-        if paths_now.is_empty() {
-            self.conn
-                .execute("DELETE FROM files", [])
-                .map_err(|e| e.to_string())?;
-            return Ok(());
-        }
-        let placeholders: String = paths_now.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let sql = format!("SELECT id, path FROM files WHERE path NOT IN ({placeholders})");
-        let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
-        let params: Vec<&dyn rusqlite::ToSql> =
-            paths_now.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
-        let rows = stmt
-            .query_map(rusqlite::params_from_iter(params.iter()), |r| {
-                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
-            })
-            .map_err(|e| e.to_string())?;
-        for row in rows.flatten() {
-            let (fid, path) = row;
-            self.conn
-                .execute("DELETE FROM files WHERE id=?1", params![fid])
-                .map_err(|e| e.to_string())?;
-            let _ = path;
-        }
-        Ok(())
-    }
-
+    /// FTS query: words OR'ed, so a natural-language question still matches its keywords.
     fn fts_query(raw: &str) -> String {
-        raw.split_whitespace()
-            .map(|t| format!("\"{}\"", t.replace('"', "")))
+        const STOP: &[&str] = &[
+            "the", "and", "for", "how", "what", "where", "which", "does", "with", "from", "this", "that", "are", "is",
+            "dove", "come", "cosa", "che", "del", "della", "delle", "dei", "degli", "nel", "nella", "per", "con", "una",
+            "uno", "gli", "sono", "quale", "quali", "viene",
+        ];
+        let mut seen = std::collections::HashSet::new();
+        raw.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .map(|t| t.to_lowercase())
+            .filter(|t| t.chars().count() >= 3 && !STOP.contains(&t.as_str()))
+            .filter(|t| seen.insert(t.clone()))
+            .map(|t| format!("\"{t}\""))
             .collect::<Vec<_>>()
-            .join(" ")
+            .join(" OR ")
     }
 
+    /// Hybrid search: top 50 by BM25 and top 50 by vector for one source, fused with RRF (k=60).
     pub fn search(
         &self,
         query_vec: &[f32],
@@ -271,70 +335,75 @@ impl Store {
         k: usize,
         path_glob: Option<&str>,
     ) -> Result<Vec<Hit>, String> {
+        const RRF_K: f64 = 60.0;
+        const POOL: usize = 50;
         let vec_table = match source {
             FileSource::Code => "vec_code",
             FileSource::Wiki => "vec_wiki",
         };
-        let q_blob = vector_to_blob(query_vec);
-        let mut vector_hits: Vec<(i64, f64)> = Vec::new();
-        let sql = format!(
-            "SELECT rowid, distance FROM {vec_table} WHERE embedding MATCH ?1 ORDER BY distance LIMIT 50"
-        );
-        let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(params![q_blob], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, f64>(1)?)))
-            .map_err(|e| e.to_string())?;
-        for (i, row) in rows.flatten().enumerate() {
-            let rank = (i + 1) as f64;
-            vector_hits.push((row.0, 1.0 / (60.0 + rank)));
+        let mut scores: std::collections::HashMap<i64, f64> = std::collections::HashMap::new();
+        {
+            let mut stmt = self
+                .conn
+                .prepare(&format!(
+                    "SELECT rowid FROM {vec_table} WHERE embedding MATCH ?1 AND k = {POOL} ORDER BY distance"
+                ))
+                .map_err(|e| e.to_string())?;
+            let ids = stmt
+                .query_map(params![vector_to_blob(query_vec)], |r| r.get::<_, i64>(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            for (i, id) in ids.into_iter().enumerate() {
+                *scores.entry(id).or_default() += 1.0 / (RRF_K + (i + 1) as f64);
+            }
         }
         let fts_q = Self::fts_query(query_text);
-        let mut fts_hits: Vec<(i64, f64)> = Vec::new();
         if !fts_q.is_empty() {
             let mut stmt = self
                 .conn
-                .prepare(
-                    "SELECT rowid, bm25(chunks_fts) AS score FROM chunks_fts WHERE chunks_fts MATCH ?1 ORDER BY score LIMIT 50",
-                )
+                .prepare(&format!(
+                    "SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ?1 AND source = ?2 ORDER BY bm25(chunks_fts) LIMIT {POOL}"
+                ))
                 .map_err(|e| e.to_string())?;
-            let rows = stmt
-                .query_map(params![fts_q], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, f64>(1)?)))
+            let ids = stmt
+                .query_map(params![fts_q, source_str(source)], |r| r.get::<_, i64>(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
-            for (i, row) in rows.flatten().enumerate() {
-                let rank = (i + 1) as f64;
-                fts_hits.push((row.0, 1.0 / (60.0 + rank)));
+            for (i, id) in ids.into_iter().enumerate() {
+                *scores.entry(id).or_default() += 1.0 / (RRF_K + (i + 1) as f64);
             }
         }
-        let mut scores: std::collections::HashMap<i64, f64> = std::collections::HashMap::new();
-        for (id, s) in fts_hits.iter().chain(vector_hits.iter()) {
-            *scores.entry(*id).or_default() += s;
-        }
         let mut ranked: Vec<(i64, f64)> = scores.into_iter().collect();
-        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0)));
         let mut out = Vec::new();
-        for (chunk_id, score) in ranked.into_iter().take(k.max(50)) {
-            let hit: Hit = self.conn.query_row(
-                "SELECT f.path, c.start_line, c.end_line, f.source, c.text
-                 FROM chunks c JOIN files f ON f.id=c.file_id WHERE c.id=?1",
-                params![chunk_id],
-                |r| {
-                    let src: String = r.get(3)?;
-                    let source = if src == "wiki" { FileSource::Wiki } else { FileSource::Code };
-                    Ok(Hit {
-                        path: r.get(0)?,
-                        start_line: r.get::<_, i32>(1)? as u32,
-                        end_line: r.get::<_, i32>(2)? as u32,
-                        source,
-                        score,
-                        text: r.get(4)?,
-                        chunk_id,
-                    })
-                },
-            ).map_err(|e| e.to_string())?;
-            if let Some(glob) = path_glob {
-                if !glob_match(glob, &hit.path) {
-                    continue;
-                }
+        for (chunk_id, score) in ranked {
+            let hit = self
+                .conn
+                .query_row(
+                    "SELECT f.path, c.start_line, c.end_line, f.source, c.text
+                     FROM chunks c JOIN files f ON f.id=c.file_id WHERE c.id=?1",
+                    params![chunk_id],
+                    |r| {
+                        let src: String = r.get(3)?;
+                        Ok(Hit {
+                            path: r.get(0)?,
+                            start_line: r.get::<_, i64>(1)? as u32,
+                            end_line: r.get::<_, i64>(2)? as u32,
+                            source: if src == "wiki" { FileSource::Wiki } else { FileSource::Code },
+                            score,
+                            text: r.get(4)?,
+                            chunk_id,
+                        })
+                    },
+                )
+                .optional()
+                .map_err(|e| e.to_string())?;
+            let Some(hit) = hit else { continue };
+            // ponytail: the glob filters the 100-candidate pool; a narrow glob may return fewer than k.
+            if path_glob.is_some_and(|g| !glob_match(g, &hit.path)) {
+                continue;
             }
             out.push(hit);
             if out.len() >= k {
@@ -342,6 +411,22 @@ impl Store {
             }
         }
         Ok(out)
+    }
+}
+
+/// A file changed since indexing when it is gone or its size or mtime differ.
+pub fn file_changed(root: &Path, rel_path: &str, size: u64, mtime: i64) -> bool {
+    match std::fs::metadata(root.join(rel_path)) {
+        Ok(m) => {
+            let now = m
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            m.len() != size || now != mtime
+        }
+        Err(_) => true,
     }
 }
 
@@ -362,7 +447,7 @@ mod tests {
     fn rrf_fuses_fts_and_vector() {
         let td = tempfile::tempdir().unwrap();
         let path = td.path().join("t.sqlite");
-        let store = Store::open(&path, 4, "m").unwrap();
+        let store = Store::open_writer(&path, 4, "m").unwrap();
         let entry = FileEntry {
             rel_path: "a.rs".into(),
             source: FileSource::Code,
@@ -389,7 +474,7 @@ mod tests {
     fn replace_twice_one_copy() {
         let td = tempfile::tempdir().unwrap();
         let path = td.path().join("t.sqlite");
-        let store = Store::open(&path, 4, "m").unwrap();
+        let store = Store::open_writer(&path, 4, "m").unwrap();
         let entry = FileEntry {
             rel_path: "b.rs".into(),
             source: FileSource::Code,
@@ -419,8 +504,60 @@ mod tests {
     fn model_change_rebuilds_db() {
         let td = tempfile::tempdir().unwrap();
         let path = td.path().join("t.sqlite");
-        let _ = Store::open(&path, 4, "a").unwrap();
-        let store2 = Store::open(&path, 8, "b").unwrap();
+        let _ = Store::open_writer(&path, 4, "a").unwrap();
+        let store2 = Store::open_writer(&path, 8, "b").unwrap();
         assert_eq!(store2.meta_get("model_id").unwrap().as_deref(), Some("b"));
+    }
+
+    fn chunk(text: &str, path: &str) -> Chunk {
+        Chunk { start_line: 1, end_line: 1, text: text.into(), embed_text: format!("{path}\n{text}") }
+    }
+
+    fn entry(path: &str, source: FileSource) -> FileEntry {
+        FileEntry { rel_path: path.into(), source, size: 1, mtime: 1 }
+    }
+
+    #[test]
+    fn removed_file_does_not_break_search_and_leaves_no_rows() {
+        let td = tempfile::tempdir().unwrap();
+        let store = Store::open_writer(&td.path().join("t.sqlite"), 4, "m").unwrap();
+        store.replace_file(&entry("a.rs", FileSource::Code), "s", &[chunk("watcher debounce", "a.rs")], &[fake_vec(1.0)]).unwrap();
+        store.replace_file(&entry("b.rs", FileSource::Code), "s", &[chunk("other code", "b.rs")], &[fake_vec(0.9)]).unwrap();
+        assert_eq!(store.remove_missing(&["b.rs".into()]).unwrap(), 1);
+        let n = |sql: &str| -> i64 { store.conn.query_row(sql, [], |r| r.get(0)).unwrap() };
+        assert_eq!(n("SELECT count(*) FROM chunks"), 1);
+        assert_eq!(n("SELECT count(*) FROM chunks_fts"), 1);
+        assert_eq!(n("SELECT count(*) FROM vec_code"), 1);
+        let hits = store.search(&fake_vec(1.0), "watcher", FileSource::Code, 5, None).unwrap();
+        assert_eq!(hits.iter().map(|h| h.path.as_str()).collect::<Vec<_>>(), vec!["b.rs"]);
+    }
+
+    #[test]
+    fn natural_language_query_hits_fts_and_sources_stay_apart() {
+        let td = tempfile::tempdir().unwrap();
+        let store = Store::open_writer(&td.path().join("t.sqlite"), 4, "m").unwrap();
+        store.replace_file(&entry("w.rs", FileSource::Code), "s", &[chunk("fn debounce() {}", "w.rs")], &[vec![0.0, 0.0, 1.0, 0.0]]).unwrap();
+        store.replace_file(&entry("wiki/p.md", FileSource::Wiki), "s", &[chunk("debounce notes", "wiki/p.md")], &[vec![0.0, 0.0, 1.0, 0.0]]).unwrap();
+        // Vector points elsewhere: only FTS can find it, and only with OR'ed words.
+        let hits = store.search(&[1.0, 0.0, 0.0, 0.0], "dove è il debounce del watcher", FileSource::Code, 5, None).unwrap();
+        assert_eq!(hits[0].path, "w.rs");
+        assert!(hits.iter().all(|h| h.source == FileSource::Code));
+        // A path word matches through the FTS body (path + text).
+        let by_path = store.search(&[1.0, 0.0, 0.0, 0.0], "p.md", FileSource::Wiki, 5, None).unwrap();
+        assert_eq!(by_path[0].path, "wiki/p.md");
+    }
+
+    #[test]
+    fn reader_never_creates_or_rebuilds() {
+        let td = tempfile::tempdir().unwrap();
+        let path = td.path().join("t.sqlite");
+        assert!(Store::open_reader(&path, 4, "m").is_err());
+        assert!(!path.exists(), "reader must not create the DB");
+        let w = Store::open_writer(&path, 4, "m").unwrap();
+        w.replace_file(&entry("a.rs", FileSource::Code), "s", &[chunk("x", "a.rs")], &[fake_vec(1.0)]).unwrap();
+        drop(w);
+        assert!(Store::open_reader(&path, 8, "other").is_err());
+        let r = Store::open_reader(&path, 4, "m").unwrap();
+        assert_eq!(r.counts().unwrap(), (1, 1), "a reader with another model must not wipe the index");
     }
 }

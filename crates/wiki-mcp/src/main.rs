@@ -1,152 +1,134 @@
 mod run;
-
-const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    if args.iter().any(|a| a == "--version" || a == "-V") {
-        println!("codebase-wiki-mcp {VERSION}");
-        return;
-    }
-    let Some(cmd) = args.get(1) else {
-        eprintln!("usage: codebase-wiki-mcp <index|search|status|models|serve>");
-        std::process::exit(1);
-    };
-    match cmd.as_str() {
-        #[cfg(all(feature = "embed", feature = "download"))]
-        "index" => {
-            let json = args.iter().any(|a| a == "--json");
-            let repo = repo_flag(&args);
-            std::process::exit(run::run_index(repo.as_deref().map(std::path::Path::new), json));
-        }
-        #[cfg(all(feature = "embed", feature = "download"))]
-        "search" => {
-            let wiki = args.iter().any(|a| a == "--wiki");
-            let json = args.iter().any(|a| a == "--json");
-            let k = flag_usize(&args, "-k").unwrap_or(8);
-            let glob = flag_str(&args, "--glob");
-            let repo = repo_flag(&args);
-            let query = args.last().cloned().unwrap_or_default();
-            if json {
-                let _ = json;
-            }
-            std::process::exit(run::run_search(
-                repo.as_deref().map(std::path::Path::new),
-                wiki,
-                k,
-                glob.as_deref(),
-                &query,
-            ));
-        }
-        #[cfg(all(feature = "embed", feature = "download"))]
-        "status" => {
-            let json = args.iter().any(|a| a == "--json");
-            let repo = repo_flag(&args);
-            std::process::exit(run::run_status(repo.as_deref().map(std::path::Path::new), json));
-        }
-        #[cfg(feature = "download")]
-        "models" => models_cmd(&args),
-        "serve" => {
-            #[cfg(all(feature = "embed", feature = "download"))]
-            {
-                if let Err(e) = serve::run(args.clone()) {
-                    eprintln!("{e}");
-                    std::process::exit(1);
-                }
-                return;
-            }
-            #[cfg(not(all(feature = "embed", feature = "download")))]
-            {
-                eprintln!("serve richiede feature embed");
-                std::process::exit(1);
-            }
-        }
-        _ => {
-            eprintln!("comando sconosciuto: {cmd}");
-            std::process::exit(1);
-        }
-    }
-}
-
 #[cfg(all(feature = "embed", feature = "download"))]
 mod serve;
 
-fn repo_flag(args: &[String]) -> Option<String> {
-    args.iter()
-        .position(|a| a == "--repo")
-        .and_then(|i| args.get(i + 1).cloned())
+use std::path::Path;
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const USAGE: &str = "usage: codebase-wiki-mcp <index|search|status|models|serve> [--repo P] [--json]
+  index  [--repo P] [--json]
+  search [--repo P] [--wiki] [-k N] [--glob G] [--json] \"query\"
+  status [--repo P] [--json]
+  models list [--json] | models pull <id> [--json] | models search <q> [--json]
+  serve  [--repo P]";
+
+/// Parsed command line: flags anywhere, everything else positional (in order).
+struct Args {
+    positional: Vec<String>,
+    json: bool,
+    wiki: bool,
+    repo: Option<String>,
+    k: Option<usize>,
+    glob: Option<String>,
 }
 
-fn flag_usize(args: &[String], name: &str) -> Option<usize> {
-    args.iter()
-        .position(|a| a == name)
-        .and_then(|i| args.get(i + 1))
-        .and_then(|s| s.parse().ok())
+fn parse(raw: &[String]) -> Result<Args, String> {
+    let mut a = Args { positional: Vec::new(), json: false, wiki: false, repo: None, k: None, glob: None };
+    let mut it = raw.iter();
+    while let Some(arg) = it.next() {
+        let mut value = |name: &str| it.next().cloned().ok_or(format!("{name} vuole un valore"));
+        match arg.as_str() {
+            "--json" => a.json = true,
+            "--wiki" => a.wiki = true,
+            "--repo" => a.repo = Some(value("--repo")?),
+            "--glob" => a.glob = Some(value("--glob")?),
+            "-k" => a.k = Some(value("-k")?.parse().map_err(|_| "-k vuole un numero".to_string())?),
+            s if s.starts_with('-') && s.len() > 1 => return Err(format!("opzione sconosciuta: {s}")),
+            _ => a.positional.push(arg.clone()),
+        }
+    }
+    Ok(a)
 }
 
-fn flag_str(args: &[String], name: &str) -> Option<String> {
-    args.iter()
-        .position(|a| a == name)
-        .and_then(|i| args.get(i + 1).cloned())
+fn fail(json: bool, msg: &str) -> ! {
+    if json {
+        println!("{}", serde_json::json!({"event":"error","message":msg}));
+    } else {
+        eprintln!("{msg}");
+    }
+    std::process::exit(1)
+}
+
+fn main() {
+    let raw: Vec<String> = std::env::args().skip(1).collect();
+    if matches!(raw.first().map(String::as_str), Some("--version" | "-V")) {
+        println!("codebase-wiki-mcp {VERSION}");
+        return;
+    }
+    let json_hint = raw.iter().any(|a| a == "--json");
+    let args = parse(&raw).unwrap_or_else(|e| fail(json_hint, &format!("{e}\n{USAGE}")));
+    let Some(cmd) = args.positional.first().cloned() else { fail(false, USAGE) };
+    let repo = args.repo.as_deref().map(Path::new);
+    match cmd.as_str() {
+        #[cfg(all(feature = "embed", feature = "download"))]
+        "index" => std::process::exit(run::run_index(repo, args.json)),
+        #[cfg(all(feature = "embed", feature = "download"))]
+        "search" => {
+            let query = args.positional[1..].join(" ");
+            if query.trim().is_empty() {
+                fail(args.json, "search vuole una domanda");
+            }
+            std::process::exit(run::run_search(repo, args.wiki, args.k.unwrap_or(8), args.glob.as_deref(), &query, args.json));
+        }
+        #[cfg(all(feature = "embed", feature = "download"))]
+        "status" => std::process::exit(run::run_status(repo, args.json)),
+        #[cfg(all(feature = "embed", feature = "download"))]
+        "serve" => {
+            if let Err(e) = serve::run(repo) {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
+        #[cfg(feature = "download")]
+        "models" => models_cmd(&args),
+        _ => fail(args.json, &format!("comando sconosciuto o non compilato in questo binario: {cmd}\n{USAGE}")),
+    }
 }
 
 #[cfg(feature = "download")]
-fn models_cmd(args: &[String]) {
-    let json = args.iter().any(|a| a == "--json");
-    match args.get(2).map(String::as_str) {
+fn models_cmd(args: &Args) {
+    let json = args.json;
+    match args.positional.get(1).map(String::as_str) {
         Some("list") => {
             let installed = rag_core::models::installed_ids();
             if json {
-                println!(
-                    "{}",
-                    serde_json::json!({"installed": installed, "catalog": rag_core::catalog().iter().map(|m| m.id).collect::<Vec<_>>()})
-                );
+                let catalog: Vec<_> = rag_core::catalog()
+                    .iter()
+                    .map(|m| {
+                        serde_json::json!({"id": m.id, "dims": m.dims, "size_mb": m.size_mb, "languages": m.languages,
+                            "note": m.note, "tested": m.tested, "installed": installed.iter().any(|i| i == m.id)})
+                    })
+                    .collect();
+                println!("{}", serde_json::json!({"installed": installed, "catalog": catalog}));
             } else {
                 println!("Installati: {}", installed.join(", "));
             }
         }
-        Some("pull") if args.len() >= 4 => {
-            let id = &args[3];
-            let Some(spec) = rag_core::model_by_id(id) else {
-                eprintln!("modello sconosciuto");
-                std::process::exit(1);
-            };
+        Some("pull") => {
+            let Some(id) = args.positional.get(2) else { fail(json, "models pull vuole un id") };
+            let Some(spec) = rag_core::model_by_id(id) else { fail(json, &format!("modello sconosciuto: {id}")) };
             let res = rag_core::models::pull(spec, |ev| {
                 if json {
-                    println!(
-                        "{}",
-                        serde_json::json!({"event":"download","file":ev.file,"done":ev.done,"total":ev.total})
-                    );
+                    println!("{}", serde_json::json!({"event":"download","file":ev.file,"done":ev.done,"total":ev.total}));
                 }
             });
-            if res.is_err() {
-                if json {
-                    println!("{{\"event\":\"error\",\"message\":\"{}\"}}", res.unwrap_err());
-                }
-                std::process::exit(1);
+            match res {
+                Ok(()) if json => println!("{}", serde_json::json!({"event":"done","model":spec.id})),
+                Ok(()) => {}
+                Err(e) => fail(json, &e.to_string()),
             }
         }
-        Some("search") if args.len() >= 4 => {
-            let q = args[3..].join(" ");
+        Some("search") => {
+            let q = args.positional[2..].join(" ");
+            if q.trim().is_empty() {
+                fail(json, "models search vuole un testo");
+            }
             match rag_core::models::hf_search(&q) {
-                Ok(hits) => {
-                    if json {
-                        println!("{}", serde_json::to_string(&hits).unwrap());
-                    } else {
-                        for h in hits {
-                            println!("{} ({})", h.id, h.downloads);
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("{e}");
-                    std::process::exit(1);
-                }
+                Ok(hits) if json => println!("{}", serde_json::to_string(&hits).unwrap_or_default()),
+                Ok(hits) => hits.iter().for_each(|h| println!("{} ({})", h.id, h.downloads)),
+                Err(e) => fail(json, &e.to_string()),
             }
         }
-        _ => {
-            eprintln!("usage: models list|pull <id>");
-            std::process::exit(1);
-        }
+        _ => fail(json, USAGE),
     }
 }

@@ -1,21 +1,24 @@
 use std::path::PathBuf;
+
 use std::sync::{Mutex, OnceLock};
 
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{Implementation, ServerCapabilities, ServerConfig},
-    schemars, tool, tool_handler, tool_router, ServerHandler, ServiceExt,
+    model::{CallToolResult, ContentBlock as Content, Implementation, ServerCapabilities, ServerConfig},
+    schemars, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler, ServiceExt,
 };
 use rag_core::{
-    embed::load_embedder, head_sha, index_path, model_by_id, read_config, model_dir, repo_id,
+    embed::load_embedder, file_changed, head_sha, index_path, model_by_id, model_dir, read_config, repo_id,
     resolve_repo, wiki_root, FileSource, Store,
 };
 use wiki_core::{content_has_forbidden_term, read_private_terms};
 
-const INSTRUCTIONS: &str = "Local search over this repository's code and its Codebase Wiki. Use `search_code` for *where/how* questions (where is X defined, how does Y work, what calls Z) before grepping. Use the wiki pages for status, decisions, risks and *why*. Results marked `stale: true` changed after indexing: re-read those lines from disk before relying on them.";
+const INSTRUCTIONS: &str = "Local search over this repository's code and its Codebase Wiki. Use `search_code` for *where/how* questions (where is X defined, how does Y work, what calls Z) before grepping. Use `search_wiki` or the wiki pages for status, decisions, risks and *why*; it also covers README and docs/. Results marked `stale: true` changed after indexing: re-read those lines from disk before relying on them.";
 
 static REPO: OnceLock<PathBuf> = OnceLock::new();
-static EMBEDDER: OnceLock<Mutex<rag_core::embed::Embedder>> = OnceLock::new();
+/// The embedder of the active model, loaded at the first search. Reloaded when the person picks
+/// another model in the app while this server runs.
+static EMBEDDER: Mutex<Option<(&'static str, rag_core::embed::Embedder)>> = Mutex::new(None);
 
 #[derive(Clone)]
 pub struct WikiMcp {
@@ -24,9 +27,12 @@ pub struct WikiMcp {
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct SearchParams {
+    /// What to look for: a question or keywords, any language.
     query: String,
+    /// Number of results (default 8, max 20).
     #[serde(default = "default_k_code")]
     k: usize,
+    /// Optional fnmatch glob on the repo-relative path, e.g. `crates/*` or `*.tsx`.
     path_glob: Option<String>,
 }
 
@@ -36,7 +42,9 @@ fn default_k_code() -> usize {
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct WikiSearchParams {
+    /// What to look for in the wiki pages.
     query: String,
+    /// Number of results (default 5, max 20).
     #[serde(default = "default_k_wiki")]
     k: usize,
 }
@@ -45,77 +53,61 @@ fn default_k_wiki() -> usize {
     5
 }
 
+fn active_spec() -> Result<&'static rag_core::ModelSpec, String> {
+    let cfg = read_config().map_err(|e| e.to_string())?;
+    let spec = model_by_id(&cfg.model).ok_or_else(|| format!("Modello sconosciuto: {}", cfg.model))?;
+    if !rag_core::models::is_installed(spec) {
+        return Err("Nessun modello installato: apri Codebase Wiki → Ricerca".into());
+    }
+    Ok(spec)
+}
+
 impl WikiMcp {
     pub fn new() -> Self {
-        Self {
-            tool_router: Self::tool_router(),
-        }
+        Self { tool_router: Self::tool_router() }
     }
 
-    fn embedder() -> Result<&'static Mutex<rag_core::embed::Embedder>, String> {
-        if let Some(e) = EMBEDDER.get() {
-            return Ok(e);
-        }
-        let cfg = read_config().map_err(|e| e.to_string())?;
-        let spec = model_by_id(&cfg.model).ok_or("modello sconosciuto")?;
-        if !rag_core::models::is_installed(spec) {
-            return Err(
-                "Indice assente per questo repo: apri Codebase Wiki → Ricerca → Indicizza".into(),
+    fn search_inner(&self, query: &str, k: usize, wiki: bool, path_glob: Option<&str>) -> Result<String, String> {
+        let root = REPO.get().ok_or("repo non impostato")?;
+        let spec = active_spec()?;
+        let store = Store::open_reader(&index_path(&repo_id(root)), spec.dims, spec.id)?;
+        // Privacy first: an unreadable terms file means no results at all (fail-closed).
+        let terms = match wiki_root(root) {
+            Some(w) => read_private_terms(&root.join(w))?,
+            None => None,
+        };
+        let qv = {
+            let mut guard = EMBEDDER.lock().map_err(|e| e.to_string())?;
+            if guard.as_ref().map(|(id, _)| *id) != Some(spec.id) {
+                *guard = Some((spec.id, load_embedder(spec, &model_dir(spec.id))?));
+            }
+            guard.as_mut().map(|(_, e)| e.embed_query(query)).ok_or("embedder")??
+        };
+        let source = if wiki { FileSource::Wiki } else { FileSource::Code };
+        let hits = store.search(&qv, query, source, k.clamp(1, 20), path_glob)?;
+        let mut lines = vec![status_header(root, &store)?];
+        for h in hits {
+            if terms.as_deref().is_some_and(|tc| content_has_forbidden_term(tc, &h.text)) {
+                continue;
+            }
+            let stale = match store.file_record(&h.path)? {
+                Some((size, mtime, _)) => file_changed(root, &h.path, size, mtime),
+                None => true,
+            };
+            let snippet = h.text.lines().take(40).collect::<Vec<_>>().join("\n");
+            lines.push(
+                serde_json::json!({
+                    "path": h.path, "start_line": h.start_line, "end_line": h.end_line,
+                    "source": h.source, "score": (h.score * 10000.0).round() / 10000.0,
+                    "stale": stale, "snippet": snippet,
+                })
+                .to_string(),
             );
         }
-        let emb = load_embedder(spec, &model_dir(spec.id)).map_err(|e| e.to_string())?;
-        Ok(EMBEDDER.get_or_init(|| Mutex::new(emb)))
-    }
-
-    fn search_inner(
-        &self,
-        query: &str,
-        k: usize,
-        wiki: bool,
-        path_glob: Option<&str>,
-    ) -> String {
-        let Ok(root) = REPO.get().ok_or("repo") else {
-            return "repo non impostato".into();
-        };
-        let inner = (|| -> Result<String, String> {
-            let cfg = read_config().map_err(|e| e.to_string())?;
-            let spec = model_by_id(&cfg.model).ok_or("modello")?;
-            let store = Store::open(&index_path(&repo_id(root)), spec.dims, spec.id)?;
-            let mut emb = Self::embedder()?.lock().map_err(|e| e.to_string())?;
-            let qv = emb.embed_query(query)?;
-            let source = if wiki {
-                FileSource::Wiki
-            } else {
-                FileSource::Code
-            };
-            let hits = store.search(&qv, query, source, k.min(20), path_glob)?;
-            let terms = match wiki_root(root) {
-                Some(w) => read_private_terms(&root.join(w))?,
-                None => None,
-            };
-            let mut lines = vec![status_header(root, &store)?];
-            for h in hits {
-                if let Some(ref tc) = terms {
-                    if content_has_forbidden_term(tc, &h.text) {
-                        continue;
-                    }
-                }
-                let stale = file_stale(root, &h.path, &store)?;
-                let snippet = h.text.lines().take(40).collect::<Vec<_>>().join("\n");
-                lines.push(format!(
-                    "{{\"path\":\"{}\",\"start_line\":{},\"end_line\":{},\"source\":\"{:?}\",\"score\":{:.4},\"stale\":{},\"snippet\":{}}}",
-                    h.path,
-                    h.start_line,
-                    h.end_line,
-                    h.source,
-                    h.score,
-                    stale,
-                    serde_json::to_string(&snippet).unwrap_or_default()
-                ));
-            }
-            Ok(lines.join("\n"))
-        })();
-        inner.unwrap_or_else(|e| e)
+        if lines.len() == 1 {
+            lines.push("Nessun risultato.".into());
+        }
+        Ok(lines.join("\n"))
     }
 }
 
@@ -126,67 +118,36 @@ fn short_sha(s: &str) -> String {
 fn status_header(root: &std::path::Path, store: &Store) -> Result<String, String> {
     let ih = store.meta_get("indexed_head")?.unwrap_or_default();
     let head = head_sha(root).unwrap_or_default();
+    let changed = store.count_changed(root)?;
     Ok(format!(
-        "index @{} · HEAD @{} · 0 file cambiati dall'indice",
+        "index @{} · HEAD @{} · {changed} file cambiati dall'indice",
         short_sha(&ih),
         short_sha(&head)
     ))
 }
 
-fn file_stale(root: &std::path::Path, path: &str, store: &Store) -> Result<bool, String> {
-    let full = root.join(path);
-    let meta = std::fs::metadata(&full).map_err(|e| e.to_string())?;
-    let rec = store.file_record(path)?;
-    let Some((size, mtime, _)) = rec else {
-        return Ok(true);
-    };
-    let m = meta
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    Ok(meta.len() != size || m != mtime)
+fn tool_result(r: Result<String, String>) -> Result<CallToolResult, McpError> {
+    Ok(match r {
+        Ok(text) => CallToolResult::success(vec![Content::text(text)]),
+        Err(e) => CallToolResult::error(vec![Content::text(e)]),
+    })
 }
 
 #[tool_router]
 impl WikiMcp {
-    #[tool(description = "Search code for where/how questions")]
-    fn search_code(&self, Parameters(p): Parameters<SearchParams>) -> String {
-        self.search_inner(&p.query, p.k, false, p.path_glob.as_deref())
+    #[tool(description = "Search this repository's source code (hybrid keyword + semantic). Use it for where/how questions before grepping. Returns a header line, then one JSON object per hit: path, start_line, end_line, score, stale, snippet.")]
+    fn search_code(&self, Parameters(p): Parameters<SearchParams>) -> Result<CallToolResult, McpError> {
+        tool_result(self.search_inner(&p.query, p.k, false, p.path_glob.as_deref()))
     }
 
-    #[tool(description = "Search wiki pages")]
-    fn search_wiki(&self, Parameters(p): Parameters<WikiSearchParams>) -> String {
-        self.search_inner(&p.query, p.k, true, None)
+    #[tool(description = "Search this repository's documentation: the Codebase Wiki pages (status, decisions, risks, why) and other Markdown docs (README, docs/). Same output shape as search_code.")]
+    fn search_wiki(&self, Parameters(p): Parameters<WikiSearchParams>) -> Result<CallToolResult, McpError> {
+        tool_result(self.search_inner(&p.query, p.k, true, None))
     }
 
-    #[tool(description = "Index status for this repo")]
-    fn index_status(&self) -> String {
-        let Some(root) = REPO.get() else {
-            return "repo non impostato".into();
-        };
-        let Ok(cfg) = read_config() else {
-            return "config".into();
-        };
-        let id = repo_id(root);
-        let mut out = serde_json::json!({
-            "repo": root.display().to_string(),
-            "repo_id": id,
-            "model": cfg.model,
-            "index_path": index_path(&id).display().to_string(),
-        });
-        if let Some(spec) = model_by_id(&cfg.model) {
-            if let Ok(store) = Store::open(&index_path(&id), spec.dims, spec.id) {
-                out["indexed_head"] = store.meta_get("indexed_head").ok().flatten().into();
-                out["head"] = head_sha(root).into();
-                if let Ok((f, c)) = store.counts() {
-                    out["files"] = f.into();
-                    out["chunks"] = c.into();
-                }
-            }
-        }
-        out.to_string()
+    #[tool(description = "State of the local index for this repository: model, indexed commit, HEAD, files, chunks, files changed since indexing.")]
+    fn index_status(&self) -> Result<CallToolResult, McpError> {
+        tool_result(REPO.get().map(|r| crate::run::status_json(r).to_string()).ok_or_else(|| "repo non impostato".to_string()))
     }
 }
 
@@ -202,13 +163,8 @@ impl ServerHandler for WikiMcp {
     }
 }
 
-pub fn run(args: Vec<String>) -> Result<(), String> {
-    let repo = args
-        .iter()
-        .position(|a| a == "--repo")
-        .and_then(|i| args.get(i + 1))
-        .map(std::path::PathBuf::from);
-    let root = resolve_repo(repo.as_deref())?;
+pub fn run(repo: Option<&std::path::Path>) -> Result<(), String> {
+    let root = resolve_repo(repo)?;
     REPO.set(root).map_err(|_| "repo già impostato")?;
     let server = WikiMcp::new();
     let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;

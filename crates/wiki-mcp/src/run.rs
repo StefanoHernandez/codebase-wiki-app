@@ -1,8 +1,6 @@
 #[cfg(all(feature = "embed", feature = "download"))]
 use std::fs;
 #[cfg(all(feature = "embed", feature = "download"))]
-use std::io::Write;
-#[cfg(all(feature = "embed", feature = "download"))]
 use std::path::Path;
 #[cfg(all(feature = "embed", feature = "download"))]
 use std::time::Instant;
@@ -18,20 +16,14 @@ use rag_core::{
 use sha2::{Digest, Sha256};
 
 #[cfg(all(feature = "embed", feature = "download"))]
-fn sha_file(path: &Path) -> Result<String, String> {
-    let bytes = fs::read(path).map_err(|e| e.to_string())?;
+fn sha_bytes(bytes: &[u8]) -> String {
     let mut h = Sha256::new();
-    h.update(&bytes);
-    Ok(format!("{:x}", h.finalize()))
+    h.update(bytes);
+    format!("{:x}", h.finalize())
 }
 
 #[cfg(all(feature = "embed", feature = "download"))]
 pub fn run_index(repo: Option<&Path>, json: bool) -> i32 {
-    let emit = |v: serde_json::Value| {
-        if json {
-            println!("{}", v);
-        }
-    };
     let err = |msg: &str| -> i32 {
         if json {
             println!("{}", serde_json::json!({"event":"error","message":msg}));
@@ -68,16 +60,24 @@ pub fn run_index(repo: Option<&Path>, json: bool) -> i32 {
     let th = terms_hash(terms.as_deref());
     let id = repo_id(&root);
     let db_path = index_path(&id);
-    let mut store = match Store::open(&db_path, spec.dims, spec.id) {
+    let mut store = match Store::open_writer(&db_path, spec.dims, spec.id) {
         Ok(s) => s,
         Err(e) => return err(&e),
     };
-    if store.meta_get("terms_hash").ok().flatten().as_deref() != Some(&th) {
-        let _ = std::fs::remove_file(&db_path);
-        store = match Store::open(&db_path, spec.dims, spec.id) {
+    // New private terms: chunks indexed before may hold a term that is now forbidden. Start over.
+    let stored = store.meta_get("terms_hash").ok().flatten();
+    if stored.is_some_and(|h| h != th) {
+        drop(store);
+        if let Err(e) = rag_core::delete_index(&db_path) {
+            return err(&e);
+        }
+        store = match Store::open_writer(&db_path, spec.dims, spec.id) {
             Ok(s) => s,
             Err(e) => return err(&e),
         };
+    }
+    if let Err(e) = store.meta_set("terms_hash", &th) {
+        return err(&e);
     }
     run_index_with_store(store, root, wiki, terms, spec, json)
 }
@@ -146,7 +146,6 @@ fn run_index_with_store(
     if let Some(h) = head_sha(&root) {
         let _ = store.meta_set("indexed_head", &h);
     }
-    let _ = store.meta_set("terms_hash", &terms_hash(terms.as_deref()));
     let (files, chunks) = store.counts().unwrap_or((0, 0));
     let ms = start.elapsed().as_millis();
     emit(serde_json::json!({"event":"done","files":files,"chunks":chunks,"skipped_private":skipped_private,"ms":ms}));
@@ -162,128 +161,138 @@ fn index_one(
     terms: Option<&str>,
     skipped_private: &mut u32,
 ) -> Result<(), String> {
-    if let Some((size, mtime, sha)) = store.file_record(&entry.rel_path)? {
+    let path = root.join(&entry.rel_path);
+    // Read once: the hash and the chunks come from the same bytes. A file that vanished since
+    // `git ls-files` is skipped; remove_missing drops it on the next run.
+    let Ok(bytes) = fs::read(&path) else { return Ok(()) };
+    let sha = sha_bytes(&bytes);
+    let same_source = store.file_source(&entry.rel_path)? == Some(entry.source);
+    if let Some((size, mtime, old_sha)) = store.file_record(&entry.rel_path)?.filter(|_| same_source) {
         if size == entry.size && mtime == entry.mtime {
             return Ok(());
         }
-        let path = root.join(&entry.rel_path);
-        let new_sha = sha_file(&path)?;
-        if new_sha == sha {
-            return Ok(());
+        if old_sha == sha {
+            return store.touch_file(&entry.rel_path, entry.size, entry.mtime);
         }
     }
-    let text = fs::read_to_string(root.join(&entry.rel_path)).map_err(|e| e.to_string())?;
+    let Ok(text) = String::from_utf8(bytes) else { return Ok(()) };
     let chunks = chunk_file(&entry.rel_path, &text, entry.source);
     let (chunks, sk) = filter_private_chunks(chunks, terms);
     *skipped_private += sk;
     let embed_texts: Vec<String> = chunks.iter().map(|c| c.embed_text.clone()).collect();
     let vectors = embedder.embed_passages(&embed_texts)?;
-  let sha = sha_file(&root.join(&entry.rel_path))?;
     store.replace_file(entry, &sha, &chunks, &vectors)
 }
 
 #[cfg(all(feature = "embed", feature = "download"))]
-pub fn run_search(repo: Option<&Path>, wiki: bool, k: usize, glob: Option<&str>, query: &str) -> i32 {
-    let root = match resolve_repo(repo) {
-        Ok(r) => r,
+pub fn run_search(repo: Option<&Path>, wiki: bool, k: usize, glob: Option<&str>, query: &str, json: bool) -> i32 {
+    match search_hits(repo, wiki, k, glob, query) {
+        Ok(hits) => {
+            for h in hits {
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::json!({"path": h.path, "start_line": h.start_line, "end_line": h.end_line,
+                            "source": h.source, "score": h.score, "snippet": h.text})
+                    );
+                } else {
+                    println!("{}:{}-{} score={:.4}", h.path, h.start_line, h.end_line, h.score);
+                    println!("{}", h.text.lines().take(5).collect::<Vec<_>>().join("\n"));
+                    println!("---");
+                }
+            }
+            0
+        }
         Err(e) => {
-            eprintln!("{e}");
-            return 1;
+            if json {
+                println!("{}", serde_json::json!({"event":"error","message":e}));
+            } else {
+                eprintln!("{e}");
+            }
+            1
         }
-    };
-    let cfg = read_config().unwrap_or(rag_core::RagConfig {
-        model: rag_core::default_model_id().to_string(),
-    });
-    let spec = match model_by_id(&cfg.model) {
-        Some(s) => s,
-        None => {
-            eprintln!("Nessun modello");
-            return 1;
-        }
-    };
-    if !rag_core::models::is_installed(spec) {
-        eprintln!("Nessun modello installato: apri Codebase Wiki → Ricerca");
-        return 1;
     }
-    let store = match Store::open(&index_path(&repo_id(&root)), spec.dims, spec.id) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("{e}");
-            return 1;
-        }
-    };
-    let mut embedder = match load_embedder(spec, &model_dir(spec.id)) {
-        Ok(e) => e,
-        Err(e) => {
-            eprintln!("{e}");
-            return 1;
-        }
-    };
-    let qv = match embedder.embed_query(query) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("{e}");
-            return 1;
-        }
-    };
-    let source = if wiki { FileSource::Wiki } else { FileSource::Code };
-    let hits = match store.search(&qv, query, source, k, glob) {
-        Ok(h) => h,
-        Err(e) => {
-            eprintln!("{e}");
-            return 1;
-        }
-    };
-    for h in hits {
-        println!("{}:{}-{} score={:.4}", h.path, h.start_line, h.end_line, h.score);
-        println!("{}", h.text.lines().take(5).collect::<Vec<_>>().join("\n"));
-        println!("---");
-    }
-    0
 }
 
 #[cfg(all(feature = "embed", feature = "download"))]
-pub fn run_status(repo: Option<&Path>, json: bool) -> i32 {
-    let root = match resolve_repo(repo) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("{e}");
-            return 1;
-        }
+fn search_hits(repo: Option<&Path>, wiki: bool, k: usize, glob: Option<&str>, query: &str) -> Result<Vec<rag_core::Hit>, String> {
+    let root = resolve_repo(repo)?;
+    let spec = active_spec()?;
+    let store = Store::open_reader(&index_path(&repo_id(&root)), spec.dims, spec.id)?;
+    let mut embedder = load_embedder(spec, &model_dir(spec.id))?;
+    let qv = embedder.embed_query(query)?;
+    let source = if wiki { FileSource::Wiki } else { FileSource::Code };
+    let hits = store.search(&qv, query, source, k.clamp(1, 20), glob)?;
+    // Same rule as `serve`: re-check the current private terms; unreadable terms → no results.
+    let terms = match wiki_root(&root) {
+        Some(w) => wiki_core::read_private_terms(&root.join(w))?,
+        None => None,
     };
-    let id = repo_id(&root);
-    let cfg = read_config().unwrap_or(rag_core::RagConfig {
-        model: rag_core::default_model_id().to_string(),
-    });
-    let head = head_sha(&root);
+    Ok(hits
+        .into_iter()
+        .filter(|h| !terms.as_deref().is_some_and(|t| wiki_core::content_has_forbidden_term(t, &h.text)))
+        .collect())
+}
+
+#[cfg(all(feature = "embed", feature = "download"))]
+fn active_spec() -> Result<&'static rag_core::ModelSpec, String> {
+    let cfg = read_config().unwrap_or(rag_core::RagConfig { model: rag_core::default_model_id().to_string() });
+    let spec = model_by_id(&cfg.model).ok_or_else(|| format!("Modello sconosciuto: {}", cfg.model))?;
+    if !rag_core::models::is_installed(spec) {
+        return Err("Nessun modello installato: apri Codebase Wiki → Ricerca".into());
+    }
+    Ok(spec)
+}
+
+/// `status --json`: never creates or rebuilds the index (reader only).
+#[cfg(all(feature = "embed", feature = "download"))]
+pub fn status_json(root: &Path) -> serde_json::Value {
+    let id = repo_id(root);
+    let cfg = read_config().unwrap_or(rag_core::RagConfig { model: rag_core::default_model_id().to_string() });
     let mut out = serde_json::json!({
         "repo": root.display().to_string(),
         "repo_id": id,
         "model": cfg.model,
         "index_path": index_path(&id).display().to_string(),
-        "head": head,
+        "head": head_sha(root),
+        "indexed": false,
         "indexed_head": null,
+        "indexed_model": null,
         "files": 0,
         "chunks": 0,
         "changed_since_index": 0,
+        "error": null,
     });
-    if let Some(spec) = model_by_id(&cfg.model) {
-        if let Ok(store) = Store::open(&index_path(&id), spec.dims, spec.id) {
-            out["indexed_head"] = store
-                .meta_get("indexed_head")
-                .ok()
-                .flatten()
-                .into();
+    let Some(spec) = model_by_id(&cfg.model) else {
+        out["error"] = "Modello sconosciuto".into();
+        return out;
+    };
+    match Store::open_reader(&index_path(&id), spec.dims, spec.id) {
+        Ok(store) => {
+            out["indexed"] = true.into();
+            out["indexed_model"] = spec.id.into();
+            out["indexed_head"] = store.meta_get("indexed_head").ok().flatten().into();
             if let Ok((f, c)) = store.counts() {
                 out["files"] = f.into();
                 out["chunks"] = c.into();
             }
+            out["changed_since_index"] = store.count_changed(root).unwrap_or(0).into();
+        }
+        Err(e) => out["error"] = e.into(),
+    }
+    out
+}
+
+#[cfg(all(feature = "embed", feature = "download"))]
+pub fn run_status(repo: Option<&Path>, _json: bool) -> i32 {
+    match resolve_repo(repo) {
+        Ok(root) => {
+            println!("{}", status_json(&root));
+            0
+        }
+        Err(e) => {
+            println!("{}", serde_json::json!({"event":"error","message":e}));
+            1
         }
     }
-    if json {
-        println!("{}", serde_json::to_string(&out).unwrap());
-    } else {
-        println!("{}", out);
-    }
-    0
 }

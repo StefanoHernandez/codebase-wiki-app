@@ -446,6 +446,7 @@ name = "codebase-wiki-app"
 version = "0.1.0"
 dependencies = [
  "dunce",
+ "rag-core",
  "serde",
  "serde_json",
  "tauri",

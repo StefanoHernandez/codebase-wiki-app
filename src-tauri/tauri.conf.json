@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.codebasewiki.app",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "node scripts/build-sidecar.mjs --if-missing && npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build && node scripts/build-sidecar.mjs",
     "frontendDist": "../dist"

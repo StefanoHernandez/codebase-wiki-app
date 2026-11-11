@@ -1,3 +1,12 @@
+// Builds the MCP sidecar (codebase-wiki-mcp) where Tauri's externalBin expects it:
+// src-tauri/binaries/codebase-wiki-mcp-<target-triple>[.exe].
+//
+//   node scripts/build-sidecar.mjs [triple]   build for triple (default: TAURI_ENV_TARGET_TRIPLE, else host)
+//   --if-missing                              skip when the binary already exists (tauri dev)
+//   --stub                                    write an empty placeholder if missing (CI test job: cargo test only)
+//
+// universal-apple-darwin builds both arches, keeps the per-arch copies (each arch's tauri-build
+// checks its own) and joins them with lipo for the bundler.
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -6,41 +15,43 @@ const root = path.resolve(import.meta.dirname, '..');
 const outDir = path.join(root, 'src-tauri/binaries');
 fs.mkdirSync(outDir, { recursive: true });
 
+const flags = new Set(process.argv.slice(2).filter((a) => a.startsWith('--')));
+const positional = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+
 function hostTriple() {
-  const out = execSync('rustc -vV', { encoding: 'utf8', cwd: root });
-  const m = out.match(/^host: (\S+)/m);
+  const m = execSync('rustc -vV', { encoding: 'utf8', cwd: root }).match(/^host: (\S+)/m);
   if (!m) throw new Error('cannot parse rustc host triple');
   return m[1];
 }
 
-function copyBinary(triple) {
-  const ext = triple.includes('windows') ? '.exe' : '';
-  const srcTarget = path.join(root, 'target', triple, 'release', `codebase-wiki-mcp${ext}`);
-  const srcHost = path.join(root, 'target', 'release', `codebase-wiki-mcp${ext}`);
-  const src = fs.existsSync(srcTarget) ? srcTarget : srcHost;
-  const dest = path.join(outDir, `codebase-wiki-mcp-${triple}${ext}`);
-  fs.copyFileSync(src, dest);
-  console.log('sidecar:', dest);
+const triple = positional[0] || process.env.TAURI_ENV_TARGET_TRIPLE || hostTriple();
+const ext = triple.includes('windows') ? '.exe' : '';
+const dest = (t) => path.join(outDir, `codebase-wiki-mcp-${t}${ext}`);
+
+if ((flags.has('--if-missing') || flags.has('--stub')) && fs.existsSync(dest(triple))) {
+  console.log('sidecar present:', dest(triple));
+  process.exit(0);
+}
+if (flags.has('--stub')) {
+  fs.writeFileSync(dest(triple), '');
+  fs.chmodSync(dest(triple), 0o755);
+  console.log('sidecar stub:', dest(triple));
+  process.exit(0);
 }
 
-const universal = process.env.TAURI_UNIVERSAL === '1';
-if (universal) {
-  for (const triple of ['aarch64-apple-darwin', 'x86_64-apple-darwin']) {
-    execSync(`cargo build -p wiki-mcp --release --features embed --target ${triple}`, {
-      stdio: 'inherit',
-      cwd: root,
-    });
-  }
-  const fat = path.join(outDir, 'codebase-wiki-mcp-universal-apple-darwin');
-  execSync(
-    `lipo -create target/aarch64-apple-darwin/release/codebase-wiki-mcp target/x86_64-apple-darwin/release/codebase-wiki-mcp -output ${fat}`,
-    { cwd: root, stdio: 'inherit' },
-  );
+function build(t) {
+  execSync(`cargo build -p wiki-mcp --release --features embed --target ${t}`, { stdio: 'inherit', cwd: root });
+  const built = path.join(root, 'target', t, 'release', `codebase-wiki-mcp${ext}`);
+  fs.copyFileSync(built, dest(t));
+  fs.chmodSync(dest(t), 0o755);
+  console.log('sidecar:', dest(t));
+}
+
+if (triple === 'universal-apple-darwin') {
+  const arches = ['aarch64-apple-darwin', 'x86_64-apple-darwin'];
+  arches.forEach(build);
+  execSync(`lipo -create ${arches.map(dest).join(' ')} -output ${dest(triple)}`, { cwd: root, stdio: 'inherit' });
+  console.log('sidecar:', dest(triple));
 } else {
-  const triple = process.argv[2] || hostTriple();
-  execSync(`cargo build -p wiki-mcp --release --features embed --target ${triple}`, {
-    stdio: 'inherit',
-    cwd: root,
-  });
-  copyBinary(triple);
+  build(triple);
 }
