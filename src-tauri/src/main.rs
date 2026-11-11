@@ -10,6 +10,13 @@ use std::sync::{Arc, Mutex};
 use wiki_core::WatchHandle;
 
 fn main() {
+    // The AppImage runtime points PYTHONHOME/PYTHONPATH into its own mount, which
+    // breaks every system Python we spawn (validator, version probe). We never use them.
+    if std::env::var_os("APPIMAGE").is_some() {
+        for var in ["PYTHONHOME", "PYTHONPATH", "PYTHONDONTWRITEBYTECODE"] {
+            std::env::remove_var(var);
+        }
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
