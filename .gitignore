@@ -4,6 +4,7 @@ dist-tauri/
 
 # Tauri / Rust target
 src-tauri/target/
+src-tauri/binaries/
 target/
 
 # Superpowers and local scratch directories

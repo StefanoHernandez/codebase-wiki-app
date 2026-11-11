@@ -119,6 +119,9 @@ jobs:
           releaseDraft: true
           prerelease: false
 
+      - name: Build MCP sidecar
+        run: node scripts/build-sidecar.mjs
+
       - name: Build Tauri bundles
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: tauri-apps/tauri-action@v0

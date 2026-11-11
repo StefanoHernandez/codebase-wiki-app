@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
@@ -570,6 +570,86 @@ pub async fn workflow_prompt(
         build_workflow_prompt(&workflow, None)
     })
     .await
+}
+
+fn rag_bin() -> Result<PathBuf, String> {
+    crate::rag_sidecar::rag_sidecar_path()
+}
+
+#[tauri::command]
+pub fn rag_status(repo: String) -> Result<serde_json::Value, String> {
+    let bin = rag_bin()?;
+    let out = Command::new(&bin)
+        .args(["status", "--repo", &repo, "--json"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).into());
+    }
+    serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn rag_models() -> Result<serde_json::Value, String> {
+    let installed = std::process::Command::new(rag_bin()?)
+        .args(["models", "list", "--json"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    serde_json::from_slice(&installed.stdout).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn rag_set_model(id: String) -> Result<(), String> {
+    let mut cfg = rag_core::read_config().unwrap_or(rag_core::RagConfig { model: id.clone() });
+    cfg.model = id;
+    rag_core::write_config(&cfg)
+}
+
+#[tauri::command]
+pub async fn rag_index_start(
+    app: AppHandle,
+    repo: String,
+    child_state: tauri::State<'_, Mutex<Option<std::process::Child>>>,
+) -> Result<(), String> {
+    let bin = rag_bin()?;
+    let mut child = Command::new(&bin)
+        .args(["index", "--repo", &repo, "--json"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    let mut stdout = child.stdout.take().ok_or("stdout")?;
+    let app2 = app.clone();
+    std::thread::spawn(move || {
+        use std::io::{BufRead, BufReader};
+        let reader = BufReader::new(&mut stdout);
+        for line in reader.lines().map_while(Result::ok) {
+            let _ = app2.emit("rag://progress", line);
+        }
+    });
+    *child_state.lock().unwrap() = Some(child);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn rag_index_cancel(child_state: tauri::State<'_, Mutex<Option<std::process::Child>>>) -> Result<(), String> {
+    if let Some(mut c) = child_state.lock().unwrap().take() {
+        let _ = c.kill();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn rag_preview(repo: String, query: String, wiki: bool) -> Result<String, String> {
+    let bin = rag_bin()?;
+    let mut cmd = Command::new(&bin);
+    cmd.args(["search", "--repo", &repo, "-k", "8"]);
+    if wiki {
+        cmd.arg("--wiki");
+    }
+    cmd.arg(&query);
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    Ok(String::from_utf8_lossy(&out.stdout).into())
 }
 
 #[cfg(test)]
