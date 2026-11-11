@@ -19,3 +19,5 @@ pub use paths::{
 };
 pub use repo::{head_sha, repo_id, resolve_repo, wiki_root};
 pub use store::{Hit, Store};
+#[cfg(feature = "download")]
+pub use models::{installed_ids, pull, DownloadEvent, is_installed};

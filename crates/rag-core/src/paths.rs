@@ -93,8 +93,12 @@ mod tests {
     #[test]
     fn data_dir_respects_override() {
         let td = tempfile::tempdir().unwrap();
+        let prev = std::env::var("CODEBASE_WIKI_DATA_DIR").ok();
         std::env::set_var("CODEBASE_WIKI_DATA_DIR", td.path());
         assert_eq!(data_dir(), td.path());
-        std::env::remove_var("CODEBASE_WIKI_DATA_DIR");
+        match prev {
+            Some(v) => std::env::set_var("CODEBASE_WIKI_DATA_DIR", v),
+            None => std::env::remove_var("CODEBASE_WIKI_DATA_DIR"),
+        }
     }
 }

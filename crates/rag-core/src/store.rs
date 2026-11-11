@@ -95,7 +95,7 @@ impl Store {
         Ok(())
     }
 
-    fn meta_set(&self, key: &str, value: &str) -> Result<(), String> {
+    pub fn meta_set(&self, key: &str, value: &str) -> Result<(), String> {
         self.conn
             .execute(
                 "INSERT INTO meta(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -103,6 +103,33 @@ impl Store {
             )
             .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    pub fn file_record(&self, path: &str) -> Result<Option<(u64, i64, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT size, mtime, sha256 FROM files WHERE path=?1")
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt.query(params![path]).map_err(|e| e.to_string())?;
+        if let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let size: i64 = row.get(0).map_err(|e| e.to_string())?;
+            let mtime: i64 = row.get(1).map_err(|e| e.to_string())?;
+            let sha: String = row.get(2).map_err(|e| e.to_string())?;
+            return Ok(Some((size as u64, mtime, sha)));
+        }
+        Ok(None)
+    }
+
+    pub fn counts(&self) -> Result<(u64, u64), String> {
+        let files: i64 = self
+            .conn
+            .query_row("SELECT count(*) FROM files", [], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        let chunks: i64 = self
+            .conn
+            .query_row("SELECT count(*) FROM chunks", [], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        Ok((files as u64, chunks as u64))
     }
 
     pub fn meta_get(&self, key: &str) -> Result<Option<String>, String> {
