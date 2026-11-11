@@ -42,3 +42,56 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
+.rag-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.rag-tile {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+.rag-tile-label {
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+.rag-tile-value {
+  font-size: 1.15em;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.rag-tile-sub {
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+.rag-tone-ok {
+  color: var(--ok);
+}
+.rag-tone-drift {
+  color: var(--drift);
+}
+.rag-tone-muted {
+  color: var(--ink-muted);
+}
+.ricerca-hit-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.rag-rank {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ricerca-hit-meta {
+  display: inline-flex;
+  gap: 12px;
+  margin-left: auto;
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}

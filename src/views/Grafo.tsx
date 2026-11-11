@@ -14,12 +14,23 @@ import { buildWikiCodeGraph, filterWikiGraph } from '../lib/graph-builder';
 import { useProject } from '../state/project';
 import { useTheme } from '../state/theme';
 import type { GraphEdge, GraphNode, GraphNodeCategory } from '../types/wiki';
-import { LABEL_ZOOM_THRESHOLD, neighborIds, readCategoryColors } from './grafo-helpers';
+import {
+  CATEGORIES,
+  CATEGORY_LABEL,
+  LABEL_ZOOM_THRESHOLD,
+  neighborIds,
+  nodeRadius,
+  readCategoryColors,
+  withAlpha,
+} from './grafo-helpers';
 import './grafo.css';
 
 type FgNode = GraphNode & { x?: number; y?: number };
+type FgLink = GraphEdge & { source: string | FgNode; target: string | FgNode };
 
-const CATEGORIES: GraphNodeCategory[] = ['core', 'decision', 'tracker', 'agent', 'topic', 'source'];
+/** Categories with their own hue; links pointing at them take that hue. */
+const HUED = new Set<GraphNodeCategory>(['decision', 'tracker', 'agent']);
+const endId = (end: string | FgNode) => (typeof end === 'object' ? end.id : end);
 
 export default function Grafo() {
   const project = useProject();
@@ -37,7 +48,7 @@ export default function Grafo() {
   const [tokenInk, setTokenInk] = useState('#1b2220');
   const [tokenDrift, setTokenDrift] = useState('#b4540a');
   const [tokenError, setTokenError] = useState('#b42318');
-  const [tokenLink, setTokenLink] = useState('#d5dbd8');
+  const [tokenMuted, setTokenMuted] = useState('#5f6a66');
   const [labelFont, setLabelFont] = useState('sans-serif');
 
   const [includeSources, setIncludeSources] = useState(true);
@@ -48,6 +59,7 @@ export default function Grafo() {
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [zoomK, setZoomK] = useState(1);
   const [drawer, setDrawer] = useState<PageDrawerTarget | null>(null);
+  const [hiddenCats, setHiddenCats] = useState<Set<GraphNodeCategory>>(() => new Set());
 
   const pagesByPath = useMemo(
     () => new Map(project.pages.map((p) => [p.relPath, p])),
@@ -78,13 +90,31 @@ export default function Grafo() {
     });
   }, [fullGraph, includeSources, onlyDrift, localHop, selectedId]);
 
-  const graphData = useMemo(
-    () => ({
-      nodes: filtered.nodes.map((n) => ({ ...n })),
-      links: filtered.edges.map((e) => ({ ...e })),
-    }),
-    [filtered]
-  );
+  const graphData = useMemo(() => {
+    const nodes = filtered.nodes.filter((n) => !hiddenCats.has(n.category));
+    const ids = new Set(nodes.map((n) => n.id));
+    return {
+      nodes: nodes.map((n) => ({ ...n })),
+      links: filtered.edges.filter((e) => ids.has(e.source) && ids.has(e.target)).map((e) => ({ ...e })),
+    };
+  }, [filtered, hiddenCats]);
+
+  const categoryOf = useMemo(() => new Map(filtered.nodes.map((n) => [n.id, n.category])), [filtered.nodes]);
+
+  /** Per-category counts for the legend (before the legend's own toggles). */
+  const counts = useMemo(() => {
+    const out = new Map<GraphNodeCategory, number>();
+    for (const n of filtered.nodes) out.set(n.category, (out.get(n.category) ?? 0) + 1);
+    return out;
+  }, [filtered.nodes]);
+
+  const toggleCat = (c: GraphNodeCategory) =>
+    setHiddenCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(c)) next.delete(c);
+      else next.add(c);
+      return next;
+    });
 
   const highlight = useMemo(() => {
     const active = hoverId ?? selectedId;
@@ -107,7 +137,7 @@ export default function Grafo() {
     setTokenInk(cs.getPropertyValue('--ink').trim() || '#1b2220');
     setTokenDrift(cs.getPropertyValue('--drift').trim() || '#b4540a');
     setTokenError(cs.getPropertyValue('--error').trim() || '#b42318');
-    setTokenLink(cs.getPropertyValue('--rule').trim() || '#d5dbd8');
+    setTokenMuted(cs.getPropertyValue('--ink-muted').trim() || '#5f6a66');
     const bodyFont = cs.getPropertyValue('font-family').trim();
     const mono = cs.getPropertyValue('--font-code').trim();
     setLabelFont(mono || bodyFont || 'sans-serif');
@@ -141,6 +171,18 @@ export default function Grafo() {
     return () => ro.disconnect();
   }, []);
 
+  // Spread the layout: stronger repulsion and longer links than the defaults, then fit once it settles.
+  const fitted = useRef(false);
+  useEffect(() => {
+    const fg = fgRef.current;
+    if (!fg) return;
+    fg.d3Force('charge')?.strength?.(-70);
+    const link = fg.d3Force('link') as unknown as { distance?: (d: number) => void } | undefined;
+    link?.distance?.(38);
+    fitted.current = false;
+    fg.d3ReheatSimulation();
+  }, [graphData]);
+
   const centerOn = useCallback((node: FgNode) => {
     if (node.x == null || node.y == null) return;
     const fg = fgRef.current;
@@ -162,6 +204,19 @@ export default function Grafo() {
     }
   }, [searchDraft, fullGraph, filtered.nodes, centerOn]);
 
+  /** Like Obsidian: focus lasts while the page is open; closing it returns to the whole graph. */
+  const clearFocus = useCallback(() => {
+    setDrawer(null);
+    setSelectedId(null);
+    setLocalHop(false);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !drawer && clearFocus();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawer, clearFocus]);
+
   const openDrawerForNode = useCallback((node: GraphNode) => {
     if (node.kind === 'wiki') {
       setDrawer({ mode: 'wiki', wikiRelPath: node.path });
@@ -180,7 +235,7 @@ export default function Grafo() {
 
   const paintNode = useCallback(
     (node: FgNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
-      const r = 3.5;
+      const r = nodeRadius(node.degree);
       const x = node.x ?? 0;
       const y = node.y ?? 0;
       const fill = colors[node.category] || tokenInk;
@@ -194,26 +249,30 @@ export default function Grafo() {
               : 0.75;
 
       ctx.beginPath();
-      ctx.arc(x, y, r, 0, 2 * Math.PI);
+      // Code files are squares: shape, not only color, separates them from wiki pages.
+      if (node.kind === 'source') ctx.rect(x - r * 0.85, y - r * 0.85, r * 1.7, r * 1.7);
+      else ctx.arc(x, y, r, 0, 2 * Math.PI);
       ctx.fillStyle = fill;
       ctx.globalAlpha = dim;
       ctx.fill();
       ctx.globalAlpha = 1;
+      if (node.id === selectedId) {
+        ctx.strokeStyle = tokenInk;
+        ctx.lineWidth = 1.5 / globalScale;
+        ctx.stroke();
+      }
 
-      if (node.hasDrift) {
+      // Drift / lint: a small badge at the top-right, so status never paints over the category fill.
+      const badge = (color: string, dx: number) => {
         ctx.beginPath();
-        ctx.arc(x, y, r + 2.2 / globalScale, 0, 2 * Math.PI);
-        ctx.strokeStyle = tokenDrift;
-        ctx.lineWidth = 1.2 / globalScale;
-        ctx.stroke();
-      }
-      if (node.hasLintError) {
-        ctx.beginPath();
-        ctx.arc(x, y, r + 3.6 / globalScale, 0, 2 * Math.PI);
-        ctx.strokeStyle = tokenError;
-        ctx.lineWidth = 1.2 / globalScale;
-        ctx.stroke();
-      }
+        ctx.arc(x + r * 0.75 + dx, y - r * 0.75, Math.max(r * 0.38, 1.4), 0, 2 * Math.PI);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = dim;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      };
+      if (node.hasDrift) badge(tokenDrift, 0);
+      if (node.hasLintError) badge(tokenError, node.hasDrift ? r * 0.8 : 0);
 
       const showLabel =
         node.id === hoverId || node.id === selectedId || globalScale >= LABEL_ZOOM_THRESHOLD;
@@ -230,6 +289,35 @@ export default function Grafo() {
       }
     },
     [colors, tokenInk, tokenDrift, tokenError, highlight, selectedId, hoverId, labelFont]
+  );
+
+  /** A link's state: highlighted (touches the hovered/selected node), dimmed, or normal. */
+  const linkState = useCallback(
+    (link: FgLink): 'on' | 'off' | 'normal' => {
+      if (!highlight) return 'normal';
+      const active = hoverId ?? selectedId;
+      const s = endId(link.source);
+      const t = endId(link.target);
+      return s === active || t === active ? 'on' : 'off';
+    },
+    [highlight, hoverId, selectedId]
+  );
+
+  const linkBase = useCallback(
+    (link: FgLink) => {
+      if (link.kind === 'source-link') return tokenMuted;
+      const cat = categoryOf.get(endId(link.target));
+      return cat && HUED.has(cat) ? colors[cat] : tokenMuted;
+    },
+    [categoryOf, colors, tokenMuted]
+  );
+
+  const linkColor = useCallback(
+    (link: FgLink) => {
+      const state = linkState(link);
+      return withAlpha(linkBase(link), state === 'on' ? 0.95 : state === 'off' ? 0.06 : 0.4);
+    },
+    [linkState, linkBase]
   );
 
   if (!snapshot?.wikiRoot || !fullGraph) {
@@ -303,28 +391,64 @@ export default function Grafo() {
             linkTarget="target"
             nodeCanvasObjectMode={() => 'replace'}
             nodeCanvasObject={paintNode}
-            linkColor={(link) => {
-              if (!highlight) return tokenLink;
-              const s = typeof link.source === 'object' ? link.source.id : link.source;
-              const t = typeof link.target === 'object' ? link.target.id : link.target;
-              const on = highlight.has(String(s)) && highlight.has(String(t));
-              return on ? tokenLink : 'rgba(0,0,0,0.06)';
+            nodePointerAreaPaint={(node, color, ctx) => {
+              ctx.beginPath();
+              ctx.arc(node.x ?? 0, node.y ?? 0, nodeRadius(node.degree) + 2, 0, 2 * Math.PI);
+              ctx.fillStyle = color;
+              ctx.fill();
             }}
-            linkWidth={(link) => {
-              if (!highlight) return 0.65;
-              const s = typeof link.source === 'object' ? link.source.id : link.source;
-              const t = typeof link.target === 'object' ? link.target.id : link.target;
-              return highlight.has(String(s)) && highlight.has(String(t)) ? 1 : 0.25;
-            }}
-            linkCurvature={0.22}
+            linkColor={(l) => linkColor(l as FgLink)}
+            linkWidth={(l) => (linkState(l as FgLink) === 'on' ? 1.6 : 0.8)}
+            linkLineDash={(l) => ((l as FgLink).kind === 'source-link' ? [2, 2] : null)}
+            linkDirectionalArrowLength={(l) => (linkState(l as FgLink) === 'on' ? 4 : 0)}
+            linkDirectionalArrowRelPos={0.92}
+            linkDirectionalArrowColor={(l) => linkColor(l as FgLink)}
+            linkCurvature={0.18}
             linkDirectionalParticles={0}
-            cooldownTicks={120}
+            cooldownTicks={200}
+            onEngineStop={() => {
+              if (fitted.current) return;
+              fitted.current = true;
+              fgRef.current?.zoomToFit(400, 40);
+            }}
             d3VelocityDecay={0.35}
             onNodeClick={onNodeClick}
+            onBackgroundClick={clearFocus}
             onNodeHover={(n) => setHoverId(n?.id ?? null)}
             onZoom={({ k }) => setZoomK(k)}
           />
         )}
+        <div className="grafo-legend" role="group" aria-label="Legenda e filtri per tipo">
+          {CATEGORIES.filter((c) => counts.has(c)).map((c) => (
+            <button key={c} type="button" aria-pressed={!hiddenCats.has(c)} onClick={() => toggleCat(c)}>
+              <span
+                className={c === 'source' ? 'grafo-swatch grafo-swatch-square' : 'grafo-swatch'}
+                style={{ background: colors[c] }}
+                aria-hidden="true"
+              />
+              {CATEGORY_LABEL[c]}
+              <span className="grafo-legend-count">{counts.get(c)}</span>
+            </button>
+          ))}
+          <hr />
+          <span className="grafo-legend-edge">
+            <span className="grafo-swatch grafo-swatch-line" aria-hidden="true" />
+            Link tra pagine (colore della pagina di arrivo)
+          </span>
+          <span className="grafo-legend-edge">
+            <span className="grafo-swatch grafo-swatch-line grafo-swatch-dash" aria-hidden="true" />
+            Pagina → file citato
+          </span>
+          <hr />
+          <span className="grafo-legend-edge">
+            <span className="grafo-swatch" style={{ background: tokenDrift }} aria-hidden="true" />
+            Drift: il codice citato è cambiato
+          </span>
+          <span className="grafo-legend-edge">
+            <span className="grafo-swatch" style={{ background: tokenError }} aria-hidden="true" />
+            Errore di lint
+          </span>
+        </div>
       </div>
 
       <PageDrawer
@@ -332,7 +456,7 @@ export default function Grafo() {
         target={drawer}
         repo={snapshot.repoPath}
         pagesByPath={pagesByPath}
-        onClose={() => setDrawer(null)}
+        onClose={() => (localHop ? setDrawer(null) : clearFocus())}
         onOpenWiki={(wikiRelPath) => setDrawer({ mode: 'wiki', wikiRelPath })}
         onOpenSource={(relPath, fromWikiPath) => setDrawer({ mode: 'source', relPath, fromWikiPath })}
       />

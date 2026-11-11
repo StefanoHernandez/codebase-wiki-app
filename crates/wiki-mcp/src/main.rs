@@ -110,14 +110,18 @@ fn models_cmd(args: &Args) {
                         "installed": installed.iter().any(|i| i == &custom.id),
                     }));
                 }
-                println!("{}", serde_json::json!({"installed": installed, "catalog": catalog}));
+                let r = rag_core::catalog::reranker_spec();
+                let reranker = serde_json::json!({"id": r.id, "size_mb": r.size_mb, "languages": r.languages,
+                    "installed": installed.iter().any(|i| i == r.id)});
+                println!("{}", serde_json::json!({"installed": installed, "catalog": catalog, "reranker": reranker}));
             } else {
                 println!("Installati: {}", installed.join(", "));
             }
         }
         Some("pull") => {
             let Some(id) = args.positional.get(2) else { fail(json, "models pull vuole un id") };
-            let Some(spec) = rag_core::model_by_id(id) else { fail(json, &format!("modello sconosciuto: {id}")) };
+            let reranker = rag_core::catalog::reranker_spec();
+            let Some(spec) = rag_core::model_by_id(id).or((id == reranker.id).then_some(reranker)) else { fail(json, &format!("modello sconosciuto: {id}")) };
             let res = rag_core::models::pull(spec, |ev| {
                 if json {
                     println!("{}", serde_json::json!({"event":"download","file":ev.file,"done":ev.done,"total":ev.total}));

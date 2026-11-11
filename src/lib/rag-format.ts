@@ -9,6 +9,13 @@ export type IndexStatus = {
   head?: string | null;
   changedSinceIndex?: number;
   staleInstall?: boolean;
+  /** Per source (`code`, `wiki`): files and chunks. */
+  bySource?: Record<string, { files: number; chunks: number }>;
+  sizeBytes?: number;
+  /** Unix seconds of the last write to the index. */
+  indexedAt?: number | null;
+  /** Installed reranker id, if any. */
+  reranker?: string | null;
 };
 
 /** `status --json` (snake_case) → IndexStatus. */
@@ -25,6 +32,10 @@ export function parseIndexStatus(raw: Record<string, unknown>): IndexStatus {
     head: str(raw.head),
     changedSinceIndex: Number(raw.changed_since_index ?? 0),
     staleInstall: raw.stale_install === true,
+    bySource: (raw.by_source as IndexStatus['bySource']) ?? {},
+    sizeBytes: Number(raw.size_bytes ?? 0),
+    indexedAt: typeof raw.indexed_at === 'number' ? raw.indexed_at : null,
+    reranker: str(raw.reranker),
   };
 }
 
@@ -106,4 +117,17 @@ export function shouldAutoIndex(
   const head = status.head ?? '';
   const indexed = status.indexedHead ?? '';
   return head.length > 0 && indexed.length > 0 && head !== indexed;
+}
+
+/** 1 234 567 → "1,2 MB". */
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toLocaleString('it-IT', { maximumFractionDigits: 1 })} ${units[i]}`;
 }

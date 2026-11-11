@@ -5,13 +5,30 @@
   display: flex;
   flex-direction: column;
   background: var(--ground);
-  /* Category node fills — read via getComputedStyle */
-  --graph-cat-core: #5f6a66;
-  --graph-cat-decision: #6b6560;
-  --graph-cat-tracker: #6b5b7a;
-  --graph-cat-agent: #7a6b55;
-  --graph-cat-topic: #4a7c59;
-  --graph-cat-source: #7a6f5c;
+  /* Category fills (read via getComputedStyle). Three hues validated all-pairs for CVD in
+     both themes; core/topic/source stay neutral and are told apart by size and shape. */
+  --graph-cat-decision: #2a78d6;
+  --graph-cat-tracker: #e87ba4;
+  --graph-cat-agent: #008300;
+  --graph-cat-core: #3d4744;
+  --graph-cat-topic: #7c8783;
+  --graph-cat-source: #a3aca8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .grafo-view {
+    --graph-cat-decision: #3987e5;
+    --graph-cat-tracker: #d55181;
+    --graph-cat-core: #c9d1ce;
+    --graph-cat-topic: #8d9894;
+    --graph-cat-source: #5c6763;
+  }
+}
+:root[data-theme='dark'] .grafo-view {
+  --graph-cat-decision: #3987e5;
+  --graph-cat-tracker: #d55181;
+  --graph-cat-core: #c9d1ce;
+  --graph-cat-topic: #8d9894;
+  --graph-cat-source: #5c6763;
 }
 
 .grafo-stage {
@@ -49,4 +66,78 @@
   place-items: center;
   padding: 24px;
   pointer-events: none;
+}
+
+.grafo-legend {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 1;
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-overlay);
+  font-size: var(--text-sm);
+}
+.grafo-legend button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.grafo-legend button:hover {
+  background: var(--surface-sunk);
+}
+.grafo-legend button[aria-pressed='false'] {
+  color: var(--ink-muted);
+  text-decoration: line-through;
+}
+.grafo-legend button[aria-pressed='false'] .grafo-swatch {
+  opacity: 0.3;
+}
+.grafo-legend-count {
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.grafo-legend hr {
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+}
+.grafo-legend-edge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  color: var(--ink-muted);
+}
+.grafo-swatch {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+}
+.grafo-swatch-square {
+  border-radius: 2px;
+}
+.grafo-swatch-line {
+  width: 18px;
+  height: 0;
+  border-radius: 0;
+  border-top: 2px solid var(--ink-muted);
+}
+.grafo-swatch-dash {
+  border-top-style: dashed;
 }

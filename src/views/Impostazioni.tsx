@@ -1,0 +1,410 @@
+import { useCallback, useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { copyText } from '../api';
+import { Dialog } from '../components/Dialog';
+import { useToast } from '../components/Toast';
+import { parseIndexStatus, type IndexStatus } from '../lib/rag-format';
+import { PYTHON_KEY, useProject } from '../state/project';
+import { useRag } from '../state/rag';
+import type { ThemeChoice } from '../state/theme';
+import './ricerca.css';
+
+type CatalogRow = { id: string; languages: string; sizeMb: number; note: string; tested: boolean; installed: boolean };
+type HarnessRow = { id: string; label: string; status: 'connected' | 'outdated' | 'absent'; configPath: string; hint?: string | null };
+type HarnessDlg = { id: string; label: string; action: string; path: string; before: string; after: string };
+
+const DEFAULT_MODEL = 'multilingual-e5-small';
+const COPY_ONLY = new Set(['antigravity']);
+const LINK_LABEL: Record<HarnessRow['status'], string> = {
+  connected: 'Collegato',
+  outdated: 'Da aggiornare',
+  absent: 'Non collegato',
+};
+const THEMES: Array<{ id: ThemeChoice; label: string }> = [
+  { id: 'system', label: 'Sistema' },
+  { id: 'light', label: 'Chiaro' },
+  { id: 'dark', label: 'Scuro' },
+];
+const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+const toRow = (r: Record<string, unknown>): CatalogRow => ({
+  id: String(r.id ?? ''),
+  languages: String(r.languages ?? ''),
+  sizeMb: Number(r.size_mb ?? 0),
+  note: String(r.note ?? ''),
+  tested: r.tested === true,
+  installed: r.installed === true,
+});
+
+/** App-wide settings: works with or without an open project (models and agents are global). */
+type ThemeProps = { theme: ThemeChoice; setTheme(t: ThemeChoice): void };
+
+/** Theme state lives in Shell (one `useTheme` for the app), so it comes in as props. */
+export default function Impostazioni(props: ThemeProps) {
+  return (
+    <section className="view">
+      <h1 className="view-title">Impostazioni</h1>
+      <Profilo {...props} />
+      <Modelli />
+      <Agenti />
+    </section>
+  );
+}
+
+function Profilo({ theme, setTheme }: ThemeProps) {
+  const { actor, nameError, setActor } = useProject();
+  // Draft keeps what is typed (spaces between names); the context exposes it trimmed.
+  const [draft, setDraft] = useState(actor);
+  const [python, setPython] = useState(() => {
+    try {
+      return localStorage.getItem(PYTHON_KEY) ?? '';
+    } catch {
+      return '';
+    }
+  });
+
+  return (
+    <section className="group">
+      <h2 className="group-title">Profilo e aspetto</h2>
+      <div className="settings-grid">
+        <label className="field">
+          <span className="field-label">Il tuo nome</span>
+          <input
+            className="input"
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              setActor(e.target.value);
+            }}
+            aria-invalid={!!nameError}
+            placeholder="Nome e cognome"
+          />
+          <span className={nameError ? 'field-hint error-text' : 'field-hint'}>
+            {nameError ?? 'Firma le azioni che fai qui (approvato da, chiuso da).'}
+          </span>
+        </label>
+        <label className="field">
+          <span className="field-label">Percorso di Python (facoltativo)</span>
+          <input
+            className="input mono"
+            value={python}
+            onChange={(e) => {
+              setPython(e.target.value);
+              try {
+                localStorage.setItem(PYTHON_KEY, e.target.value);
+              } catch {
+                // Storage unavailable: the value still applies for this session.
+              }
+            }}
+            placeholder="/usr/bin/python3"
+          />
+          <span className="field-hint">
+            Usato per il controllo strutturale in Salute; lascia vuoto per la ricerca automatica (Python 3.10+).
+          </span>
+        </label>
+        <fieldset className="field">
+          <legend className="field-label">Tema</legend>
+          <div className="segmented">
+            {THEMES.map((t) => (
+              <button key={t.id} type="button" aria-pressed={theme === t.id} onClick={() => setTheme(t.id)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      </div>
+    </section>
+  );
+}
+
+function Modelli() {
+  const project = useProject();
+  const rag = useRag();
+  const toast = useToast();
+  const repo = project.snapshot?.repoPath ?? null;
+  const job = rag.indexJob(repo);
+  const [status, setStatus] = useState<IndexStatus | null>(null);
+  const [catalog, setCatalog] = useState<CatalogRow[]>([]);
+  const [reranker, setReranker] = useState<CatalogRow | null>(null);
+  const [hfQuery, setHfQuery] = useState('');
+  const [hfHits, setHfHits] = useState<Array<{ id: string; downloads: number }>>([]);
+  const [hfError, setHfError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (repo) {
+      try {
+        setStatus(parseIndexStatus((await invoke('rag_status', { repo })) as Record<string, unknown>));
+      } catch (e) {
+        setStatus({ indexed: false, error: message(e) });
+      }
+    }
+    try {
+      const m = (await invoke('rag_models')) as { catalog?: Array<Record<string, unknown>>; reranker?: Record<string, unknown> };
+      setCatalog((m.catalog ?? []).map(toRow));
+      setReranker(m.reranker ? toRow(m.reranker) : null);
+    } catch {
+      setCatalog([]);
+    }
+  }, [repo]);
+
+  // Re-read when the project changes and whenever an index or download job ends.
+  useEffect(() => {
+    void refresh();
+  }, [refresh, rag.tick]);
+
+  const activeModel = status?.model || DEFAULT_MODEL;
+  const dl = rag.download;
+
+  const useModel = async (id: string) => {
+    if (status?.indexed && status.indexedModel && status.indexedModel !== id) {
+      if (!window.confirm("L'indice verrà ricostruito con il nuovo modello.")) return;
+    }
+    try {
+      await invoke('rag_set_model', { id });
+    } catch (e) {
+      toast(message(e), 'error');
+    }
+    void refresh();
+  };
+
+  const searchHf = async () => {
+    if (!hfQuery.trim()) return;
+    setHfError(null);
+    try {
+      setHfHits((await invoke('rag_models_search', { q: hfQuery })) as Array<{ id: string; downloads: number }>);
+    } catch (e) {
+      setHfError(message(e));
+    }
+  };
+
+  const addHf = async (hfRepo: string) => {
+    setHfError(null);
+    try {
+      await invoke('rag_models_add', { hfRepo });
+      toast(`${hfRepo} aggiunto al catalogo: ora puoi scaricarlo`);
+      void refresh();
+    } catch (e) {
+      setHfError(message(e));
+    }
+  };
+
+  const action = (row: CatalogRow, onUse?: () => void) =>
+    dl?.id === row.id ? (
+      <progress value={dl.done} max={dl.total || 1} aria-label={`Download ${row.id}`} />
+    ) : !row.installed ? (
+      <button type="button" className="btn" disabled={!!dl || job.running} onClick={() => void rag.startPull(row.id)}>
+        Scarica
+      </button>
+    ) : (
+      onUse && (
+        <button type="button" className="btn" onClick={onUse}>
+          Usa questo
+        </button>
+      )
+    );
+
+  return (
+    <section className="group">
+      <h2 className="group-title">Modelli per la ricerca</h2>
+      <p className="muted">Il modello di embedding trasforma codice e wiki in vettori; il reranker riordina i risultati migliori.</p>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Embedding</th>
+            <th>Lingue</th>
+            <th>Dimensione</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {catalog.map((row) => (
+            <tr key={row.id}>
+              <td>
+                <span className="mono">{row.id}</span>
+                {activeModel === row.id && <span className="badge badge-ok ricerca-badge">attivo</span>}
+                {!row.tested && <span className="badge ricerca-badge">non provato</span>}
+                {row.note && <div className="muted">{row.note}</div>}
+              </td>
+              <td>{row.languages}</td>
+              <td>{row.sizeMb > 0 ? `${row.sizeMb} MB` : '—'}</td>
+              <td className="ricerca-actions">{activeModel !== row.id && action(row, () => void useModel(row.id))}</td>
+            </tr>
+          ))}
+        </tbody>
+        {reranker && (
+          <>
+            <thead>
+              <tr>
+                <th colSpan={4}>Reranker</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <span className="mono">{reranker.id}</span>
+                  {reranker.installed && <span className="badge badge-ok ricerca-badge">attivo</span>}
+                  <div className="muted">Facoltativo: si attiva appena scaricato. Più preciso, ricerca un po' più lenta.</div>
+                </td>
+                <td>{reranker.languages}</td>
+                <td>{reranker.sizeMb} MB</td>
+                <td className="ricerca-actions">{action(reranker)}</td>
+              </tr>
+            </tbody>
+          </>
+        )}
+      </table>
+      {rag.downloadError && <p className="error-text">{rag.downloadError}</p>}
+      <div className="toolbar">
+        <input
+          className="input"
+          value={hfQuery}
+          onChange={(e) => setHfQuery(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && void searchHf()}
+          placeholder="Nome o argomento del modello"
+          aria-label="Cerca modelli su Hugging Face"
+        />
+        <button type="button" className="btn" onClick={() => void searchHf()}>
+          Cerca su Hugging Face
+        </button>
+      </div>
+      {hfError && <p className="error-text">{hfError}</p>}
+      {hfHits.length > 0 && (
+        <table className="table">
+          <tbody>
+            {hfHits.map((h) => (
+              <tr key={h.id}>
+                <td className="mono">{h.id}</td>
+                <td className="muted">{h.downloads.toLocaleString('it-IT')} download</td>
+                <td className="ricerca-actions">
+                  <button type="button" className="btn" onClick={() => void addHf(h.id)}>
+                    Aggiungi
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+function Agenti() {
+  const toast = useToast();
+  const [harness, setHarness] = useState<HarnessRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [dlg, setDlg] = useState<HarnessDlg | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      setHarness((await invoke('rag_harness_state')) as HarnessRow[]);
+    } catch (e) {
+      setError(message(e));
+    }
+  }, []);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const open = async (row: HarnessRow) => {
+    const action = row.status === 'connected' ? 'disconnect' : row.status === 'outdated' ? 'update' : 'connect';
+    setError(null);
+    try {
+      const preview = (await invoke('rag_harness_preview', { harness: row.id, action })) as Omit<HarnessDlg, 'id' | 'label' | 'action'>;
+      setDlg({ id: row.id, label: row.label, action, ...preview });
+    } catch (e) {
+      setError(message(e));
+    }
+  };
+
+  const confirm = async () => {
+    if (!dlg) return;
+    if (COPY_ONLY.has(dlg.id)) {
+      await copyText(dlg.after);
+      toast('Configurazione copiata');
+      setDlg(null);
+      return;
+    }
+    setBusy(true);
+    try {
+      await invoke('rag_harness_apply', { harness: dlg.id, action: dlg.action });
+      toast(dlg.action === 'disconnect' ? `${dlg.label} scollegato` : `${dlg.label} collegato`);
+      setDlg(null);
+      void refresh();
+    } catch (e) {
+      setError(message(e));
+      setDlg(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verb = dlg?.action === 'disconnect' ? 'Scollega' : dlg?.action === 'update' ? 'Aggiorna' : 'Collega';
+
+  return (
+    <section className="group">
+      <h2 className="group-title">Collega agli agenti (MCP)</h2>
+      <p className="muted">Dà a Claude Code, Codex e Cursor gli strumenti search_code e search_wiki sull'indice locale.</p>
+      <table className="table">
+        <tbody>
+          {harness.map((row) => (
+            <tr key={row.id}>
+              <td>{row.label}</td>
+              <td className={row.status === 'connected' ? undefined : 'muted'}>{LINK_LABEL[row.status]}</td>
+              <td className="muted">{row.hint}</td>
+              <td className="ricerca-actions">
+                <button type="button" className="btn" onClick={() => void open(row)}>
+                  {COPY_ONLY.has(row.id)
+                    ? 'Mostra configurazione'
+                    : row.status === 'connected'
+                      ? 'Scollega'
+                      : row.status === 'outdated'
+                        ? 'Aggiorna'
+                        : 'Collega'}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {error && <p className="error-text">{error}</p>}
+
+      <Dialog
+        open={!!dlg}
+        title={dlg ? `${verb} ${dlg.label}` : ''}
+        confirmLabel={dlg && COPY_ONLY.has(dlg.id) ? 'Copia' : dlg?.id === 'claude' ? 'Esegui' : 'Conferma'}
+        busy={busy}
+        onCancel={() => setDlg(null)}
+        onConfirm={() => void confirm()}
+      >
+        {dlg && (
+          <>
+            <p className="dialog-note mono">{dlg.path}</p>
+            {dlg.id === 'claude' || COPY_ONLY.has(dlg.id) ? (
+              <>
+                <pre className="ricerca-snippet">{dlg.after}</pre>
+                {dlg.id === 'claude' && (
+                  <button type="button" className="btn btn-quiet" onClick={() => void copyText(dlg.after).then(() => toast('Comando copiato'))}>
+                    Copia comando
+                  </button>
+                )}
+              </>
+            ) : (
+              <div className="ricerca-diff">
+                <div>
+                  <p className="muted">Prima</p>
+                  <pre className="ricerca-snippet">{dlg.before || '(file assente)'}</pre>
+                </div>
+                <div>
+                  <p className="muted">Dopo</p>
+                  <pre className="ricerca-snippet">{dlg.after}</pre>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </Dialog>
+    </section>
+  );
+}

@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { copyText, pickFolder, workflowPrompt } from '../api';
-import { PYTHON_KEY, useProject } from '../state/project';
+import { useProject } from '../state/project';
 import { useNav } from '../state/nav';
 import type { RecentProject } from '../types/snapshot';
-import { useTheme, type ThemeChoice } from '../state/theme';
+import { useTheme } from '../state/theme';
 import { SECTIONS, type SectionId } from '../views';
+import Impostazioni from '../views/Impostazioni';
 import { CommandPalette, MOD } from './CommandPalette';
 import { Empty } from './Empty';
 import { IncompatibleWiki } from './Compat';
@@ -89,39 +90,20 @@ export function Shell() {
 
   return (
     <div className="shell">
-      <Rail onAdd={addProject} theme={theme} setTheme={setTheme} />
-
-      <nav className="sections" aria-label="Sezioni">
-        <ul>
-          {SECTIONS.map((s, i) => {
-            const count = counts[s.id];
-            return (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  className="section-link"
-                  aria-current={nav.section === s.id ? 'page' : undefined}
-                  disabled={!hasWiki}
-                  onClick={() => nav.go(s.id)}
-                  title={`${MOD}${i + 1}`}
-                >
-                  <span>{s.label}</span>
-                  {count && <span className={`section-count section-count-${count.tone}`}>{count.text}</span>}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-        <button type="button" className="palette-hint" onClick={() => setPaletteOpen(true)}>
-          <span>Comandi</span>
-          <kbd>{MOD}K</kbd>
-        </button>
-      </nav>
+      <Sidebar
+        onAdd={addProject}
+        onPalette={() => setPaletteOpen(true)}
+        counts={counts}
+        hasWiki={hasWiki}
+      />
 
       <main className="content">
-        {project.snapshot ? (
+        {nav.section === 'impostazioni' ? (
+          <div className="content-body">
+            <Impostazioni theme={theme} setTheme={setTheme} />
+          </div>
+        ) : project.snapshot ? (
           <>
-            <Header />
             {project.error && <Banner tone="error">{project.error}</Banner>}
             {project.snapshot.warning && <Banner tone="drift">{project.snapshot.warning}</Banner>}
             {project.compat.pluginOutdated && (
@@ -218,157 +200,194 @@ function Banner({ tone, children }: { tone: 'error' | 'drift'; children: React.R
   );
 }
 
-function Header() {
-  const { snapshot, recent, loading, reload } = useProject();
-  if (!snapshot) return null;
-  const name = recent.find((r) => r.path === snapshot.repoPath)?.name ?? baseName(snapshot.repoPath);
-  const git = snapshot.gitState;
+const ICONS: Record<SectionId | 'impostazioni' | 'comandi', string> = {
+  'per-te': 'M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM8 5.5v3l2 1.2',
+  lavori: 'M2.5 3.5h3v9h-3zM6.5 3.5h3v6h-3zM10.5 3.5h3v4h-3z',
+  decisioni: 'M8 2l5.5 6L8 14 2.5 8z',
+  handoff: 'M2.5 5.5h9l-2.5-2.5M13.5 10.5h-9l2.5 2.5',
+  salute: 'M2 8.5h3l1.5-4 3 7 1.5-3h3',
+  grafo: 'M4 4.5a1.5 1.5 0 1 0 0-.01M12 6a1.5 1.5 0 1 0 0-.01M6.5 12.5a1.5 1.5 0 1 0 0-.01M5.3 5.2l1 5.8M5.4 4.3l5.2 1.4M7.8 11.6l3.4-4.4',
+  ricerca: 'M7 2.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9ZM10.3 10.3l3.2 3.2',
+  impostazioni:
+    'M8 5.8a2.2 2.2 0 1 0 0 4.4 2.2 2.2 0 0 0 0-4.4ZM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4',
+  comandi: 'M3 4.5l3 3.5-3 3.5M8 11.5h5',
+};
+
+function Icon({ name }: { name: keyof typeof ICONS }) {
   return (
-    <header className="content-header">
-      <h1 className="project-name" title={snapshot.repoPath}>
-        {name}
-      </h1>
-      <span className="git-ref">
-        {git.branch || 'HEAD staccato'}
-        {git.headSha && <code className="sha">@{git.headSha.slice(0, 7)}</code>}
-      </span>
-      {git.isDirty && (
-        <span className="dirty" title={git.dirtyFiles.join('\n')}>
-          modificato
-        </span>
-      )}
-      <button type="button" className="btn btn-quiet header-reload" onClick={() => void reload()} disabled={loading}>
-        <svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" className={loading ? 'spin' : undefined}>
-          <path
-            d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        {loading ? 'Ricarico…' : 'Ricarica'}
-      </button>
-    </header>
+    <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16">
+      <path d={ICONS[name]} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
-function Rail({
+function Sidebar({
   onAdd,
-  theme,
-  setTheme,
+  onPalette,
+  counts,
+  hasWiki,
 }: {
   onAdd(): void;
-  theme: ThemeChoice;
-  setTheme(t: ThemeChoice): void;
+  onPalette(): void;
+  counts: Partial<Record<SectionId, Count>>;
+  hasWiki: boolean;
 }) {
-  const { recent, current, open, forget, attentionCounts, loading } = useProject();
-  const [menu, setMenu] = useState<{ path: string; x: number; y: number } | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsBtnRef = useRef<HTMLButtonElement>(null);
+  const nav = useNav();
+  return (
+    <aside className="sidebar" aria-label="Progetto e sezioni">
+      <ProjectSwitcher onAdd={onAdd} />
+      <nav className="sections" aria-label="Sezioni">
+        <ul>
+          {SECTIONS.map((s, i) => {
+            const count = counts[s.id];
+            return (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  className="section-link"
+                  aria-current={nav.section === s.id ? 'page' : undefined}
+                  disabled={!hasWiki}
+                  onClick={() => nav.go(s.id)}
+                  title={`${MOD}${i + 1}`}
+                >
+                  <Icon name={s.id} />
+                  <span>{s.label}</span>
+                  {count && <span className={`section-count section-count-${count.tone}`}>{count.text}</span>}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="sidebar-bottom">
+          <button type="button" className="section-link" onClick={onPalette}>
+            <Icon name="comandi" />
+            <span>Comandi</span>
+            <kbd>{MOD}K</kbd>
+          </button>
+          <button
+            type="button"
+            className="section-link"
+            aria-current={nav.section === 'impostazioni' ? 'page' : undefined}
+            onClick={() => nav.go('impostazioni')}
+          >
+            <Icon name="impostazioni" />
+            <span>Impostazioni</span>
+          </button>
+        </div>
+      </nav>
+    </aside>
+  );
+}
 
-  const closeSettings = useCallback(() => {
-    setSettingsOpen(false);
-    settingsBtnRef.current?.focus();
-  }, []);
-  const tiles = useStableOrder(recent);
+/** Current project with its git state; the menu switches project, adds one, reloads or forgets. */
+function ProjectSwitcher({ onAdd }: { onAdd(): void }) {
+  const { recent, current, open, forget, attentionCounts, loading, snapshot, reload } = useProject();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const others = useStableOrder(recent).filter((r) => r.path !== current);
 
   useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
-    window.addEventListener('click', close);
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setMenuOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenuOpen(false);
+    window.addEventListener('mousedown', onDown);
     window.addEventListener('keydown', onKey);
     return () => {
-      window.removeEventListener('click', close);
+      window.removeEventListener('mousedown', onDown);
       window.removeEventListener('keydown', onKey);
     };
-  }, [menu]);
+  }, [menuOpen]);
+
+  const name = current ? (recent.find((r) => r.path === current)?.name ?? baseName(current)) : null;
+  const git = snapshot?.gitState;
+  const run = (fn: () => void) => () => {
+    setMenuOpen(false);
+    fn();
+  };
 
   return (
-    <aside className="rail" aria-label="Progetti">
-      <ul className="rail-projects">
-        {tiles.map((r) => {
-          const count = attentionCounts[r.path];
-          const isCurrent = r.path === current;
-          return (
-            <li key={r.path}>
-              <button
-                type="button"
-                className="rail-tile"
-                aria-current={isCurrent ? 'true' : undefined}
-                aria-label={count ? `${r.name}, ${count} in attesa` : r.name}
-                title={`${r.name}\n${r.path}`}
-                disabled={loading}
-                onClick={() => !isCurrent && void open(r.path)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  const box = e.currentTarget.getBoundingClientRect();
-                  setMenu({ path: r.path, x: e.clientX || box.right, y: e.clientY || box.top });
-                }}
-              >
-                {monogram(r.name)}
-                {!!count && <span className="rail-badge">{count}</span>}
+    <div className="switcher" ref={ref}>
+      <button
+        type="button"
+        className="switcher-btn"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        title={snapshot?.repoPath}
+        onClick={() => setMenuOpen((o) => !o)}
+      >
+        <span className={name ? 'monogram' : 'monogram monogram-quiet'}>{name ? monogram(name) : '+'}</span>
+        <span>
+          <span className="switcher-name">{name ?? 'Nessun progetto'}</span>
+          {git ? (
+            <span className="switcher-ref">
+              <span className="mono">{git.branch || 'HEAD staccato'}</span>
+              {git.headSha && <span className="mono">@{git.headSha.slice(0, 7)}</span>}
+              {git.isDirty && (
+                <span className="dirty" title={git.dirtyFiles.join('\n')}>
+                  modificato
+                </span>
+              )}
+            </span>
+          ) : (
+            <span className="switcher-ref">Apri una repository</span>
+          )}
+        </span>
+        <svg className="switcher-chevron" aria-hidden="true" viewBox="0 0 16 16" width="14" height="14">
+          <path d="M4.5 6.5 8 10l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+
+      {menuOpen && (
+        <div className="switcher-menu" role="menu">
+          {current && (
+            <>
+              <button type="button" role="menuitem" disabled={loading} onClick={run(() => void reload())}>
+                <svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" className={loading ? 'spin' : undefined}>
+                  <path
+                    d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>{loading ? 'Ricarico…' : 'Ricarica il progetto'}</span>
               </button>
-            </li>
-          );
-        })}
-        <li>
-          <button
-            type="button"
-            className="rail-tile rail-add"
-            aria-label="Aggiungi progetto"
-            title="Aggiungi progetto"
-            disabled={loading}
-            onClick={onAdd}
-          >
-            <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16">
+              <button type="button" role="menuitem" onClick={run(() => void forget(current))}>
+                <span />
+                <span>Rimuovi dai recenti</span>
+              </button>
+              {others.length > 0 && <hr />}
+            </>
+          )}
+          {others.map((r) => {
+            const count = attentionCounts[r.path];
+            return (
+              <button
+                key={r.path}
+                type="button"
+                role="menuitem"
+                title={r.path}
+                disabled={loading}
+                onClick={run(() => void open(r.path))}
+              >
+                <span className="monogram monogram-quiet">{monogram(r.name)}</span>
+                <span className="switcher-menu-name">{r.name}</span>
+                {!!count && <span className="section-count section-count-human">{count}</span>}
+              </button>
+            );
+          })}
+          <hr />
+          <button type="button" role="menuitem" disabled={loading} onClick={run(onAdd)}>
+            <svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14">
               <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
-          </button>
-        </li>
-      </ul>
-
-      <div className="rail-bottom">
-        <button
-          ref={settingsBtnRef}
-          type="button"
-          className="rail-tile rail-settings"
-          aria-label="Impostazioni"
-          aria-expanded={settingsOpen}
-          title="Impostazioni"
-          onClick={() => (settingsOpen ? closeSettings() : setSettingsOpen(true))}
-        >
-          <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16">
-            <circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.4" />
-            <path
-              d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
-        {settingsOpen && <Settings theme={theme} setTheme={setTheme} onClose={closeSettings} />}
-      </div>
-
-      {menu && (
-        <div className="context-menu" role="menu" style={{ left: menu.x, top: menu.y }}>
-          <button
-            type="button"
-            role="menuitem"
-            autoFocus
-            onClick={() => {
-              void forget(menu.path);
-              setMenu(null);
-            }}
-          >
-            Rimuovi dai recenti
+            <span>Aggiungi progetto</span>
           </button>
         </div>
       )}
-    </aside>
+    </div>
   );
 }
 
@@ -388,90 +407,3 @@ function useStableOrder(recent: RecentProject[]): RecentProject[] {
   return order.current.map((p) => byPath.get(p)!);
 }
 
-const THEMES: Array<{ id: ThemeChoice; label: string }> = [
-  { id: 'system', label: 'Sistema' },
-  { id: 'light', label: 'Chiaro' },
-  { id: 'dark', label: 'Scuro' },
-];
-
-function Settings({ theme, setTheme, onClose }: { theme: ThemeChoice; setTheme(t: ThemeChoice): void; onClose(): void }) {
-  const { actor, nameError, setActor } = useProject();
-  // Draft keeps what is typed (spaces between names); the context exposes it trimmed.
-  const [draft, setDraft] = useState(actor);
-  const [pythonDraft, setPythonDraft] = useState(() => {
-    try {
-      return localStorage.getItem(PYTHON_KEY) ?? '';
-    } catch {
-      return '';
-    }
-  });
-  const ref = useRef<HTMLDivElement>(null);
-
-  const savePythonPath = (value: string) => {
-    setPythonDraft(value);
-    try {
-      localStorage.setItem(PYTHON_KEY, value);
-    } catch {
-      // Storage unavailable: path still applies for this session via draft.
-    }
-  };
-
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      const el = ref.current;
-      const target = e.target as Node;
-      if (el && !el.contains(target) && !(target as Element).closest?.('.rail-settings')) onClose();
-    };
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('mousedown', onDown);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [onClose]);
-
-  return (
-    <div className="popover settings" ref={ref} role="dialog" aria-label="Impostazioni">
-      <label className="field">
-        <span className="field-label">Il tuo nome</span>
-        <input
-          className="input"
-          value={draft}
-          autoFocus
-          onChange={(e) => {
-            setDraft(e.target.value);
-            setActor(e.target.value);
-          }}
-          aria-invalid={!!nameError}
-          placeholder="Nome e cognome"
-        />
-        <span className={nameError ? 'field-hint error-text' : 'field-hint'}>
-          {nameError ?? 'Firma le azioni che fai qui (approvato da, chiuso da).'}
-        </span>
-      </label>
-      <label className="field">
-        <span className="field-label">Percorso di Python (facoltativo)</span>
-        <input
-          className="input mono"
-          value={pythonDraft}
-          onChange={(e) => savePythonPath(e.target.value)}
-          placeholder="/opt/homebrew/bin/python3"
-        />
-        <span className="field-hint">
-          Usato per il controllo strutturale in Salute; lascia vuoto per la ricerca automatica (Python 3.10+).
-        </span>
-      </label>
-      <fieldset className="field">
-        <legend className="field-label">Tema</legend>
-        <div className="segmented">
-          {THEMES.map((t) => (
-            <button key={t.id} type="button" aria-pressed={theme === t.id} onClick={() => setTheme(t.id)}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </fieldset>
-    </div>
-  );
-}

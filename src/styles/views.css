@@ -1,7 +1,7 @@
 /* View layout for Per te and Lavori. Buttons, rows, cards and dialogs come from components.css. */
 
 .group {
-  margin-top: 28px;
+  margin-top: 24px;
 }
 .group:first-of-type {
   margin-top: 0;
@@ -10,9 +10,9 @@
   display: flex;
   align-items: baseline;
   gap: 8px;
-  margin: 0 0 4px;
+  margin: 0 0 6px;
   font-size: var(--text-md);
-  font-weight: 500;
+  font-weight: 600;
 }
 .group-count {
   color: var(--ink-muted);
@@ -140,7 +140,7 @@
 }
 
 .is-selected {
-  outline: 2px solid var(--ink-muted);
+  outline: 2px solid var(--focus);
   outline-offset: 0;
 }
 .btn[aria-disabled='true'] {

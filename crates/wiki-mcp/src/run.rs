@@ -187,13 +187,15 @@ fn index_one(
 #[cfg(all(feature = "embed", feature = "download"))]
 pub fn run_search(repo: Option<&Path>, wiki: bool, k: usize, glob: Option<&str>, query: &str, json: bool) -> i32 {
     match search_hits(repo, wiki, k, glob, query) {
-        Ok(hits) => {
-            for h in hits {
+        Ok((hits, reranked)) => {
+            for (h, stale) in hits {
                 if json {
                     println!(
                         "{}",
                         serde_json::json!({"path": h.path, "start_line": h.start_line, "end_line": h.end_line,
-                            "source": h.source, "score": h.score, "snippet": h.text})
+                            "source": h.source, "score": h.score, "snippet": h.text,
+                            "bm25_rank": h.bm25_rank, "vec_rank": h.vec_rank, "fused_rank": h.fused_rank,
+                            "reranked": reranked, "stale": stale})
                     );
                 } else {
                     println!("{}:{}-{} score={:.4}", h.path, h.start_line, h.end_line, h.score);
@@ -214,24 +216,44 @@ pub fn run_search(repo: Option<&Path>, wiki: bool, k: usize, glob: Option<&str>,
     }
 }
 
+/// Hits with their `stale` flag (file changed since indexing), and whether the reranker ran.
 #[cfg(all(feature = "embed", feature = "download"))]
-fn search_hits(repo: Option<&Path>, wiki: bool, k: usize, glob: Option<&str>, query: &str) -> Result<Vec<rag_core::Hit>, String> {
+fn search_hits(
+    repo: Option<&Path>,
+    wiki: bool,
+    k: usize,
+    glob: Option<&str>,
+    query: &str,
+) -> Result<(Vec<(rag_core::Hit, bool)>, bool), String> {
     let root = resolve_repo(repo)?;
     let spec = active_spec()?;
     let store = Store::open_reader(&index_path(&repo_id(&root)), spec.dims, spec.id)?;
     let mut embedder = load_embedder(spec, &model_dir(spec.id))?;
     let qv = embedder.embed_query(query)?;
     let source = if wiki { FileSource::Wiki } else { FileSource::Code };
-    let hits = store.search(&qv, query, source, k.clamp(1, 20), glob)?;
+    let mut reranker = rag_core::embed::load_installed_reranker().unwrap_or_else(|e| {
+        eprintln!("reranker: {e}");
+        None
+    });
+    let reranked = reranker.is_some();
+    let hits = rag_core::embed::search_reranked(&store, reranker.as_mut(), &qv, query, source, k.clamp(1, 20), glob)?;
     // Same rule as `serve`: re-check the current private terms; unreadable terms → no results.
     let terms = match wiki_root(&root) {
         Some(w) => wiki_core::read_private_terms(&root.join(w))?,
         None => None,
     };
-    Ok(hits
-        .into_iter()
-        .filter(|h| !terms.as_deref().is_some_and(|t| wiki_core::content_has_forbidden_term(t, &h.text)))
-        .collect())
+    let mut out = Vec::new();
+    for h in hits {
+        if terms.as_deref().is_some_and(|t| wiki_core::content_has_forbidden_term(t, &h.text)) {
+            continue;
+        }
+        let stale = match store.file_record(&h.path)? {
+            Some((size, mtime, _)) => rag_core::file_changed(&root, &h.path, size, mtime),
+            None => true,
+        };
+        out.push((h, stale));
+    }
+    Ok((out, reranked))
 }
 
 #[cfg(all(feature = "embed", feature = "download"))]
@@ -262,7 +284,25 @@ pub fn status_json(root: &Path) -> serde_json::Value {
         "chunks": 0,
         "changed_since_index": 0,
         "error": null,
+        "reranker": rag_core::models::is_installed(rag_core::catalog::reranker_spec())
+            .then_some(rag_core::catalog::reranker_spec().id),
     });
+    // Size on disk (db + WAL) and last write time, from the files themselves.
+    let mut size = 0u64;
+    let mut modified: Option<std::time::SystemTime> = None;
+    for suffix in ["", "-wal"] {
+        let mut p = index_path(&id).into_os_string();
+        p.push(suffix);
+        if let Ok(m) = std::fs::metadata(&p) {
+            size += m.len();
+            modified = modified.max(m.modified().ok());
+        }
+    }
+    out["size_bytes"] = size.into();
+    out["indexed_at"] = modified
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .into();
     let Some(spec) = model_by_id(&cfg.model) else {
         out["error"] = "Modello sconosciuto".into();
         return out;
@@ -275,6 +315,13 @@ pub fn status_json(root: &Path) -> serde_json::Value {
             if let Ok((f, c)) = store.counts() {
                 out["files"] = f.into();
                 out["chunks"] = c.into();
+            }
+            if let Ok(rows) = store.counts_by_source() {
+                out["by_source"] = rows
+                    .into_iter()
+                    .map(|(src, f, c)| (src, serde_json::json!({"files": f, "chunks": c})))
+                    .collect::<serde_json::Map<_, _>>()
+                    .into();
             }
             out["changed_since_index"] = store.count_changed(root).unwrap_or(0).into();
         }

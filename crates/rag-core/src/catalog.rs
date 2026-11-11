@@ -132,6 +132,33 @@ pub fn catalog() -> &'static [ModelSpec] {
     &MODELS
 }
 
+/// Optional cross-encoder that re-orders the fused BM25+vector candidates.
+/// Not an embedding model (kept out of `catalog()`); installed with `models pull <id>`.
+pub fn reranker_spec() -> &'static ModelSpec {
+    static RERANKER: ModelSpec = ModelSpec {
+        id: "jina-reranker-v2-base-multilingual",
+        hf_repo: "jinaai/jina-reranker-v2-base-multilingual",
+        files: &[
+            ("onnx/model_quantized.onnx", "model.onnx"),
+            ("tokenizer.json", "tokenizer.json"),
+            ("config.json", "config.json"),
+            ("special_tokens_map.json", "special_tokens_map.json"),
+            ("tokenizer_config.json", "tokenizer_config.json"),
+        ],
+        dims: 0,
+        pooling: Pooling::Cls,
+        normalize: false,
+        query_prefix: "",
+        passage_prefix: "",
+        max_tokens: 1024,
+        size_mb: 266,
+        languages: "multilingue",
+        note: "Reranker opzionale",
+        tested: false,
+    };
+    &RERANKER
+}
+
 pub fn model_by_id(id: &str) -> Option<&'static ModelSpec> {
     catalog()
         .iter()

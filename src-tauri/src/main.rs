@@ -40,6 +40,7 @@ fn main() {
             commands::rag_status,
             commands::rag_index_start,
             commands::rag_index_cancel,
+            commands::rag_index_delete,
             commands::rag_models,
             commands::rag_set_model,
             commands::rag_model_pull,

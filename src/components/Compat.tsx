@@ -18,7 +18,11 @@ export function CopyAdoptButton() {
     }
   };
   return (
-    <button type="button" className="btn" onClick={() => void copy()}>
+    <button type="button" className="btn" onClick={(e) => {
+        // Inside a <summary> the click would also open/close the notice.
+        e.preventDefault();
+        void copy();
+      }}>
       Copia prompt
     </button>
   );
@@ -27,10 +31,17 @@ export function CopyAdoptButton() {
 /** Upgrades the current wiki format still needs (validator `upgrade`), with the adopt prompt. */
 export function UpgradeBanner() {
   const { compat } = useProject();
-  if (compat.banner.length === 0) return null;
+  const n = compat.banner.length;
+  if (n === 0) return null;
   return (
-    <div className="banner banner-drift" role="status">
-      <p>La wiki va aggiornata al formato attuale del plugin. Avvia /wiki-init --adopt in Claude Code o Codex:</p>
+    <details className="banner banner-drift" role="status">
+      <summary>
+        <span className="banner-title">
+          La wiki usa un formato vecchio: {n} {n === 1 ? 'punto da aggiornare' : 'punti da aggiornare'} con /wiki-init --adopt
+        </span>
+        <span className="banner-toggle">Mostra</span>
+        {compat.banner.some((u) => u.fix === 'adopt') && <CopyAdoptButton />}
+      </summary>
       <ul>
         {compat.banner.map((u, i) => (
           <li key={`${u.code}:${i}`}>
@@ -42,8 +53,7 @@ export function UpgradeBanner() {
           </li>
         ))}
       </ul>
-      {compat.banner.some((u) => u.fix === 'adopt') && <CopyAdoptButton />}
-    </div>
+    </details>
   );
 }
 

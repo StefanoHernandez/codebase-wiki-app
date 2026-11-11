@@ -21,16 +21,33 @@ export function neighborIds(nodeId: string, edges: GraphEdge[]): Set<string> {
   return out;
 }
 
-const CATEGORIES: GraphNodeCategory[] = ['core', 'decision', 'tracker', 'agent', 'topic', 'source'];
+export const CATEGORIES: GraphNodeCategory[] = ['core', 'decision', 'tracker', 'agent', 'topic', 'source'];
+
+export const CATEGORY_LABEL: Record<GraphNodeCategory, string> = {
+  core: 'Pagine base',
+  decision: 'Decisioni',
+  tracker: 'Tracker e rischi',
+  agent: 'Contesto e handoff',
+  topic: 'Argomenti',
+  source: 'File di codice',
+};
 
 export function readCategoryColors(root: HTMLElement): Record<GraphNodeCategory, string> {
   const cs = getComputedStyle(root);
-  return {
-    core: cs.getPropertyValue('--graph-cat-core').trim(),
-    decision: cs.getPropertyValue('--graph-cat-decision').trim(),
-    tracker: cs.getPropertyValue('--graph-cat-tracker').trim(),
-    agent: cs.getPropertyValue('--graph-cat-agent').trim(),
-    topic: cs.getPropertyValue('--graph-cat-topic').trim(),
-    source: cs.getPropertyValue('--graph-cat-source').trim(),
-  };
+  return Object.fromEntries(
+    CATEGORIES.map((c) => [c, cs.getPropertyValue(`--graph-cat-${c}`).trim()]),
+  ) as Record<GraphNodeCategory, string>;
+}
+
+/** `#rrggbb` → `rgba(r,g,b,a)`; anything else is returned unchanged. */
+export function withAlpha(color: string, alpha: number): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(color.trim());
+  if (!m) return color;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+/** Node radius grows with the square root of its degree, capped so hubs do not swallow the view. */
+export function nodeRadius(degree: number): number {
+  return Math.min(3 + Math.sqrt(degree) * 1.1, 11);
 }

@@ -7,7 +7,7 @@ import Salute from './Salute';
 import Grafo from './Grafo';
 import Ricerca from './Ricerca';
 
-export type SectionId = 'per-te' | 'lavori' | 'decisioni' | 'handoff' | 'salute' | 'ricerca' | 'grafo';
+export type SectionId = 'per-te' | 'lavori' | 'decisioni' | 'handoff' | 'salute' | 'ricerca' | 'grafo' | 'impostazioni';
 
 /** Sections in nav order; position + 1 is the ⌘/Ctrl shortcut digit. */
 export const SECTIONS: Array<{ id: SectionId; label: string; View: ComponentType }> = [

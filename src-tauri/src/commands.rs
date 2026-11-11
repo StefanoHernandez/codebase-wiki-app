@@ -673,6 +673,20 @@ pub fn rag_index_cancel(
     jobs.cancel_index(&repo)
 }
 
+/// Deletes this repo's index (db + WAL/SHM). Refused while an index job runs on it.
+#[tauri::command]
+pub fn rag_index_delete(
+    repo: String,
+    jobs: tauri::State<'_, Arc<crate::rag_jobs::RagJobs>>,
+) -> Result<(), String> {
+    if jobs.index_running(&repo) {
+        return Err("Indicizzazione in corso: annullala prima di cancellare l'indice".into());
+    }
+    // Same resolution as the sidecar, so the id matches the index it wrote.
+    let root = rag_core::resolve_repo(Some(std::path::Path::new(&repo)))?;
+    rag_core::delete_index(&rag_core::index_path(&rag_core::repo_id(&root)))
+}
+
 #[tauri::command]
 pub async fn rag_model_pull(
     app: AppHandle,
@@ -692,6 +706,11 @@ pub struct RagSearchHit {
     pub source: String,
     pub score: f64,
     pub snippet: String,
+    pub bm25_rank: Option<u32>,
+    pub vec_rank: Option<u32>,
+    pub fused_rank: u32,
+    pub reranked: bool,
+    pub stale: bool,
 }
 
 #[tauri::command]
@@ -730,6 +749,11 @@ pub async fn rag_preview(
                 source: v["source"].as_str().unwrap_or("").into(),
                 score: v["score"].as_f64().unwrap_or(0.0),
                 snippet: v["snippet"].as_str().unwrap_or("").into(),
+                bm25_rank: v["bm25_rank"].as_u64().map(|n| n as u32),
+                vec_rank: v["vec_rank"].as_u64().map(|n| n as u32),
+                fused_rank: v["fused_rank"].as_u64().unwrap_or(0) as u32,
+                reranked: v["reranked"].as_bool().unwrap_or(false),
+                stale: v["stale"].as_bool().unwrap_or(false),
             });
         }
         Ok(hits)

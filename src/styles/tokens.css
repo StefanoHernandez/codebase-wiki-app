@@ -1,71 +1,96 @@
-/* Design tokens (design.md). Ultramarine (--human) is reserved for human authority. */
+/* Design tokens (docs/tasks/design.md, "Strumento" revision).
+   Cold slate instead of green-grey; ultramarine (--human) stays reserved for human authority. */
 :root {
   color-scheme: light;
-  --ground: #f2f4f3;
+  --ground: #f3f4f7;
   --surface: #ffffff;
-  --surface-sunk: #e8ecea;
-  --ink: #1b2220;
-  --ink-muted: #5f6a66;
-  --rule: #d5dbd8;
+  --surface-raised: #fafbfc;
+  --surface-sunk: #e9ebf0;
+  --surface-hover: #eef0f4;
+  --ink: #161922;
+  --ink-muted: #565d6e;
+  --ink-faint: #8a90a0;
+  --rule: #dcdfe6;
+  --rule-strong: #c4c8d2;
   --human: #2b45d4;
-  --human-wash: #e6eafb;
+  --human-wash: #e7eafc;
   --on-human: #ffffff;
-  --drift: #b4540a;
-  --error: #b42318;
-  --ok: #2f7d4f;
+  --drift: #a65300;
+  --drift-wash: #fbefe1;
+  --error: #c0352b;
+  --error-wash: #fbe9e7;
+  --ok: #1f7a4c;
+  --ok-wash: #e4f3eb;
+  --focus: #2b45d4;
 
-  --font-ui: 'Schibsted Grotesk', system-ui, sans-serif;
+  --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
   --font-read: 'Newsreader', Georgia, serif;
-  --font-code: 'JetBrains Mono', ui-monospace, monospace;
+  --font-code: 'IBM Plex Mono', ui-monospace, monospace;
 
+  --text-xs: 11.5px;
   --text-sm: 12.5px;
-  --text-base: 14px;
-  --text-md: 16px;
-  --text-lg: 20px;
-  --text-xl: 26px;
+  --text-base: 13.5px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
 
-  --radius-panel: 10px;
-  --radius-control: 6px;
+  --radius-panel: 8px;
+  --radius-control: 5px;
   --radius-chip: 999px;
-  --shadow-overlay: 0 12px 40px rgb(10 20 16 / 0.18), 0 2px 6px rgb(10 20 16 / 0.08);
+  --shadow-overlay: 0 16px 48px rgb(15 20 35 / 0.18), 0 2px 8px rgb(15 20 35 / 0.08);
 
-  --rail-w: 64px;
-  --nav-w: 200px;
-  --content-max: 1100px;
+  --sidebar-w: 236px;
+  --content-max: 1180px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --ground: #141917;
-    --surface: #1b2120;
-    --surface-sunk: #101413;
-    --ink: #e3e8e6;
-    --ink-muted: #95a09b;
-    --rule: #2c3532;
-    --human: #8a9bff;
-    --human-wash: #1f2547;
-    --on-human: #0d1230;
-    --drift: #e08a3c;
-    --error: #f07167;
-    --ok: #5bbf85;
-    --shadow-overlay: 0 12px 40px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.3);
+    --ground: #13151b;
+    --surface: #1a1d25;
+    --surface-raised: #20242e;
+    --surface-sunk: #0f1116;
+    --surface-hover: #232733;
+    --ink: #e8eaf0;
+    --ink-muted: #9aa1b1;
+    --ink-faint: #6c7383;
+    --rule: #2a2e3a;
+    --rule-strong: #3a3f4d;
+    --human: #8c9cff;
+    --human-wash: #222a52;
+    --on-human: #0b1030;
+    --drift: #eaa452;
+    --drift-wash: #33261a;
+    --error: #f27a6e;
+    --error-wash: #3a1f1d;
+    --ok: #5fc795;
+    --ok-wash: #18301f;
+    --focus: #8c9cff;
+    --shadow-overlay: 0 16px 48px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --ground: #141917;
-  --surface: #1b2120;
-  --surface-sunk: #101413;
-  --ink: #e3e8e6;
-  --ink-muted: #95a09b;
-  --rule: #2c3532;
-  --human: #8a9bff;
-  --human-wash: #1f2547;
-  --on-human: #0d1230;
-  --drift: #e08a3c;
-  --error: #f07167;
-  --ok: #5bbf85;
-  --shadow-overlay: 0 12px 40px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.3);
+  --ground: #13151b;
+  --surface: #1a1d25;
+  --surface-raised: #20242e;
+  --surface-sunk: #0f1116;
+  --surface-hover: #232733;
+  --ink: #e8eaf0;
+  --ink-muted: #9aa1b1;
+  --ink-faint: #6c7383;
+  --rule: #2a2e3a;
+  --rule-strong: #3a3f4d;
+  --human: #8c9cff;
+  --human-wash: #222a52;
+  --on-human: #0b1030;
+  --drift: #eaa452;
+  --drift-wash: #33261a;
+  --error: #f27a6e;
+  --error-wash: #3a1f1d;
+  --ok: #5fc795;
+  --ok-wash: #18301f;
+  --focus: #8c9cff;
+  --shadow-overlay: 0 16px 48px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
 }

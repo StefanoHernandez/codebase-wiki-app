@@ -8,7 +8,7 @@ use rmcp::{
     schemars, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler, ServiceExt,
 };
 use rag_core::{
-    embed::load_embedder, file_changed, head_sha, index_path, model_by_id, model_dir, read_config, repo_id,
+    embed::{load_embedder, load_installed_reranker, search_reranked}, file_changed, head_sha, index_path, model_by_id, model_dir, read_config, repo_id,
     resolve_repo, wiki_root, FileSource, Store,
 };
 use wiki_core::{content_has_forbidden_term, read_private_terms};
@@ -19,6 +19,8 @@ static REPO: OnceLock<PathBuf> = OnceLock::new();
 /// The embedder of the active model, loaded at the first search. Reloaded when the person picks
 /// another model in the app while this server runs.
 static EMBEDDER: Mutex<Option<(&'static str, rag_core::embed::Embedder)>> = Mutex::new(None);
+/// The optional reranker, loaded at the first search after its model is installed.
+static RERANKER: Mutex<Option<rag_core::embed::Reranker>> = Mutex::new(None);
 
 #[derive(Clone)]
 pub struct WikiMcp {
@@ -84,7 +86,17 @@ impl WikiMcp {
             guard.as_mut().map(|(_, e)| e.embed_query(query)).ok_or("embedder")??
         };
         let source = if wiki { FileSource::Wiki } else { FileSource::Code };
-        let hits = store.search(&qv, query, source, k.clamp(1, 20), path_glob)?;
+        let hits = {
+            let mut rr = RERANKER.lock().map_err(|e| e.to_string())?;
+            if rr.is_none() {
+                // A broken reranker must not break search: fall back to the RRF order.
+                *rr = load_installed_reranker().unwrap_or_else(|e| {
+                    eprintln!("reranker: {e}");
+                    None
+                });
+            }
+            search_reranked(&store, rr.as_mut(), &qv, query, source, k.clamp(1, 20), path_glob)?
+        };
         let mut lines = vec![status_header(root, &store)?];
         for h in hits {
             if terms.as_deref().is_some_and(|tc| content_has_forbidden_term(tc, &h.text)) {

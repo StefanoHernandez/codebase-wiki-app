@@ -21,6 +21,12 @@ pub struct Hit {
     pub score: f64,
     pub text: String,
     pub chunk_id: i64,
+    /// 1-based rank in the keyword (BM25) list, if the chunk was there.
+    pub bm25_rank: Option<u32>,
+    /// 1-based rank in the vector list, if the chunk was there.
+    pub vec_rank: Option<u32>,
+    /// 1-based rank after RRF fusion (before any reranker).
+    pub fused_rank: u32,
 }
 
 pub struct Store {
@@ -197,6 +203,21 @@ impl Store {
         Ok(())
     }
 
+    /// (files, chunks) per source, e.g. `[("code", 120, 900), ("wiki", 40, 300)]`.
+    pub fn counts_by_source(&self) -> Result<Vec<(String, u64, u64)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT f.source, count(DISTINCT f.id), count(c.id)
+                 FROM files f LEFT JOIN chunks c ON c.file_id = f.id GROUP BY f.source ORDER BY f.source",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64, r.get::<_, i64>(2)? as u64)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
     pub fn counts(&self) -> Result<(u64, u64), String> {
         let files: i64 = self.conn.query_row("SELECT count(*) FROM files", [], |r| r.get(0)).map_err(|e| e.to_string())?;
         let chunks: i64 = self.conn.query_row("SELECT count(*) FROM chunks", [], |r| r.get(0)).map_err(|e| e.to_string())?;
@@ -342,6 +363,8 @@ impl Store {
             FileSource::Wiki => "vec_wiki",
         };
         let mut scores: std::collections::HashMap<i64, f64> = std::collections::HashMap::new();
+        let mut vec_ranks: std::collections::HashMap<i64, u32> = std::collections::HashMap::new();
+        let mut bm25_ranks: std::collections::HashMap<i64, u32> = std::collections::HashMap::new();
         {
             let mut stmt = self
                 .conn
@@ -356,6 +379,7 @@ impl Store {
                 .map_err(|e| e.to_string())?;
             for (i, id) in ids.into_iter().enumerate() {
                 *scores.entry(id).or_default() += 1.0 / (RRF_K + (i + 1) as f64);
+                vec_ranks.insert(id, i as u32 + 1);
             }
         }
         let fts_q = Self::fts_query(query_text);
@@ -373,12 +397,13 @@ impl Store {
                 .map_err(|e| e.to_string())?;
             for (i, id) in ids.into_iter().enumerate() {
                 *scores.entry(id).or_default() += 1.0 / (RRF_K + (i + 1) as f64);
+                bm25_ranks.insert(id, i as u32 + 1);
             }
         }
         let mut ranked: Vec<(i64, f64)> = scores.into_iter().collect();
         ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0)));
         let mut out = Vec::new();
-        for (chunk_id, score) in ranked {
+        for (pos, (chunk_id, score)) in ranked.into_iter().enumerate() {
             let hit = self
                 .conn
                 .query_row(
@@ -395,6 +420,9 @@ impl Store {
                             score,
                             text: r.get(4)?,
                             chunk_id,
+                            bm25_rank: bm25_ranks.get(&chunk_id).copied(),
+                            vec_rank: vec_ranks.get(&chunk_id).copied(),
+                            fused_rank: pos as u32 + 1,
                         })
                     },
                 )

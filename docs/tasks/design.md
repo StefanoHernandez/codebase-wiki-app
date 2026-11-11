@@ -45,3 +45,11 @@ All-caps eyebrow labels; monospace for small labels; meta strings joined with " 
 
 ## Copy (Italian, plain, active)
 Buttons say the action: "Promuovi a lavoro", "Chiudi senza prova", "Accetta decisione", "Rifiuta decisione", "Segna come rivista", "Copia prompt /wiki-sync". The toast repeats the verb ("Decisione accettata"). Empty states direct: "Niente che aspetti te." / "Questa cartella non ha una wiki. Avvia /wiki-init in Claude Code o Codex." Errors say what happened and what to do, no apologies.
+
+## Revision 2026-11-11: "Strumento"
+Feedback: colours too dull, wasted space (two left columns), notices too loud, typography unconvincing. Changes (the ultramarine rule above still holds):
+- **Layout:** one 236px sidebar. Top: project switcher (monogram, name, branch @sha, "modificato"; menu with other projects, reload, forget, add). Then sections with 16px stroke icons and counts; bottom: Comandi and Impostazioni. No content header: the space goes to the view.
+- **Colour:** cold slate instead of green-grey. Light ground #F3F4F7 / ink #161922; dark ground #13151B / surface #1A1D25 / ink #E8EAF0. Ultramarine #2B45D4 / #8C9CFF. Status tones get a wash (`--drift-wash`, `--error-wash`, `--ok-wash`) for chips; the waiting count is a filled ultramarine pill.
+- **Type:** IBM Plex Sans 400/500/600 (UI), IBM Plex Mono (code), Newsreader stays for rendered pages. Scale 11.5 / 12.5 / 13.5 (base) / 15 / 18 / 22, headings 600.
+- **Density:** controls 28px, rows 8px padding, table cells 7px.
+- **Notices:** one line with a 3px left mark; details in `<details>`, action button on the same line.
