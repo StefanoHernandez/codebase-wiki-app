@@ -4,6 +4,8 @@ import { useProject } from '../state/project';
 import { useRag } from '../state/rag';
 import { formatIndexState, type IndexStatus } from '../lib/rag-format';
 import { SidePanel } from '../components/SidePanel';
+import { Dialog } from '../components/Dialog';
+import { copyText } from '../api';
 
 type CatalogRow = {
   id: string;
@@ -37,6 +39,17 @@ export default function Ricerca() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [panel, setPanel] = useState<{ path: string; markdown: string } | null>(null);
+  const [harnessRows, setHarnessRows] = useState<
+    Array<{ id: string; label: string; status: string; configPath: string; hint?: string | null }>
+  >([]);
+  const [harnessDlg, setHarnessDlg] = useState<{
+    id: string;
+    action: string;
+    path: string;
+    before: string;
+    after: string;
+  } | null>(null);
+  const [harnessBusy, setHarnessBusy] = useState(false);
 
   const job = rag.jobFor(repo);
 
@@ -70,6 +83,47 @@ export default function Ricerca() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    void invoke('rag_harness_state')
+      .then((rows) => setHarnessRows(rows as typeof harnessRows))
+      .catch(() => setHarnessRows([]));
+  }, [repo]);
+
+  const harnessActionLabel = (status: string, verb: 'connect' | 'disconnect' | 'update') => {
+    if (verb === 'disconnect') return 'Scollega';
+    if (status === 'outdated') return 'Aggiorna';
+    return 'Collega';
+  };
+
+  const openHarness = async (id: string, status: string, verb: 'connect' | 'disconnect' | 'update') => {
+  const action = verb === 'disconnect' ? 'disconnect' : status === 'outdated' ? 'update' : 'connect';
+    try {
+      const preview = (await invoke('rag_harness_preview', { harness: id, action })) as {
+        path: string;
+        before: string;
+        after: string;
+      };
+      setHarnessDlg({ id, action, ...preview });
+    } catch (e) {
+      setSearchError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const applyHarness = async () => {
+    if (!harnessDlg) return;
+    setHarnessBusy(true);
+    try {
+      await invoke('rag_harness_apply', { harness: harnessDlg.id, action: harnessDlg.action });
+      setHarnessDlg(null);
+      const rows = (await invoke('rag_harness_state')) as typeof harnessRows;
+      setHarnessRows(rows);
+    } catch (e) {
+      setSearchError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setHarnessBusy(false);
+    }
+  };
 
   const activeModel = status?.model || DEFAULT_MODEL;
 
@@ -212,6 +266,41 @@ export default function Ricerca() {
         </table>
       </section>
       <section className="card">
+        <h2>Collega agli agenti</h2>
+        <table className="wiki-table">
+          <tbody>
+            {harnessRows.map((row) => (
+              <tr key={row.id}>
+                <td>
+                  <span className={`status-dot status-${row.status}`} aria-hidden /> {row.label}
+                </td>
+                <td className="hint">{row.hint}</td>
+                <td>
+                  {row.status === 'connected' || row.status === 'outdated' ? (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => void openHarness(row.id, row.status, row.status === 'outdated' ? 'update' : 'disconnect')}
+                    >
+                      {row.status === 'outdated' ? harnessActionLabel(row.status, 'update') : 'Scollega'}
+                    </button>
+                  ) : (
+                    <button type="button" className="btn btn-primary" onClick={() => void openHarness(row.id, row.status, 'connect')}>
+                      Collega
+                    </button>
+                  )}
+                  {(row.id === 'claude' || row.id === 'antigravity') && harnessDlg?.id === row.id ? (
+                    <button type="button" className="btn" onClick={() => void copyText(harnessDlg.after)}>
+                      Copia
+                    </button>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      <section className="card">
         <h2>Prova una ricerca</h2>
         <input
           className="input"
@@ -247,6 +336,24 @@ export default function Ricerca() {
           <pre className="preview-out">{panel.markdown}</pre>
         </SidePanel>
       ) : null}
+      <Dialog
+        open={!!harnessDlg}
+        title="Conferma modifica"
+        confirmLabel="Conferma"
+        busy={harnessBusy}
+        onCancel={() => setHarnessDlg(null)}
+        onConfirm={() => void applyHarness()}
+      >
+        {harnessDlg ? (
+          <>
+            <p className="hint">{harnessDlg.path}</p>
+            <div className="diff-pair">
+              <pre className="preview-out">{harnessDlg.before || '(vuoto)'}</pre>
+              <pre className="preview-out">{harnessDlg.after}</pre>
+            </div>
+          </>
+        ) : null}
+      </Dialog>
     </div>
   );
 }

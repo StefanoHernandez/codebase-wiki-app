@@ -736,6 +736,42 @@ pub async fn rag_preview(
     .await
 }
 
+#[tauri::command]
+pub async fn rag_harness_state() -> Result<Vec<rag_core::harness::HarnessRow>, String> {
+    blocking(|| Ok(rag_core::harness::harness_state())).await
+}
+
+#[tauri::command]
+pub async fn rag_harness_preview(
+    harness: String,
+    action: String,
+) -> Result<rag_core::harness::HarnessPreview, String> {
+    blocking(move || {
+        let act = parse_harness_action(&action)?;
+        rag_core::harness::harness_preview(&harness, act)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn rag_harness_apply(harness: String, action: String) -> Result<(), String> {
+    blocking(move || {
+        let act = parse_harness_action(&action)?;
+        rag_core::harness::harness_apply(&harness, act)
+    })
+    .await
+}
+
+fn parse_harness_action(action: &str) -> Result<rag_core::harness::HarnessAction, String> {
+    use rag_core::harness::HarnessAction;
+    match action {
+        "connect" => Ok(HarnessAction::Connect),
+        "disconnect" => Ok(HarnessAction::Disconnect),
+        "update" => Ok(HarnessAction::Update),
+        other => Err(format!("azione sconosciuta: {other}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
