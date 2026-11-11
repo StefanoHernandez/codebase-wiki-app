@@ -7,7 +7,8 @@ import { SidePanel } from '../components/SidePanel';
 import { useStamp } from '../components/stamp';
 import { SIGN_HINT } from '../components/TrackerDialogs';
 import { useToast } from '../components/Toast';
-import { DEFAULT_CORE_MAP, DEFAULT_SCHEMA_BUDGETS } from '../lib/schema-parser';
+import { DEFAULT_CORE_MAP, DEFAULT_SCHEMA_BUDGETS, pageTypeFor } from '../lib/schema-parser';
+import { codeChangedSources } from '../lib/attention';
 import { unownedSevereRisks } from '../lib/wiki-extras';
 import { renderInlineCode } from '../lib/inline-code';
 import type { TrustTier } from '../lib/trust';
@@ -88,9 +89,9 @@ export default function Salute() {
   const trustPages = useMemo(() => {
     let list = [...project.pages];
     if (tierFilter) list = list.filter((p) => p.trust === tierFilter);
-    if (driftOnly) list = list.filter((p) => p.changedSources.length > 0);
+    if (driftOnly) list = list.filter((p) => codeChangedSources(p.changedSources, project.snapshot?.wikiRoot ?? undefined).length > 0);
     return list.sort((a, b) => a.relPath.localeCompare(b.relPath));
-  }, [project.pages, tierFilter, driftOnly]);
+  }, [project.pages, project.snapshot?.wikiRoot, tierFilter, driftOnly]);
 
   const logRel = core.log;
 
@@ -254,7 +255,7 @@ export default function Salute() {
                 className={`${isStamped(p.relPath) ? 'stamp' : ''}${nav.ref === p.relPath ? ' is-selected' : ''}`}
               >
                 <td className="salute-table-path">{p.relPath}</td>
-                <td>{p.frontmatter.fields.type || '—'}</td>
+                <td>{p.frontmatter.fields.type || pageTypeFor(p.relPath, project.schema?.pageTypes ?? []) || '—'}</td>
                 <td>
                   <span className={TRUST_BADGE[p.trust]}>{TRUST_LABEL[p.trust]}</span>
                 </td>

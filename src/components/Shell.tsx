@@ -200,7 +200,12 @@ function sectionCounts(attention: ReturnType<typeof useProject>['attention']): P
   const decisioni = n('decision-proposed');
   if (decisioni) out.decisioni = { text: String(decisioni), tone: 'muted' };
   if (n('handoff-stale')) out.handoff = { text: '!', tone: 'drift' };
-  const salute = n('page-drift', 'reverify', 'lint-error', 'risk-unowned');
+  // Distinct pages, not items: a page with drift and lint counts once; the recovery group adds its pages.
+  const salutePages = new Set(
+    attention.filter((a) => ['page-drift', 'reverify', 'lint-error'].includes(a.kind)).map((a) => a.target.ref),
+  ).size;
+  const legacy = attention.find((a) => a.kind === 'lint-legacy')?.count ?? 0;
+  const salute = salutePages + legacy + n('risk-unowned');
   if (salute) out.salute = { text: String(salute), tone: 'muted' };
   return out;
 }

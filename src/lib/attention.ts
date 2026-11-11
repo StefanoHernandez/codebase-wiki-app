@@ -9,6 +9,7 @@ export type AttentionKind =
   | 'page-drift'
   | 'reverify'
   | 'lint-error'
+  | 'lint-legacy'
   | 'risk-unowned';
 
 export type AttentionView = 'lavori' | 'decisioni' | 'handoff' | 'salute';
@@ -18,6 +19,10 @@ export interface AttentionItem {
   title: string;
   detail: string;
   target: { view: AttentionView; ref?: string };
+  /** Files (drift), findings (lint-error), or pages (lint-legacy) behind this item. */
+  count?: number;
+  /** lint-legacy only: findings across those pages. */
+  findings?: number;
 }
 
 export interface AttentionInput {
@@ -28,6 +33,22 @@ export interface AttentionInput {
   lintFindings: Array<{ relPath: string; line: number; message: string }>;
   /** Risk register rows (risks page), if any. */
   risks?: RiskRow[] | null;
+  /** Wiki folder, repo-relative (e.g. `wiki`): drift caused only by wiki pages is not counted. */
+  wikiRoot?: string;
+  /** Core pages, wiki-relative; a path ending in `/` is a folder (decisions). Findings elsewhere are grouped. */
+  corePaths?: string[];
+}
+
+/** Changed sources that are code or docs outside the wiki: other wiki pages changing is not drift. */
+export function codeChangedSources(changed: string[], wikiRoot?: string): string[] {
+  if (!wikiRoot) return changed;
+  const prefix = wikiRoot.replace(/\/+$/, '') + '/';
+  return changed.filter((s) => !s.startsWith(prefix));
+}
+
+function isCorePath(relPath: string, corePaths: string[]): boolean {
+  if (relPath === 'SCHEMA.md') return true;
+  return corePaths.some((p) => (p.endsWith('/') ? relPath.startsWith(p) : relPath === p));
 }
 
 const HANDOFF_STALE_COMMITS = 5;
@@ -76,12 +97,14 @@ export function computeAttention(input: AttentionInput): AttentionItem[] {
   }
 
   for (const page of input.pages) {
-    if (page.changedSources.length === 0) continue;
+    const code = codeChangedSources(page.changedSources, input.wikiRoot);
+    if (code.length === 0) continue;
     items.push({
       kind: 'page-drift',
       title: `Drift: ${page.relPath}`,
-      detail: `${page.changedSources.length} source file(s) changed: ${page.changedSources.join(', ')}`,
+      detail: `${code.length} source file(s) changed: ${code.join(', ')}`,
       target: { view: 'salute', ref: page.relPath },
+      count: code.length,
     });
   }
 
@@ -96,12 +119,34 @@ export function computeAttention(input: AttentionInput): AttentionItem[] {
     });
   }
 
-  for (const f of input.lintFindings) {
+  // One item per core page with findings; findings on every other page (gradual recovery after an
+  // adopt: missing frontmatter, sources that moved) are one grouped item, so they do not drown the rest.
+  const byPage = new Map<string, number>();
+  for (const f of input.lintFindings) byPage.set(f.relPath, (byPage.get(f.relPath) ?? 0) + 1);
+  let legacyPages = 0;
+  let legacyFindings = 0;
+  for (const [relPath, n] of byPage) {
+    if (input.corePaths === undefined || isCorePath(relPath, input.corePaths)) {
+      items.push({
+        kind: 'lint-error',
+        title: `Lint error: ${relPath}`,
+        detail: `${n} finding(s)`,
+        target: { view: 'salute', ref: relPath },
+        count: n,
+      });
+    } else {
+      legacyPages++;
+      legacyFindings += n;
+    }
+  }
+  if (legacyPages > 0) {
     items.push({
-      kind: 'lint-error',
-      title: `Lint error: ${f.relPath}:${f.line}`,
-      detail: f.message,
-      target: { view: 'salute', ref: f.relPath },
+      kind: 'lint-legacy',
+      title: `${legacyPages} non-core page(s) to recover`,
+      detail: `${legacyFindings} finding(s)`,
+      target: { view: 'salute' },
+      count: legacyPages,
+      findings: legacyFindings,
     });
   }
 

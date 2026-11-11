@@ -53,6 +53,13 @@ export interface SchemaConfig {
   budgets: SchemaBudgets;
   topics: SchemaTopic[];
   excludedGlobs: string[];
+  /** `Path | type` rows from `## Page types`, then `## Page frontmatter`; first match wins. */
+  pageTypes: PageTypeRule[];
+}
+
+export interface PageTypeRule {
+  glob: string;
+  type: string;
 }
 
 export interface TrackerOpenRow {

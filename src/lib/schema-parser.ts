@@ -1,4 +1,4 @@
-import type { CoreRole, SchemaConfig, SchemaTopic, SchemaBudgets } from '../types/wiki.ts';
+import type { CoreRole, PageTypeRule, SchemaConfig, SchemaTopic, SchemaBudgets } from '../types/wiki.ts';
 import { extractTableFromLines } from './markdown-tables.ts';
 import { fenceMask } from './md-edit.ts';
 
@@ -119,6 +119,41 @@ function findSection(sections: Map<string, string[]>, keys: string[]): string[] 
   return [];
 }
 
+/** `Path | type` rows: every backticked glob in the first cell maps to the type in the second. */
+function pageTypeRows(lines: string[]): PageTypeRule[] {
+  const rules: PageTypeRule[] = [];
+  for (const row of tableRows(lines)) {
+    if (row.length < 2) continue;
+    const type = row[1]!.trim().replace(/^`+|`+$/g, '').trim();
+    if (!/^[A-Za-z][\w-]*$/.test(type)) continue;
+    const globs = [...row[0]!.matchAll(/`([^`]+)`/g)].map((m) => m[1]!.trim());
+    if (globs.length === 0) globs.push(...row[0]!.split(',').map((g) => g.trim()).filter(Boolean));
+    for (const glob of globs) rules.push({ glob, type });
+  }
+  return rules;
+}
+
+/** fnmatch as the validator uses it: `*` also crosses `/`; a `<placeholder>` matches anything. */
+export function wikiGlobMatch(glob: string, relPath: string): boolean {
+  const re = glob
+    .replace(/<[^>]*>/g, '\u0000')
+    .replace(/[.+^${}()|\\]/g, '\\$&')
+    .replace(/\[!/g, '[^')
+    .replace(/\*/g, '.*')
+    .replace(/\?/g, '.')
+    .replace(/\u0000/g, '.*');
+  try {
+    return new RegExp(`^${re}$`).test(relPath); // `[...]` classes pass through as in fnmatch
+  } catch {
+    return false;
+  }
+}
+
+/** First matching `## Page types` row, then the `## Page frontmatter` defaults; null when none matches. */
+export function pageTypeFor(relPath: string, rules: PageTypeRule[]): string | null {
+  return rules.find((r) => wikiGlobMatch(r.glob, relPath))?.type ?? null;
+}
+
 function excludedGlobsFromSection(lines: string[]): string[] {
   const globs: string[] = [];
   const masked = fenceMask(lines);
@@ -230,6 +265,10 @@ export function parseSchemaMarkdown(markdown: string): SchemaConfig {
   }
 
   const excludedGlobs = excludedGlobsFromSection(findSection(sections, ['excluded paths']));
+  const pageTypes = [
+    ...pageTypeRows(findSection(sections, ['page types'])),
+    ...pageTypeRows(findSection(sections, ['page frontmatter'])),
+  ];
 
   return {
     language,
@@ -242,5 +281,6 @@ export function parseSchemaMarkdown(markdown: string): SchemaConfig {
     budgets,
     topics,
     excludedGlobs,
+    pageTypes,
   };
 }

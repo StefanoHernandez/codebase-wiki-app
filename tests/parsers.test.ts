@@ -304,3 +304,34 @@ x`;
     { by: 'human:stefano', at: '2026-02-01T00:00:00Z', commit: 'abc1234' },
   ]);
 });
+
+test('page types: Page types rows first, then Page frontmatter defaults; * crosses /', async () => {
+  const { parseSchemaMarkdown, pageTypeFor } = await import('../src/lib/schema-parser.ts');
+  const schema = parseSchemaMarkdown(`# Schema
+
+## Page types
+
+| Path | type |
+| --- | --- |
+| \`game/*-plan.md\` | \`Plan\` |
+
+## Page frontmatter
+
+\`\`\`markdown
+| \`game/*\` | \`Fake\` |
+\`\`\`
+
+| Page | Default \`type\` |
+| --- | --- |
+| \`overview.md\`, \`overview-<project-slug>.md\` | \`Overview\` |
+| \`game/*\` | \`GameCanon\` |
+| \`project/adr/[0-9]*.md\` | \`Decision\` |
+`);
+  const t = (p: string) => pageTypeFor(p, schema.pageTypes);
+  assert.equal(t('game/levels/wave-plan.md'), 'Plan');
+  assert.equal(t('game/levels/units.md'), 'GameCanon');
+  assert.equal(t('overview-gioco-td.md'), 'Overview');
+  assert.equal(t('project/adr/0007-x.md'), 'Decision');
+  assert.equal(t('project/adr/readme.md'), null);
+  assert.equal(t('index.md'), null);
+});

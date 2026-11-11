@@ -86,8 +86,44 @@ test('computeAttention builds titles, details and navigation targets for each ki
   assert.equal(items.filter((i) => i.kind === 'reverify').length, 1, 'one item per page');
   assert.equal(byKind('reverify').detail, '2 marked ⚠️ TO RE-VERIFY');
 
-  assert.equal(byKind('lint-error').title, 'Lint error: index.md:4');
-  assert.equal(byKind('lint-error').detail, 'broken link');
+  assert.equal(byKind('lint-error').title, 'Lint error: index.md');
+  assert.equal(byKind('lint-error').count, 1);
+});
+
+test('drift from wiki pages only is not drift; code drift counts code files', () => {
+  const items = computeAttention(
+    input({
+      wikiRoot: 'wiki',
+      pages: [
+        { relPath: 'a.md', markdown: '# A', changedSources: ['wiki/SCHEMA.md', 'wiki/index.md'] },
+        { relPath: 'b.md', markdown: '# B', changedSources: ['wiki/index.md', 'src/x.ts', 'wikiwiki.ts'] },
+      ],
+    }),
+  );
+  const drift = items.filter((i) => i.kind === 'page-drift');
+  assert.deepEqual(drift.map((i) => [i.target.ref, i.count]), [['b.md', 2]]);
+});
+
+test('lint: one item per core page, other pages grouped for gradual recovery', () => {
+  const items = computeAttention(
+    input({
+      corePaths: ['SCHEMA.md', 'index.md', 'project/decisions/'],
+      lintFindings: [
+        { relPath: 'index.md', line: 4, message: 'x' },
+        { relPath: 'index.md', line: 9, message: 'y' },
+        { relPath: 'project/decisions/0001-a.md', line: 1, message: 'z' },
+        { relPath: 'game/units.md', line: 1, message: 'no frontmatter' },
+        { relPath: 'game/units.md', line: 2, message: 'bad source' },
+        { relPath: 'engineering/net.md', line: 1, message: 'bad source' },
+      ],
+    }),
+  );
+  const lint = items.filter((i) => i.kind === 'lint-error');
+  assert.deepEqual(lint.map((i) => [i.target.ref, i.count]), [['index.md', 2], ['project/decisions/0001-a.md', 1]]);
+  const legacy = items.filter((i) => i.kind === 'lint-legacy');
+  assert.equal(legacy.length, 1);
+  assert.equal(legacy[0]!.count, 2);
+  assert.equal(legacy[0]!.findings, 3);
 });
 
 test('computeAttention applies thresholds and skips empty inputs', () => {

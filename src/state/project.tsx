@@ -7,7 +7,7 @@ import { parseHandoffMarkdown, parseTrackerMarkdown } from '../lib/markdown-tabl
 import { DEFAULT_CORE_MAP, parseSchemaMarkdown } from '../lib/schema-parser';
 import { listDecisions } from '../lib/decisions';
 import { trustTier, type TrustTier } from '../lib/trust';
-import { computeAttention, type AttentionItem } from '../lib/attention';
+import { codeChangedSources, computeAttention, type AttentionItem } from '../lib/attention';
 import { applyEdits, type FileEdit } from '../lib/apply-edits';
 import { personId, validateHumanActor } from '../lib/human-actions';
 import { wikiCompat, type WikiCompat } from '../lib/wiki-compat';
@@ -137,13 +137,14 @@ function derive(snapshot: WikiSnapshot | null, lint: LintReport | null): Derived
     const pages: WikiPage[] = snapshot.pages.map((p) => {
       const frontmatter = parseFrontmatter(p.content);
       const changedSources = snapshot.changedFilesByPage[p.wikiRelPath] ?? [];
+      const codeDrift = codeChangedSources(changedSources, snapshot.wikiRoot ?? undefined).length > 0;
       return {
         relPath: p.wikiRelPath,
         markdown: p.content,
         sizeBytes: p.sizeBytes,
         frontmatter,
         changedSources,
-        trust: trustTier(frontmatter, changedSources.length > 0),
+        trust: trustTier(frontmatter, codeDrift),
       };
     });
     const decisions = listDecisions(
@@ -157,6 +158,9 @@ function derive(snapshot: WikiSnapshot | null, lint: LintReport | null): Derived
       pages,
       lintFindings: (lint?.findings ?? []).map((f) => ({ relPath: f.wikiRelPath, line: f.line, message: f.message })),
       risks,
+      wikiRoot: snapshot.wikiRoot ?? undefined,
+      // Without a Core map (v1) every page counts as core: nothing is hidden in the recovery group.
+      corePaths: schema?.hasCoreMap ? ['SCHEMA.md', ...Object.values(core)] : undefined,
     });
     return { schema, tracker, handoff, decisions, nextSteps, risks, pages, attention, parseError: null };
   } catch (e) {

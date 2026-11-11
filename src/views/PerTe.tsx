@@ -18,6 +18,7 @@ const GROUPS: Array<{ kind: AttentionKind; title: string }> = [
   { kind: 'reverify', title: 'Da ri-verificare' },
   { kind: 'risk-unowned', title: 'Rischi gravi senza responsabile' },
   { kind: 'lint-error', title: 'Errori di struttura' },
+  { kind: 'lint-legacy', title: 'Pagine da recuperare (recupero graduale)' },
 ];
 
 const RE_VERIFY = /⚠️? TO RE-VERIFY/g;
@@ -53,13 +54,6 @@ export default function PerTe() {
       {VIEW_BUTTON[view]}
     </button>
   );
-
-  // computeAttention emits one lint item per finding: one row per page, with the count.
-  const lintCounts = new Map<string, number>();
-  for (const a of attention) {
-    if (a.kind === 'lint-error') lintCounts.set(a.target.ref ?? '', (lintCounts.get(a.target.ref ?? '') ?? 0) + 1);
-  }
-  const lintSeen = new Set<string>();
 
   /** Italian copy per kind, from structured data only: the English title/detail of computeAttention is never shown. */
   const describe = (item: AttentionItem, index: number): Row | null => {
@@ -122,8 +116,7 @@ export default function PerTe() {
         };
       }
       case 'page-drift': {
-        const page = project.pages.find((p) => p.relPath === ref);
-        const n = page?.changedSources.length ?? 0;
+        const n = item.count ?? 0;
         return {
           key,
           title: ref,
@@ -151,14 +144,22 @@ export default function PerTe() {
         };
       }
       case 'lint-error': {
-        if (lintSeen.has(ref)) return null;
-        lintSeen.add(ref);
-        const n = lintCounts.get(ref) ?? 1;
+        const n = item.count ?? 1;
         return {
           key,
           title: ref,
           detail: `${n} ${n === 1 ? 'problema di struttura' : 'problemi di struttura'} in questa pagina.`,
           actions: open('salute', ref),
+        };
+      }
+      case 'lint-legacy': {
+        const pages = item.count ?? 0;
+        const findings = item.findings ?? 0;
+        return {
+          key,
+          title: `${pages} ${pages === 1 ? 'pagina fuori dal nucleo' : 'pagine fuori dal nucleo'}`,
+          detail: `${findings} ${findings === 1 ? 'problema' : 'problemi'} (frontmatter, sorgenti spostati) da sistemare un po' alla volta: l'agente li corregge quando tocca quelle pagine.`,
+          actions: open('salute'),
         };
       }
     }
