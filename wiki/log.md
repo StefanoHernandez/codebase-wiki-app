@@ -24,3 +24,8 @@ confidence: high
 - What: su richiesta di Stefano, la cartella annidata non tracciata `codebase-wiki-app/` (clone indietro di 89 commit, nessun commit non pushato, una modifica locale a `src-tauri/Cargo.toml`) spostata nel Cestino; eliminati i branch `app/hardening`, `feat/more-languages`, `feat/rag-mcp`, `integrate/cursor-wave`, `rewrite/tauri-v2` (era a `2d33cec`, 5 commit di documenti di handoff superati) e i remoti `feat/more-languages`, `feat/rag-mcp`; creata questa wiki con `/wiki-init` del plugin 0.13.1.
 - Evidence: `git branch -a` → solo `main` e `origin/main` @206cc3c
 - IDs: none
+
+## 2026-11-11 · Confronto modelli di embedding e reranker · agent
+- What: 34 domande di codice (app 16, plugin 12, Versal 6) con quattro modelli di embedding, ciascuno senza e con reranker. Il reranker abbassa hit@1 con tutti i modelli; `multilingual-e5-small` resta il predefinito. Su richiesta di Stefano il reranker è stato disinstallato dal suo Mac (cartella nel Cestino).
+- Evidence: script di valutazione locale con `codebase-wiki-mcp search --json` 0.3.0 → tabella in [0005](project/decisions/0005-reranker-facoltativo.md) @99f7caf
+- IDs: none
