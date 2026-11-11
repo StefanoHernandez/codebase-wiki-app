@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
+use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
@@ -573,29 +574,69 @@ pub async fn workflow_prompt(
 }
 
 fn rag_bin() -> Result<PathBuf, String> {
+    let stable = rag_core::bin_path();
+    if stable.is_file() {
+        return Ok(stable);
+    }
     crate::rag_sidecar::rag_sidecar_path()
 }
 
-#[tauri::command]
-pub fn rag_status(repo: String) -> Result<serde_json::Value, String> {
-    let bin = rag_bin()?;
-    let out = Command::new(&bin)
-        .args(["status", "--repo", &repo, "--json"])
-        .output()
-        .map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).into());
+fn run_sidecar_output(bin: &PathBuf, args: &[&str]) -> Result<Vec<u8>, String> {
+    let mut cmd = Command::new(bin);
+    cmd.args(args);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
     }
-    serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = parse_sidecar_error(&out.stdout).or_else(|| {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            if stderr.trim().is_empty() {
+                None
+            } else {
+                Some(stderr.into_owned())
+            }
+        });
+        return Err(err.unwrap_or_else(|| "Comando sidecar fallito".into()));
+    }
+    Ok(out.stdout)
+}
+
+fn parse_sidecar_error(stdout: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(stdout);
+    for line in text.lines() {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+            if v.get("event").and_then(|e| e.as_str()) == Some("error") {
+                return v
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .map(String::from);
+            }
+        }
+    }
+  None
 }
 
 #[tauri::command]
-pub fn rag_models() -> Result<serde_json::Value, String> {
-    let installed = std::process::Command::new(rag_bin()?)
-        .args(["models", "list", "--json"])
-        .output()
-        .map_err(|e| e.to_string())?;
-    serde_json::from_slice(&installed.stdout).map_err(|e| e.to_string())
+pub async fn rag_status(repo: String) -> Result<serde_json::Value, String> {
+    blocking(move || {
+        let bin = rag_bin()?;
+        let stdout = run_sidecar_output(&bin, &["status", "--repo", &repo, "--json"])?;
+        serde_json::from_slice(&stdout).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn rag_models() -> Result<serde_json::Value, String> {
+    blocking(move || {
+        let bin = rag_bin()?;
+        let stdout = run_sidecar_output(&bin, &["models", "list", "--json"])?;
+        serde_json::from_slice(&stdout).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -609,47 +650,82 @@ pub fn rag_set_model(id: String) -> Result<(), String> {
 pub async fn rag_index_start(
     app: AppHandle,
     repo: String,
-    child_state: tauri::State<'_, Mutex<Option<std::process::Child>>>,
+    jobs: tauri::State<'_, Arc<crate::rag_jobs::RagJobs>>,
 ) -> Result<(), String> {
     let bin = rag_bin()?;
-    let mut child = Command::new(&bin)
-        .args(["index", "--repo", &repo, "--json"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    let mut stdout = child.stdout.take().ok_or("stdout")?;
-    let app2 = app.clone();
-    std::thread::spawn(move || {
-        use std::io::{BufRead, BufReader};
-        let reader = BufReader::new(&mut stdout);
-        for line in reader.lines().map_while(Result::ok) {
-            let _ = app2.emit("rag://progress", line);
-        }
-    });
-    *child_state.lock().unwrap() = Some(child);
-    Ok(())
+    Arc::clone(&jobs).start_index(app, repo, &bin)
 }
 
 #[tauri::command]
-pub fn rag_index_cancel(child_state: tauri::State<'_, Mutex<Option<std::process::Child>>>) -> Result<(), String> {
-    if let Some(mut c) = child_state.lock().unwrap().take() {
-        let _ = c.kill();
-    }
-    Ok(())
+pub fn rag_index_cancel(
+    repo: String,
+    jobs: tauri::State<'_, Arc<crate::rag_jobs::RagJobs>>,
+) -> Result<(), String> {
+    jobs.cancel_index(&repo)
 }
 
 #[tauri::command]
-pub fn rag_preview(repo: String, query: String, wiki: bool) -> Result<String, String> {
+pub async fn rag_model_pull(
+    app: AppHandle,
+    id: String,
+    jobs: tauri::State<'_, Arc<crate::rag_jobs::RagJobs>>,
+) -> Result<(), String> {
     let bin = rag_bin()?;
-    let mut cmd = Command::new(&bin);
-    cmd.args(["search", "--repo", &repo, "-k", "8"]);
-    if wiki {
-        cmd.arg("--wiki");
-    }
-    cmd.arg(&query);
-    let out = cmd.output().map_err(|e| e.to_string())?;
-    Ok(String::from_utf8_lossy(&out.stdout).into())
+    Arc::clone(&jobs).start_pull(app, id, &bin)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RagSearchHit {
+    pub path: String,
+    pub start_line: u32,
+    pub end_line: u32,
+    pub source: String,
+    pub score: f64,
+    pub snippet: String,
+}
+
+#[tauri::command]
+pub async fn rag_preview(
+    repo: String,
+    query: String,
+    wiki: bool,
+) -> Result<Vec<RagSearchHit>, String> {
+    blocking(move || {
+        let bin = rag_bin()?;
+        let mut args = vec!["search", "--repo", &repo, "-k", "8", "--json"];
+        if wiki {
+            args.push("--wiki");
+        }
+        args.push(&query);
+        let stdout = run_sidecar_output(&bin, &args)?;
+        let text = String::from_utf8_lossy(&stdout);
+        let mut hits = Vec::new();
+        for line in text.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let v: serde_json::Value =
+                serde_json::from_str(line).map_err(|e| format!("JSON: {e}"))?;
+            if v.get("event").and_then(|e| e.as_str()) == Some("error") {
+                return Err(v
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("Ricerca fallita")
+                    .to_string());
+            }
+            hits.push(RagSearchHit {
+                path: v["path"].as_str().unwrap_or("").into(),
+                start_line: v["start_line"].as_u64().unwrap_or(0) as u32,
+                end_line: v["end_line"].as_u64().unwrap_or(0) as u32,
+                source: v["source"].as_str().unwrap_or("").into(),
+                score: v["score"].as_f64().unwrap_or(0.0),
+                snippet: v["snippet"].as_str().unwrap_or("").into(),
+            });
+        }
+        Ok(hits)
+    })
+    .await
 }
 
 #[cfg(test)]

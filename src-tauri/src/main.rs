@@ -2,9 +2,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod rag_jobs;
 mod rag_sidecar;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use wiki_core::WatchHandle;
 
@@ -14,7 +15,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(Mutex::new(None::<WatchHandle>))
-        .manage(Mutex::new(None::<std::process::Child>))
+        .manage(Arc::new(rag_jobs::RagJobs::new()))
         .setup(|_app| {
             if let Err(e) = rag_sidecar::install_mcp_binary() {
                 eprintln!("MCP binary: {e}");
@@ -39,6 +40,7 @@ fn main() {
             commands::rag_index_cancel,
             commands::rag_models,
             commands::rag_set_model,
+            commands::rag_model_pull,
             commands::rag_preview,
         ])
         .run(tauri::generate_context!())
