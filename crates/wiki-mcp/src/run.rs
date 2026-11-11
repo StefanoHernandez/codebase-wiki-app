@@ -79,6 +79,10 @@ pub fn run_index(repo: Option<&Path>, json: bool) -> i32 {
     if let Err(e) = store.meta_set("terms_hash", &th) {
         return err(&e);
     }
+    // Lets a server started outside any repo (Claude Desktop chat) list and pick indexes.
+    if let Err(e) = store.meta_set("repo_root", &root.display().to_string()) {
+        return err(&e);
+    }
     run_index_with_store(store, root, wiki, terms, spec, json)
 }
 

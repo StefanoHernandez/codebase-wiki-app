@@ -162,7 +162,7 @@ pub fn chunk_file_with<S: ChunkSizer>(rel_path: &str, text: &str, source: FileSo
     let ext = rel_path.rsplit('.').next().unwrap_or("");
     let markdown = source == FileSource::Wiki || ext == "md";
     let lang = if markdown { None } else { code_language(ext) };
-    let config = || ChunkConfig::new(ChunkCapacity::try_from(limits.min..=limits.max).expect("range")).with_sizer(sizer);
+    let config = || ChunkConfig::new(ChunkCapacity::from(limits.min..=limits.max)).with_sizer(sizer);
 
     let pieces: Vec<(usize, &str)> = if markdown {
         MarkdownSplitter::new(config()).chunk_indices(text).collect()

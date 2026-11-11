@@ -21,6 +21,6 @@ pub use paths::{
     read_config, write_config, RagConfig,
 };
 pub use repo::{head_sha, repo_id, resolve_repo, wiki_root};
-pub use store::{delete_index, file_changed, Hit, Store, NO_INDEX_MSG};
+pub use store::{delete_index, file_changed, indexed_repos, Hit, IndexedRepo, Store, NO_INDEX_MSG};
 #[cfg(feature = "download")]
 pub use models::{installed_ids, pull, DownloadEvent, is_installed};

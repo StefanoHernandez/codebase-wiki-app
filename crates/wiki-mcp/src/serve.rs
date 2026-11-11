@@ -8,13 +8,15 @@ use rmcp::{
     schemars, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler, ServiceExt,
 };
 use rag_core::{
-    embed::{load_embedder, load_installed_reranker, search_reranked}, file_changed, head_sha, index_path, model_by_id, model_dir, read_config, repo_id,
-    resolve_repo, wiki_root, FileSource, Store,
+    data_dir, embed::{load_embedder, load_installed_reranker, search_reranked}, file_changed, head_sha, index_path, indexed_repos, model_by_id,
+    model_dir, read_config, repo_id, resolve_repo, wiki_root, FileSource, Store,
 };
 use wiki_core::{content_has_forbidden_term, read_private_terms};
 
-const INSTRUCTIONS: &str = "Local search over this repository's code and its Codebase Wiki. Use `search_code` for *where/how* questions (where is X defined, how does Y work, what calls Z) before grepping. Use `search_wiki` or the wiki pages for status, decisions, risks and *why*; it also covers README and docs/. Results marked `stale: true` changed after indexing: re-read those lines from disk before relying on them.";
+const INSTRUCTIONS: &str = "Local search over this repository's code and its Codebase Wiki. Use `search_code` for *where/how* questions (where is X defined, how does Y work, what calls Z) before grepping. Use `search_wiki` or the wiki pages for status, decisions, risks and *why*; it also covers README and docs/. Results marked `stale: true` changed after indexing: re-read those lines from disk before relying on them. Outside a repository (e.g. a desktop chat), call `list_repos` and pass `repo` to the other tools.";
 
+/// The repo the server was started in, if any. A server started outside a repo (Claude Desktop
+/// chat, Cowork) has none and every tool takes `repo` instead.
 static REPO: OnceLock<PathBuf> = OnceLock::new();
 /// The embedder of the active model, loaded at the first search. Reloaded when the person picks
 /// another model in the app while this server runs.
@@ -36,6 +38,9 @@ struct SearchParams {
     k: usize,
     /// Optional fnmatch glob on the repo-relative path, e.g. `crates/*` or `*.tsx`.
     path_glob: Option<String>,
+    /// Repository to search: its absolute path or its folder name from `list_repos`.
+    /// Omit when the session is already inside a repository.
+    repo: Option<String>,
 }
 
 fn default_k_code() -> usize {
@@ -49,6 +54,15 @@ struct WikiSearchParams {
     /// Number of results (default 5, max 20).
     #[serde(default = "default_k_wiki")]
     k: usize,
+    /// Repository to search: its absolute path or its folder name from `list_repos`.
+    /// Omit when the session is already inside a repository.
+    repo: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct RepoParams {
+    /// Repository: its absolute path or its folder name from `list_repos`. Omit inside a repository.
+    repo: Option<String>,
 }
 
 fn default_k_wiki() -> usize {
@@ -69,8 +83,8 @@ impl WikiMcp {
         Self { tool_router: Self::tool_router() }
     }
 
-    fn search_inner(&self, query: &str, k: usize, wiki: bool, path_glob: Option<&str>) -> Result<String, String> {
-        let root = REPO.get().ok_or("repo non impostato")?;
+    fn search_inner(&self, repo: Option<&str>, query: &str, k: usize, wiki: bool, path_glob: Option<&str>) -> Result<String, String> {
+        let root = &pick_repo(repo)?;
         let spec = active_spec()?;
         let store = Store::open_reader(&index_path(&repo_id(root)), spec.dims, spec.id)?;
         // Privacy first: an unreadable terms file means no results at all (fail-closed).
@@ -123,6 +137,41 @@ impl WikiMcp {
     }
 }
 
+fn repo_names() -> String {
+    let repos = indexed_repos(&data_dir().join("indexes"));
+    if repos.is_empty() {
+        return "nessun progetto indicizzato: apri Codebase Wiki → Ricerca locale → Indicizza".into();
+    }
+    repos.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join(", ")
+}
+
+/// `repo` as an absolute path or an indexed folder name; otherwise the repo the server started in.
+fn pick_repo(repo: Option<&str>) -> Result<PathBuf, String> {
+    let wanted = repo.map(str::trim).filter(|r| !r.is_empty());
+    let Some(wanted) = wanted else {
+        return REPO
+            .get()
+            .cloned()
+            .ok_or_else(|| format!("Nessun repo in questa sessione: passa `repo`. Progetti indicizzati: {}", repo_names()));
+    };
+    let path = std::path::Path::new(wanted);
+    if path.is_absolute() {
+        return resolve_repo(Some(path));
+    }
+    let matches: Vec<_> = indexed_repos(&data_dir().join("indexes"))
+        .into_iter()
+        .filter(|r| r.name.eq_ignore_ascii_case(wanted))
+        .collect();
+    match matches.as_slice() {
+        [one] => Ok(one.root.clone()),
+        [] => Err(format!("Nessun progetto indicizzato si chiama {wanted:?}. Progetti indicizzati: {}", repo_names())),
+        many => Err(format!(
+            "Più progetti si chiamano {wanted:?}: passa il percorso assoluto ({})",
+            many.iter().map(|r| r.root.display().to_string()).collect::<Vec<_>>().join(", ")
+        )),
+    }
+}
+
 fn short_sha(s: &str) -> String {
     s.chars().take(7).collect()
 }
@@ -149,17 +198,37 @@ fn tool_result(r: Result<String, String>) -> Result<CallToolResult, McpError> {
 impl WikiMcp {
     #[tool(description = "Search this repository's source code (hybrid keyword + semantic). Use it for where/how questions before grepping. Returns a header line, then one JSON object per hit: path, start_line, end_line, score, stale, snippet.")]
     fn search_code(&self, Parameters(p): Parameters<SearchParams>) -> Result<CallToolResult, McpError> {
-        tool_result(self.search_inner(&p.query, p.k, false, p.path_glob.as_deref()))
+        tool_result(self.search_inner(p.repo.as_deref(), &p.query, p.k, false, p.path_glob.as_deref()))
     }
 
     #[tool(description = "Search this repository's documentation: the Codebase Wiki pages (status, decisions, risks, why) and other Markdown docs (README, docs/). Same output shape as search_code.")]
     fn search_wiki(&self, Parameters(p): Parameters<WikiSearchParams>) -> Result<CallToolResult, McpError> {
-        tool_result(self.search_inner(&p.query, p.k, true, None))
+        tool_result(self.search_inner(p.repo.as_deref(), &p.query, p.k, true, None))
     }
 
     #[tool(description = "State of the local index for this repository: model, indexed commit, HEAD, files, chunks, files changed since indexing.")]
-    fn index_status(&self) -> Result<CallToolResult, McpError> {
-        tool_result(REPO.get().map(|r| crate::run::status_json(r).to_string()).ok_or_else(|| "repo non impostato".to_string()))
+    fn index_status(&self, Parameters(p): Parameters<RepoParams>) -> Result<CallToolResult, McpError> {
+        tool_result(pick_repo(p.repo.as_deref()).map(|r| crate::run::status_json(&r).to_string()))
+    }
+
+    #[tool(description = "Repositories with a local Codebase Wiki index: one JSON object per line with name and path, plus which one this session is in. Use a name or path as `repo` in the other tools.")]
+    fn list_repos(&self) -> Result<CallToolResult, McpError> {
+        let current = REPO.get();
+        let repos = indexed_repos(&data_dir().join("indexes"));
+        if repos.is_empty() {
+            return tool_result(Err(repo_names()));
+        }
+        let lines: Vec<String> = repos
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "name": r.name, "path": r.root.display().to_string(),
+                    "current": current.is_some_and(|c| c.canonicalize().ok() == r.root.canonicalize().ok()),
+                })
+                .to_string()
+            })
+            .collect();
+        tool_result(Ok(lines.join("\n")))
     }
 }
 
@@ -176,8 +245,12 @@ impl ServerHandler for WikiMcp {
 }
 
 pub fn run(repo: Option<&std::path::Path>) -> Result<(), String> {
-    let root = resolve_repo(repo)?;
-    REPO.set(root).map_err(|_| "repo già impostato")?;
+    // An explicit --repo must exist; otherwise starting outside a repo is fine (desktop chats).
+    match resolve_repo(repo) {
+        Ok(root) => REPO.set(root).map_err(|_| "repo già impostato")?,
+        Err(e) if repo.is_some() => return Err(e),
+        Err(_) => eprintln!("codebase-wiki: avviato fuori da un repo, i tool chiedono `repo` (vedi list_repos)"),
+    }
     let server = WikiMcp::new();
     let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     rt.block_on(async {

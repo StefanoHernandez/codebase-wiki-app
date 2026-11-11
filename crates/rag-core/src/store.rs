@@ -50,6 +50,40 @@ fn source_str(s: FileSource) -> &'static str {
     }
 }
 
+/// A repository with a local index, as recorded by the indexer (`repo_root` in meta).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexedRepo {
+    pub root: std::path::PathBuf,
+    /// Folder name, used to pick a repo by name.
+    pub name: String,
+}
+
+/// Every index under `indexes_dir` that records its repo root and whose folder still exists.
+/// Indexes written before `repo_root` was recorded are skipped until they are rebuilt.
+pub fn indexed_repos(indexes_dir: &Path) -> Vec<IndexedRepo> {
+    let Ok(entries) = std::fs::read_dir(indexes_dir) else {
+        return Vec::new();
+    };
+    let mut out: Vec<IndexedRepo> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "sqlite"))
+        .filter_map(|p| {
+            let conn = Connection::open_with_flags(&p, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+            let root: String = conn
+                .query_row("SELECT value FROM meta WHERE key='repo_root'", [], |r| r.get(0))
+                .ok()?;
+            let root = std::path::PathBuf::from(root);
+            root.is_dir().then(|| IndexedRepo {
+                name: root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                root,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name).then(a.root.cmp(&b.root)));
+    out
+}
+
 /// Deletes the DB and its WAL side files. The caller must have dropped every connection first.
 pub fn delete_index(path: &Path) -> Result<(), String> {
     for suffix in ["", "-wal", "-shm"] {
@@ -574,6 +608,21 @@ mod tests {
         // A path word matches through the FTS body (path + text).
         let by_path = store.search(&[1.0, 0.0, 0.0, 0.0], "p.md", FileSource::Wiki, 5, None).unwrap();
         assert_eq!(by_path[0].path, "wiki/p.md");
+    }
+
+    #[test]
+    fn indexed_repos_lists_recorded_roots_that_still_exist() {
+        let td = tempfile::tempdir().unwrap();
+        let idx = td.path().join("indexes");
+        let repo = td.path().join("my-repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        let with_root = Store::open_writer(&idx.join("a.sqlite"), 4, "m").unwrap();
+        with_root.meta_set("repo_root", &repo.display().to_string()).unwrap();
+        let gone = Store::open_writer(&idx.join("b.sqlite"), 4, "m").unwrap();
+        gone.meta_set("repo_root", "/no/such/dir").unwrap();
+        let _legacy = Store::open_writer(&idx.join("c.sqlite"), 4, "m").unwrap();
+        assert_eq!(indexed_repos(&idx), vec![IndexedRepo { root: repo, name: "my-repo".into() }]);
+        assert!(indexed_repos(&td.path().join("missing")).is_empty());
     }
 
     #[test]
