@@ -59,3 +59,8 @@ confidence: high
 - What: icona provvisoria sostituita dal timbro "cw" (Newsreader su oltremare, doppio anello; variante ad anello pieno per 16–32 px); logotipo "Codebase Wiki" in cima alla barra laterale e favicon. Scelta di Stefano tra tre direzioni (pagina firmata, timbro cw, pagina ↔ codice).
 - Evidence: `npm run build` ok; `npm test` → 140 pass; PNG 256 e 32 px controllati a occhio
 - IDs: none
+
+## 2026-11-12 · Secondo giro interfaccia: etichette, contatori, legenda · agent
+- What: chiavi e valori fissi del formato del plugin in italiano a schermo (Handoff, Lavori, Decisioni, pannello pagina) tramite `lib/labels.ts`; i contatori della barra laterale dicono cosa contano (tooltip e testo per lettori di schermo, calcolo spostato in `lib/attention.ts`); legenda del grafo richiudibile, chiusa di default, stato ricordato.
+- Evidence: `npm test` → 145 pass; `npm run build` ok; viste non controllate a schermo dall'agente
+- IDs: none

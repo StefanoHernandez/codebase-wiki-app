@@ -161,3 +161,47 @@ export function computeAttention(input: AttentionInput): AttentionItem[] {
 
   return items;
 }
+
+export type SidebarCount = { text: string; tone: 'human' | 'drift' | 'muted'; title: string };
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Sidebar badges per section, each with the sentence that says what the number counts. */
+export function sectionCounts(
+  attention: AttentionItem[],
+): Partial<Record<'per-te' | 'lavori' | 'decisioni' | 'handoff' | 'salute', SidebarCount>> {
+  const n = (...kinds: AttentionKind[]) => attention.filter((a) => kinds.includes(a.kind)).length;
+  const out: ReturnType<typeof sectionCounts> = {};
+  if (attention.length)
+    out['per-te'] = { text: String(attention.length), tone: 'human', title: plural(attention.length, 'cosa per te', 'cose per te') };
+  const proposals = n('proposal');
+  const blocked = n('blocked-task');
+  if (proposals + blocked) {
+    const parts = [proposals && plural(proposals, 'proposta', 'proposte'), blocked && plural(blocked, 'bloccato', 'bloccati')];
+    out.lavori = { text: String(proposals + blocked), tone: 'muted', title: `Da valutare: ${parts.filter(Boolean).join(', ')}` };
+  }
+  const decisioni = n('decision-proposed');
+  if (decisioni)
+    out.decisioni = {
+      text: String(decisioni),
+      tone: 'muted',
+      title: `${plural(decisioni, 'decisione', 'decisioni')} da accettare o rifiutare`,
+    };
+  if (n('handoff-stale')) out.handoff = { text: '!', tone: 'drift', title: "L'handoff è da aggiornare" };
+  // Distinct pages, not items: a page with drift and lint counts once; the recovery group adds its pages.
+  const pages = new Set(
+    attention.filter((a) => ['page-drift', 'reverify', 'lint-error'].includes(a.kind)).map((a) => a.target.ref),
+  ).size;
+  const legacy = attention.find((a) => a.kind === 'lint-legacy')?.count ?? 0;
+  const risks = n('risk-unowned');
+  const salute = pages + legacy + risks;
+  if (salute) {
+    const what = risks
+      ? [pages + legacy && plural(pages + legacy, 'pagina', 'pagine'), plural(risks, 'rischio senza responsabile', 'rischi senza responsabile')]
+          .filter(Boolean)
+          .join(' e ')
+      : plural(salute, 'pagina', 'pagine');
+    out.salute = { text: String(salute), tone: 'muted', title: `${what} da controllare` };
+  }
+  return out;
+}

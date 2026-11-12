@@ -1,3 +1,4 @@
+import { fixedValue } from '../lib/labels';
 import { useEffect, useMemo, useState } from 'react';
 import { Empty } from '../components/Empty';
 import { Markdown } from '../components/Markdown';
@@ -155,7 +156,7 @@ export default function Decisioni() {
                 {meta?.fields.confidence && (
                   <div>
                     <dt>Affidabilità</dt>
-                    <dd>{meta.fields.confidence}</dd>
+                    <dd>{fixedValue(meta.fields.confidence)}</dd>
                   </div>
                 )}
               </dl>

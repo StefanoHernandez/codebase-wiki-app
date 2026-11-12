@@ -11,6 +11,7 @@ import { Empty } from './Empty';
 import { IncompatibleWiki } from './Compat';
 import { useToast } from './Toast';
 import markUrl from '../assets/mark.svg';
+import { sectionCounts } from '../lib/attention';
 
 /** Two letters from a folder name: initials of its first two words, else its first two letters. */
 function monogram(name: string): string {
@@ -184,27 +185,6 @@ function CurrentView({ section }: { section: SectionId }) {
   return <View />;
 }
 
-type Count = { text: string; tone: 'human' | 'drift' | 'muted' };
-
-function sectionCounts(attention: ReturnType<typeof useProject>['attention']): Partial<Record<SectionId, Count>> {
-  const n = (...kinds: string[]) => attention.filter((a) => kinds.includes(a.kind)).length;
-  const out: Partial<Record<SectionId, Count>> = {};
-  if (attention.length) out['per-te'] = { text: String(attention.length), tone: 'human' };
-  const lavori = n('proposal', 'blocked-task');
-  if (lavori) out.lavori = { text: String(lavori), tone: 'muted' };
-  const decisioni = n('decision-proposed');
-  if (decisioni) out.decisioni = { text: String(decisioni), tone: 'muted' };
-  if (n('handoff-stale')) out.handoff = { text: '!', tone: 'drift' };
-  // Distinct pages, not items: a page with drift and lint counts once; the recovery group adds its pages.
-  const salutePages = new Set(
-    attention.filter((a) => ['page-drift', 'reverify', 'lint-error'].includes(a.kind)).map((a) => a.target.ref),
-  ).size;
-  const legacy = attention.find((a) => a.kind === 'lint-legacy')?.count ?? 0;
-  const salute = salutePages + legacy + n('risk-unowned');
-  if (salute) out.salute = { text: String(salute), tone: 'muted' };
-  return out;
-}
-
 function Banner({ tone, children }: { tone: 'error' | 'drift'; children: React.ReactNode }) {
   return (
     <div className={`banner banner-${tone}`} role={tone === 'error' ? 'alert' : undefined}>
@@ -243,7 +223,7 @@ function Sidebar({
 }: {
   onAdd(): void;
   onPalette(): void;
-  counts: Partial<Record<SectionId, Count>>;
+  counts: ReturnType<typeof sectionCounts>;
   hasWiki: boolean;
 }) {
   const nav = useNav();
@@ -257,7 +237,7 @@ function Sidebar({
       <nav className="sections" aria-label="Sezioni">
         <ul>
           {SECTIONS.map((s, i) => {
-            const count = counts[s.id];
+            const count = counts[s.id as keyof typeof counts];
             return (
               <li key={s.id}>
                 <button
@@ -270,7 +250,12 @@ function Sidebar({
                 >
                   <Icon name={s.id} />
                   <span>{s.label}</span>
-                  {count && <span className={`section-count section-count-${count.tone}`}>{count.text}</span>}
+                  {count && (
+                    <span className={`section-count section-count-${count.tone}`} title={count.title}>
+                      <span aria-hidden="true">{count.text}</span>
+                      <span className="visually-hidden">{count.title}</span>
+                    </span>
+                  )}
                 </button>
               </li>
             );

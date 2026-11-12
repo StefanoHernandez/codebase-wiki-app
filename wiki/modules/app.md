@@ -12,6 +12,7 @@ sources:
   - src/lib/md-edit.ts
   - src/lib/human-actions.ts
   - src/lib/attention.ts
+  - src/lib/labels.ts
   - src/api.ts
   - src-tauri/src/commands.rs
 source_commit: 206cc3c
@@ -33,6 +34,11 @@ confidence: high
 | Grafo | wiki ↔ codice, filtri e drift |
 | Ricerca | stato dell'indice, Indicizza/Annulla, prova di `search_code` |
 | Impostazioni | profilo, tema, modelli, collegamento degli agenti (MCP) |
+
+## Etichette del formato
+- `lib/labels.ts` traduce solo il vocabolario fisso del plugin: chiavi note (`fieldLabel`) e
+  valori che occupano tutta la cella (`fixedValue`: `medium`, `none`, `⚠️ NOT VERIFIED - <motivo>`).
+  Il testo scritto dagli agenti resta com'è; nei file si scrive sempre in inglese.
 
 ## Azioni umane
 - `lib/md-edit.ts` trova sezione e tabella saltando i blocchi di codice, cambia **una riga**

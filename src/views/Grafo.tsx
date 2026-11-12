@@ -32,6 +32,8 @@ type FgLink = GraphEdge & { source: string | FgNode; target: string | FgNode };
 const HUED = new Set<GraphNodeCategory>(['decision', 'tracker', 'agent']);
 const endId = (end: string | FgNode) => (typeof end === 'object' ? end.id : end);
 
+
+const LEGEND_KEY = 'grafo.legendOpen';
 export default function Grafo() {
   const project = useProject();
   const { theme } = useTheme();
@@ -173,6 +175,13 @@ export default function Grafo() {
 
   // Spread the layout: stronger repulsion and longer links than the defaults, then fit once it settles.
   const fitted = useRef(false);
+  const [legendOpen, setLegendOpen] = useState(() => {
+    try {
+      return localStorage.getItem(LEGEND_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
   useEffect(() => {
     const fg = fgRef.current;
     if (!fg) return;
@@ -418,37 +427,63 @@ export default function Grafo() {
             onZoom={({ k }) => setZoomK(k)}
           />
         )}
-        <div className="grafo-legend" role="group" aria-label="Legenda e filtri per tipo">
-          {CATEGORIES.filter((c) => counts.has(c)).map((c) => (
-            <button key={c} type="button" aria-pressed={!hiddenCats.has(c)} onClick={() => toggleCat(c)}>
+        <details
+          className="grafo-legend"
+          open={legendOpen}
+          onToggle={(e) => {
+            const open = e.currentTarget.open;
+            setLegendOpen(open);
+            try {
+              localStorage.setItem(LEGEND_KEY, open ? '1' : '0');
+            } catch {
+              /* per-viewer convenience only */
+            }
+          }}
+        >
+          <summary>
+            {CATEGORIES.filter((c) => counts.has(c)).map((c) => (
               <span
+                key={c}
                 className={c === 'source' ? 'grafo-swatch grafo-swatch-square' : 'grafo-swatch'}
-                style={{ background: colors[c] }}
+                style={{ background: colors[c], opacity: hiddenCats.has(c) ? 0.3 : 1 }}
                 aria-hidden="true"
               />
-              {CATEGORY_LABEL[c]}
-              <span className="grafo-legend-count">{counts.get(c)}</span>
-            </button>
-          ))}
-          <hr />
-          <span className="grafo-legend-edge">
-            <span className="grafo-swatch grafo-swatch-line" aria-hidden="true" />
-            Link tra pagine (colore della pagina di arrivo)
-          </span>
-          <span className="grafo-legend-edge">
-            <span className="grafo-swatch grafo-swatch-line grafo-swatch-dash" aria-hidden="true" />
-            Pagina → file citato
-          </span>
-          <hr />
-          <span className="grafo-legend-edge">
-            <span className="grafo-swatch" style={{ background: tokenDrift }} aria-hidden="true" />
-            Drift: il codice citato è cambiato
-          </span>
-          <span className="grafo-legend-edge">
-            <span className="grafo-swatch" style={{ background: tokenError }} aria-hidden="true" />
-            Errore di lint
-          </span>
-        </div>
+            ))}
+            Legenda
+            {hiddenCats.size > 0 && <span className="grafo-legend-count">{hiddenCats.size} nascosti</span>}
+          </summary>
+          <div className="grafo-legend-body" role="group" aria-label="Legenda e filtri per tipo">
+            {CATEGORIES.filter((c) => counts.has(c)).map((c) => (
+              <button key={c} type="button" aria-pressed={!hiddenCats.has(c)} onClick={() => toggleCat(c)}>
+                <span
+                  className={c === 'source' ? 'grafo-swatch grafo-swatch-square' : 'grafo-swatch'}
+                  style={{ background: colors[c] }}
+                  aria-hidden="true"
+                />
+                {CATEGORY_LABEL[c]}
+                <span className="grafo-legend-count">{counts.get(c)}</span>
+              </button>
+            ))}
+            <hr />
+            <span className="grafo-legend-edge">
+              <span className="grafo-swatch grafo-swatch-line" aria-hidden="true" />
+              Link tra pagine (colore della pagina di arrivo)
+            </span>
+            <span className="grafo-legend-edge">
+              <span className="grafo-swatch grafo-swatch-line grafo-swatch-dash" aria-hidden="true" />
+              Pagina → file citato
+            </span>
+            <hr />
+            <span className="grafo-legend-edge">
+              <span className="grafo-swatch" style={{ background: tokenDrift }} aria-hidden="true" />
+              Drift: il codice citato è cambiato
+            </span>
+            <span className="grafo-legend-edge">
+              <span className="grafo-swatch" style={{ background: tokenError }} aria-hidden="true" />
+              Errore di lint
+            </span>
+          </div>
+        </details>
       </div>
 
       <PageDrawer

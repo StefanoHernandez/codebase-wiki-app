@@ -1,3 +1,4 @@
+import { fieldLabel, fixedValue } from '../lib/labels';
 import { useCallback } from 'react';
 import { Empty } from '../components/Empty';
 import { useToast } from '../components/Toast';
@@ -122,7 +123,7 @@ export default function Handoff() {
         <thead>
           <tr>
             {data.header.map((h) => (
-              <th key={h}>{h}</th>
+              <th key={h}>{fieldLabel(h)}</th>
             ))}
           </tr>
         </thead>
@@ -130,7 +131,7 @@ export default function Handoff() {
           {data.rows.map((row, i) => (
             <tr key={i}>
               {row.map((cell, j) => (
-                <td key={j}>{cell.includes('`') ? renderInlineCode(cell) : cell}</td>
+                <td key={j}>{cell.includes('`') ? renderInlineCode(cell) : fixedValue(cell)}</td>
               ))}
             </tr>
           ))}
@@ -182,8 +183,8 @@ export default function Handoff() {
           <ul className="handoff-state">
             {Object.entries(handoff.stateBullets).map(([key, value]) => (
               <li key={key}>
-                <strong>{key}</strong>
-                <span>{renderInlineCode(value)}</span>
+                <strong>{fieldLabel(key)}</strong>
+                <span>{renderInlineCode(fixedValue(value))}</span>
               </li>
             ))}
           </ul>

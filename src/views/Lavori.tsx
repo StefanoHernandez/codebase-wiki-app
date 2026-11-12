@@ -1,3 +1,4 @@
+import { fieldLabel, fixedValue } from '../lib/labels';
 import { renderInlineCode } from '../lib/inline-code';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Empty } from '../components/Empty';
@@ -98,8 +99,8 @@ export default function Lavori() {
       .filter((h) => values[h])
       .map((h) => (
         <div key={h} className="card-extra">
-          <dt>{h}</dt>
-          <dd>{renderInlineCode(values[h])}</dd>
+          <dt>{fieldLabel(h)}</dt>
+          <dd>{renderInlineCode(fixedValue(values[h]))}</dd>
         </div>
       ));
 
@@ -133,7 +134,7 @@ export default function Lavori() {
         </div>
         <div>
           <dt>Prova</dt>
-          <dd className="clamp-3">{renderInlineCode(row.evidence)}</dd>
+          <dd className="clamp-3">{renderInlineCode(fixedValue(row.evidence))}</dd>
         </div>
         {extras(row.extra, extraOpen)}
       </dl>
@@ -189,7 +190,7 @@ export default function Lavori() {
         </div>
         <div>
           <dt>Prova</dt>
-          <dd className="clamp-3">{renderInlineCode(row.evidence)}</dd>
+          <dd className="clamp-3">{renderInlineCode(fixedValue(row.evidence))}</dd>
         </div>
         {extras(row.extra, tracker.doneHeader.filter((h) => !['id', 'status', 'goal', 'closed', 'criteria met', 'evidence'].includes(h.trim().toLowerCase())))}
       </dl>

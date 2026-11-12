@@ -158,3 +158,20 @@ test('computeAttention emits one page-drift item per drifting page', () => {
   );
   assert.equal(drift[0].detail, '2 source file(s) changed: src/a.ts, src/b.ts');
 });
+
+test('attention: sidebar counts say what they count', async () => {
+  const { sectionCounts } = await import('../src/lib/attention.ts');
+  const item = (kind: string, ref = 'x', count?: number) =>
+    ({ kind, title: '', detail: '', target: { view: 'salute', ref }, count }) as never;
+  const c = sectionCounts([
+    item('proposal'), item('proposal'), item('blocked-task'),
+    item('decision-proposed'), item('handoff-stale'),
+    item('page-drift', 'a'), item('lint-error', 'a'), item('reverify', 'b'),
+  ]);
+  assert.deepEqual(c['per-te'], { text: '8', tone: 'human', title: '8 cose per te' });
+  assert.deepEqual(c.lavori, { text: '3', tone: 'muted', title: 'Da valutare: 2 proposte, 1 bloccato' });
+  assert.equal(c.decisioni?.title, '1 decisione da accettare o rifiutare');
+  assert.equal(c.handoff?.title, "L'handoff è da aggiornare");
+  assert.deepEqual(c.salute, { text: '2', tone: 'muted', title: '2 pagine da controllare' });
+  assert.deepEqual(sectionCounts([]), {});
+});

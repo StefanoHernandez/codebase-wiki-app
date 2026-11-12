@@ -1,3 +1,4 @@
+import { fixedValue } from '../lib/labels';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Markdown } from './Markdown';
 import { readSourceFile, sourceDiff } from '../api';
@@ -111,7 +112,7 @@ function WikiPanel({
             {fm.confidence && (
               <>
                 <dt>Fiducia</dt>
-                <dd>{fm.confidence}</dd>
+                <dd>{fixedValue(fm.confidence)}</dd>
               </>
             )}
             {fm.source_commit && (
