@@ -5,6 +5,8 @@ description: Viste, azioni umane e modifiche chirurgiche alla wiki.
 generated: { by: claude-code/claude-opus-5-5, at: 2026-11-11T18:45:00Z }
 sources:
   - src/views/index.ts
+  - src/views/Progetti.tsx
+  - src/lib/overview.ts
   - src/state/project.tsx
   - src/state/rag.tsx
   - src/lib/md-edit.ts
@@ -22,6 +24,7 @@ confidence: high
 
 | Vista | Cosa mostra |
 | --- | --- |
+| Progetti | tutti i progetti recenti (per te, indice, novità dall'ultima visita, ultimo agente) e l'attività degli agenti MCP; prima vista all'avvio con più di un progetto |
 | Per te | lista unica di ciò che aspetta una persona (`lib/attention.ts`) |
 | Lavori | kanban del tracker, Prossimi passi, promuovi / chiudi ⚫ |
 | Decisioni | ADR `proposed` da accettare o rifiutare |

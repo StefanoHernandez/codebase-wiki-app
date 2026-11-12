@@ -10,6 +10,7 @@ sources:
   - crates/rag-core/src/embed.rs
   - crates/rag-core/src/catalog.rs
   - crates/rag-core/src/harness.rs
+  - crates/rag-core/src/activity.rs
   - crates/wiki-mcp/src/main.rs
   - crates/wiki-mcp/src/run.rs
   - crates/wiki-mcp/src/serve.rs
@@ -33,10 +34,12 @@ l'app la mostra in Ricerca, gli agenti la usano via MCP.
 | `rag-core/embed.rs` | embedding fastembed/ONNX (feature `embed`), reranker facoltativo |
 | `rag-core/catalog.rs`, `models.rs` | catalogo curato, download con avanzamento, modelli Hugging Face aggiunti a mano (`tested: false`) |
 | `rag-core/harness.rs` | stato e scrittura delle config MCP di Codex, Cursor, Claude, con anteprima e backup |
+| `rag-core/activity.rs` | registro delle chiamate MCP: una riga JSON per chiamata in `<dati>/activity/<repo_id>.jsonl` (ora, agente dal `clientInfo`, tool, query, primi 3 file, durata, errore); query con un termine riservato → `[riservata]`; oltre 600 righe tiene le ultime 500 |
 | `wiki-mcp/run.rs` | CLI `index`, `search`, `status`, `models list/pull/search/add` con `--json` |
 | `wiki-mcp/serve.rs` | server MCP stdio: `search_code`, `index_status`, `list_repos`; le istruzioni chiedono query in inglese con i nomi probabili; scarica i modelli dopo 5 minuti senza ricerche |
 
 ## Invarianti
+- Il registro delle chiamate non cambia mai il risultato di un tool: un errore di scrittura viene ignorato.
 - Senza indice o modello il server dà un errore chiaro e non scarica né indicizza nulla.
 - Termini di `.private-terms` filtrati in indicizzazione e di nuovo a ogni ricerca; file illeggibile → nessun risultato.
 - Un risultato con `stale: true` è cambiato dopo l'indice: va riletto dal disco.
