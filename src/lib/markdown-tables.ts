@@ -195,13 +195,16 @@ function sectionTable(doc: ReturnType<typeof parseDoc>, marker: string, headings
 
 export type DependsOn = { ids: string[]; external: string[] };
 
-/** `Depends on` cell: tracker IDs and external conditions in free text; empty or `—` is none. */
+const NO_DEPS = new Set(['—', '–', '-', 'none']);
+
+/** `Depends on` cell: tracker IDs and external conditions in free text; empty, a dash or `none` is none. */
 export function parseDependsOn(cell: string): DependsOn {
   const out: DependsOn = { ids: [], external: [] };
   for (const raw of cell.split(',')) {
     const item = raw.trim();
-    if (!item || item === '—') continue;
-    (/^T[1-9]\d*$/.test(item) ? out.ids : out.external).push(item);
+    if (!item || NO_DEPS.has(item.toLowerCase())) continue;
+    const list = /^T[1-9]\d*$/.test(item) ? out.ids : out.external;
+    if (!list.includes(item)) list.push(item);
   }
   return out;
 }

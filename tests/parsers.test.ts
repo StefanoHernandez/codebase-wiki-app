@@ -342,6 +342,8 @@ test('tracker Depends on: IDs and external conditions', async () => {
   assert.deepEqual(parseDependsOn('—'), { ids: [], external: [] });
   assert.deepEqual(parseDependsOn(''), { ids: [], external: [] });
   assert.deepEqual(parseDependsOn('`T9`'), { ids: [], external: ['`T9`'] });
+  for (const empty of ['-', '–', 'none', 'None']) assert.deepEqual(parseDependsOn(empty), { ids: [], external: [] });
+  assert.deepEqual(parseDependsOn('T5, T5, TRR, TRR'), { ids: ['T5'], external: ['TRR'] });
   const md = `## Open
 <!-- wiki:open -->
 | ID | Status | Goal | Done when | Owner | Next verification | Evidence | depends ON |

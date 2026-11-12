@@ -25,10 +25,10 @@ ${row('T7', 'T99')}
 
 test('dependencies: done 🟢 and ⚫ satisfy, open and external wait', () => {
   const r = taskReadiness(parseTrackerMarkdown(MD));
-  assert.deepEqual(r.get('T1'), { ready: true, waitingOn: [], external: [] });
-  assert.deepEqual(r.get('T4'), { ready: false, waitingOn: ['T5'], external: ['TRR'] });
-  assert.deepEqual(r.get('T6'), { ready: true, waitingOn: [], external: [] });
-  assert.deepEqual(r.get('T7'), { ready: false, waitingOn: ['T99'], external: [] });
+  assert.deepEqual(r.get('T1'), { ready: true, waitingOn: [], external: [], unknown: [] });
+  assert.deepEqual(r.get('T4'), { ready: false, waitingOn: ['T5'], external: ['TRR'], unknown: [] });
+  assert.deepEqual(r.get('T6'), { ready: true, waitingOn: [], external: [], unknown: [] });
+  assert.deepEqual(r.get('T7'), { ready: false, waitingOn: ['T99'], external: [], unknown: ['T99'] });
 });
 
 test('dependencies: header label', () => {

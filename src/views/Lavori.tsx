@@ -118,9 +118,13 @@ export default function Lavori() {
         {r.waitingOn.map((id, i) => (
           <span key={id}>
             {i > 0 && ', '}
-            <button type="button" className="btn btn-link" onClick={() => nav.go('lavori', id)}>
-              {id}
-            </button>
+            {r.unknown.includes(id) ? (
+              <span title="ID non presente nel tracker">{id}</span>
+            ) : (
+              <button type="button" className="btn btn-link" onClick={() => nav.go('lavori', id)}>
+                {id}
+              </button>
+            )}
           </span>
         ))}
         {r.waitingOn.length > 0 && r.external.length > 0 && ' · '}

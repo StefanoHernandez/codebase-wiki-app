@@ -20,7 +20,8 @@ The optional `Depends on` column of the tracker tables (already allowed by
 
 - The cell is a comma-separated list. An item that matches `T[1-9]\d*` is a dependency on that
   tracker task; any other item is an **external condition** in free text (e.g. `distribution
-  received`). An empty cell or `—` means no dependencies.
+  received`). An empty cell, a dash (`—`, `–`, `-`) or `none` means no dependencies; repeated
+  items count once.
 - The header is the literal `Depends on` (case-insensitive), also in tables with translated
   headers: like IDs and status icons it is fixed vocabulary. It follows the documented columns,
   as every extra column does.
@@ -74,6 +75,7 @@ clean.
   - ready and the row had dependencies → "Pronto" (ok tone);
   - not ready → "Aspetta T3, T5 · distribution received"; each ID is a button that selects that
     card (`nav.go('lavori', id)`, the existing scroll-to-ref);
+    an ID that is in neither Open nor Done is plain text (no card to select);
   - no dependencies → nothing.
   - The `Depends on` column is not repeated among the extra key/value lines.
 - **Labels** (`src/lib/labels.ts`): `depends on` → "Dipende da", for any place that still shows
