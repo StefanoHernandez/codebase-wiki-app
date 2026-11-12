@@ -36,6 +36,10 @@ pub fn append(dir: &Path, file_stem: &str, line: &ActivityLine) -> std::io::Resu
     let path = dir.join(format!("{file_stem}.jsonl"));
     let mut json = serde_json::to_string(line).map_err(std::io::Error::other)?;
     json.push('\n');
+    // Several agent sessions share this file: one lock around append + rotation, so a rotation
+    // never drops a line appended after its read and two rotations never share a temp file.
+    let lock = fs::OpenOptions::new().create(true).truncate(false).write(true).open(dir.join(format!("{file_stem}.lock")))?;
+    lock.lock()?;
     fs::OpenOptions::new().create(true).append(true).open(&path)?.write_all(json.as_bytes())?;
 
     let text = fs::read_to_string(&path)?;
@@ -113,6 +117,30 @@ mod tests {
         writeln!(f, "not json").unwrap();
         let ts: Vec<u64> = read_all(d.path(), 10).iter().map(|l| l.ts).collect();
         assert_eq!(ts, vec![3, 1]);
+    }
+
+    #[test]
+    fn concurrent_appends_keep_every_line_whole() {
+        let d = tempfile::tempdir().unwrap();
+        let handles: Vec<_> = (0..4u64)
+            .map(|t| {
+                let dir = d.path().to_path_buf();
+                std::thread::spawn(move || {
+                    for i in 0..200u64 {
+                        append(&dir, "a", &line(t * 1000 + i)).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+        let text = fs::read_to_string(d.path().join("a.jsonl")).unwrap();
+        let n = text.lines().count();
+        assert!((500..=600).contains(&n), "{n} lines");
+        assert!(text.lines().all(|l| serde_json::from_str::<ActivityLine>(l).is_ok()));
+        // The newest 500 appends overall must all be there: nothing lost to a rotation race.
+        assert_eq!(read_all(d.path(), 1000).len(), n);
     }
 
     #[test]

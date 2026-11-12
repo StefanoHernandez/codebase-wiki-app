@@ -107,7 +107,7 @@ impl WikiMcp {
         };
         let mut lines = vec![status_header(root, &store)?];
         for h in hits {
-            if terms.as_deref().is_some_and(|tc| content_has_forbidden_term(tc, &h.text)) {
+            if terms.as_deref().is_some_and(|tc| hit_is_private(tc, &h.path, &h.text)) {
                 continue;
             }
             let stale = match store.file_record(&h.path)? {
@@ -186,6 +186,12 @@ fn tool_result(r: Result<String, String>) -> Result<CallToolResult, McpError> {
         Ok(text) => CallToolResult::success(vec![Content::text(text)]),
         Err(e) => CallToolResult::error(vec![Content::text(e)]),
     })
+}
+
+/// A hit is private when its text or its file path holds a private term: the path reaches the
+/// agent and the activity log too.
+fn hit_is_private(terms: &str, path: &str, text: &str) -> bool {
+    content_has_forbidden_term(terms, path) || content_has_forbidden_term(terms, text)
 }
 
 /// First three distinct `path` values of the JSON hit lines in a `search_code` result.
@@ -307,6 +313,13 @@ mod tests {
     fn top_paths_from_result() {
         let t = "header\n{\"path\":\"a.rs\",\"score\":1}\n{\"path\":\"a.rs\"}\n{\"path\":\"b.rs\"}";
         assert_eq!(top_paths(t), vec!["a.rs", "b.rs"]);
+    }
+
+    #[test]
+    fn hit_with_private_term_in_path_is_dropped() {
+        assert!(hit_is_private("Acme", "clients/acme/x.rs", "fn main() {}"));
+        assert!(hit_is_private("Acme", "src/x.rs", "// for ACME only"));
+        assert!(!hit_is_private("Acme", "src/x.rs", "fn main() {}"));
     }
 
     #[test]

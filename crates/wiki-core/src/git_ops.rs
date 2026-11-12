@@ -216,8 +216,18 @@ pub fn file_diff_since_commit(repo_path: &Path, source_commit: &str, rel_path: &
 }
 
 /// Subjects of the commits after `since` (up to HEAD) that touch `wiki_rel`, newest first,
-/// at most 20. `None` when `since` is not in this history or git fails.
+/// at most 20. `None` when `since` is not an ancestor of HEAD (unknown, rebased away, other
+/// branch) or git fails: then git cannot tell what is new.
 pub fn wiki_commits_since(repo: &Path, since: &str, wiki_rel: &str) -> Option<Vec<String>> {
+    let ancestor = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["merge-base", "--is-ancestor", since, "HEAD"])
+        .status()
+        .ok()?;
+    if !ancestor.success() {
+        return None;
+    }
     let out = Command::new("git")
         .arg("-C")
         .arg(repo)
@@ -273,6 +283,18 @@ mod news_tests {
         commit(d.path(), "wiki/x.md", "wiki change");
         commit(d.path(), "src.rs", "code change");
         assert_eq!(wiki_commits_since(d.path(), &a, "wiki"), Some(vec!["wiki change".to_string()]));
+    }
+
+    #[test]
+    fn wiki_commits_since_other_branch_is_none() {
+        let d = tempfile::tempdir().unwrap();
+        git(d.path(), &["init", "-q", "-b", "main"]);
+        commit(d.path(), "README.md", "start");
+        git(d.path(), &["switch", "-q", "-c", "side"]);
+        let side = commit(d.path(), "wiki/a.md", "side wiki");
+        git(d.path(), &["switch", "-q", "main"]);
+        commit(d.path(), "wiki/b.md", "main wiki");
+        assert_eq!(wiki_commits_since(d.path(), &side, "wiki"), None);
     }
 
     #[test]

@@ -849,7 +849,18 @@ pub async fn project_news(app: AppHandle, repo: String) -> Result<ProjectNews, S
 /// The latest MCP tool calls across every repository, newest first.
 #[tauri::command]
 pub async fn agent_activity(limit: usize) -> Result<Vec<rag_core::activity::ActivityLine>, String> {
-    blocking(move || Ok(rag_core::activity::read_all(&rag_core::paths::activity_dir(), limit.min(1000)))).await
+    blocking(move || {
+        let mut lines = rag_core::activity::read_all(&rag_core::paths::activity_dir(), limit.min(1000));
+        // The server logs `std::canonicalize` paths (`\\?\C:\...` on Windows); recents use dunce's
+        // `C:\...`. Same spelling here, so the view can compare them as strings.
+        for l in &mut lines {
+            if let Some(r) = &l.repo {
+                l.repo = Some(dunce::simplified(Path::new(r)).to_string_lossy().into_owned());
+            }
+        }
+        Ok(lines)
+    })
+    .await
 }
 
 #[tauri::command]
