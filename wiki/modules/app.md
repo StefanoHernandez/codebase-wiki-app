@@ -14,6 +14,7 @@ sources:
   - src/lib/attention.ts
   - src/lib/labels.ts
   - src/lib/first-run.ts
+  - src/lib/dependencies.ts
   - src/api.ts
   - src-tauri/src/commands.rs
 source_commit: 206cc3c
@@ -29,7 +30,7 @@ confidence: high
 | Primi passi | nome, progetto con wiki, controllo struttura (Python), modello e indice, agente collegato; ogni passo si spunta dallo stato reale (`lib/first-run.ts`); prima vista finché non si chiude (`firstRun.done` in localStorage), riapribile da Impostazioni |
 | Progetti | tutti i progetti recenti (per te, indice, novità dall'ultima visita, ultimo agente) e l'attività degli agenti MCP; prima vista all'avvio con più di un progetto |
 | Per te | lista unica di ciò che aspetta una persona (`lib/attention.ts`) |
-| Lavori | kanban del tracker, Prossimi passi, promuovi / chiudi ⚫ |
+| Lavori | kanban del tracker, Prossimi passi, promuovi / chiudi ⚫; dalla colonna `Depends on` ogni scheda dice "Pronto" o cosa aspetta (`lib/dependencies.ts`) |
 | Decisioni | ADR `proposed` da accettare o rifiutare |
 | Handoff | il baton per il prossimo agente, sola lettura, con avvisi di ritardo |
 | Salute | validatore, livelli di fiducia, budget, rischi, log |

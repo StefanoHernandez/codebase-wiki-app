@@ -123,6 +123,15 @@
 .card-goal {
   font-weight: 500;
 }
+.card-deps {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.card-deps .btn-link {
+  font-size: inherit;
+}
 .card-meta-text {
   color: var(--ink-muted);
   font-size: var(--text-sm);

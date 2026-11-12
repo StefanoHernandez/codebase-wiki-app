@@ -69,3 +69,8 @@ confidence: high
 - What: nuova vista Primi passi per chi installa l'app da zero: cinque passi (nome, progetto con wiki o prompt /wiki-init, Python per il validatore, modello e indice, agente collegato) che si spuntano dallo stato reale; il collegamento agli agenti resta in Impostazioni con anteprima e conferma. All'avvio si apre finché non è chiusa o saltata; "Rivedi i primi passi" in Impostazioni la riapre.
 - Evidence: `npm test` → 149 pass; `npm run build` ok; vista non controllata a schermo dall'agente
 - IDs: none
+
+## 2026-11-12 · Dipendenze tra lavori nel tracker · agent
+- What: la colonna `Depends on` del tracker ha un significato (plugin 0.14.0, branch `feat/tracker-deps` non ancora unito): ID che il lavoro aspetta e condizioni esterne in testo libero; il validatore segnala ID inesistenti, dipendenze da sé e cicli. L'app copia il validatore 0.14.0, legge la colonna e in Lavori mostra "Pronto" o "Aspetta T5 · TRR".
+- Evidence: plugin `bash scripts/run-tests.sh` → exit 0 (10 casi nuovi), copia della wiki Versal identica a 0.13.1 salvo la versione; app `npm test` → 152 pass, `npm run build` ok; viste non controllate a schermo dall'agente
+- IDs: none

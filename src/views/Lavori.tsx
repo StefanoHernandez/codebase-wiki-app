@@ -9,6 +9,7 @@ import { CLOSE_BLOCKED_REASON } from '../lib/wiki-compat';
 import { useToast } from '../components/Toast';
 import { useProject } from '../state/project';
 import { useNav } from '../state/nav';
+import { taskReadiness } from '../lib/dependencies';
 import type { TrackerDoneRow, TrackerOpenRow, TrackerProposalRow } from '../types/wiki';
 
 type Pending =
@@ -18,7 +19,7 @@ type Pending =
   | { kind: 'priority'; row: TrackerOpenRow; column: string };
 
 /** Open columns the app knows; any other header is an extra column shown as key/value. */
-const KNOWN_OPEN = ['id', 'status', 'goal', 'done when', 'owner', 'next verification', 'evidence'];
+const KNOWN_OPEN = ['id', 'status', 'goal', 'done when', 'owner', 'next verification', 'evidence', 'depends on'];
 const DONE_STATUS_TEXT: Record<string, string> = { '🟢': 'Verificato', '⚫': 'Chiuso senza prova' };
 const KNOWN_OPEN_STATUS = new Set(['⚪', '🟡', '🔴']);
 const CLOSURE = /^closed by (.+?) (\d{4}-\d{2}-\d{2}); not proven: (.+)$/;
@@ -65,6 +66,7 @@ export default function Lavori() {
 
   const phaseHeader = tracker.openHeader.find((h) => h.trim().toLowerCase() === 'phase');
   const priorityHeader = tracker.openHeader.find((h) => h.trim().toLowerCase() === 'priority');
+  const readiness = taskReadiness(tracker);
   const extraOpen = tracker.openHeader.filter((h) => !KNOWN_OPEN.includes(h.trim().toLowerCase()));
   const phases = phaseHeader
     ? [...new Set(tracker.open.map((r) => r.extra[phaseHeader] ?? '').filter(Boolean))].sort()
@@ -104,6 +106,29 @@ export default function Lavori() {
         </div>
       ));
 
+  /** "Pronto" when the row lists dependencies and all are met; otherwise what it still waits for. */
+  const waitLine = (row: TrackerOpenRow) => {
+    const r = readiness.get(row.id);
+    const listed = (row.dependsOn?.ids.length ?? 0) + (row.dependsOn?.external.length ?? 0);
+    if (!r || listed === 0) return null;
+    if (r.ready) return <p className="card-deps"><span className="badge badge-ok">Pronto</span></p>;
+    return (
+      <p className="card-deps">
+        Aspetta{' '}
+        {r.waitingOn.map((id, i) => (
+          <span key={id}>
+            {i > 0 && ', '}
+            <button type="button" className="btn btn-link" onClick={() => nav.go('lavori', id)}>
+              {id}
+            </button>
+          </span>
+        ))}
+        {r.waitingOn.length > 0 && r.external.length > 0 && ' · '}
+        {r.external.join(' · ')}
+      </p>
+    );
+  };
+
   const openCard = (row: TrackerOpenRow) => (
     <article
       key={row.id}
@@ -117,6 +142,7 @@ export default function Lavori() {
         {row.id}
       </p>
       <p className="card-goal">{renderInlineCode(row.goal)}</p>
+      {waitLine(row)}
       <dl className="card-meta">
         <div>
           <dt>Responsabile</dt>

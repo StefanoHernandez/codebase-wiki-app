@@ -22,6 +22,7 @@ const FIELDS: Record<string, string> = {
   severity: 'Gravità',
   trigger: 'Segnale',
   owner: 'Responsabile',
+  'depends on': 'Dipende da',
   ids: 'Lavori',
   // commands run
   command: 'Comando',

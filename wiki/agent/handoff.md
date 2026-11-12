@@ -18,9 +18,9 @@ confidence: high
 <!-- wiki:state -->
 
 - Tracker IDs: T1, T3, T4, T5
-- Goal: prossimo sottoprogetto: tracker con dipendenze, che chiede prima un cambio di formato nel plugin (identità, secondo giro UI e primi passi fatti)
-- Last completed step: secondo giro UI (etichette in italiano, contatori spiegati, legenda del grafo) unito a `main`
-- Current branch: `main`
+- Goal: tracker con dipendenze in revisione (plugin 0.14.0 e app su `feat/tracker-deps`); merge, tag e release solo con l'ok di Stefano
+- Last completed step: dipendenze nel tracker implementate su `feat/tracker-deps` (plugin e app)
+- Current branch: `feat/tracker-deps`
 - Last commit: `0971972`
 - Worktree: clean
 
