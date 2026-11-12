@@ -214,3 +214,72 @@ pub fn file_diff_since_commit(repo_path: &Path, source_commit: &str, rel_path: &
         Err(_) => String::new(),
     }
 }
+
+/// Subjects of the commits after `since` (up to HEAD) that touch `wiki_rel`, newest first,
+/// at most 20. `None` when `since` is not in this history or git fails.
+pub fn wiki_commits_since(repo: &Path, since: &str, wiki_rel: &str) -> Option<Vec<String>> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["log", "--format=%s", "-n", "20", &format!("{since}..HEAD"), "--", wiki_rel])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&out.stdout).lines().map(str::to_string).collect())
+}
+
+/// True when git ignores the directory `rel_dir` (a local-only wiki).
+pub fn is_ignored(repo: &Path, rel_dir: &str) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["check-ignore", "-q", &format!("{rel_dir}/")])
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// HEAD commit sha, if any.
+pub fn head_commit(repo: &Path) -> Option<String> {
+    let out = Command::new("git").arg("-C").arg(repo).args(["rev-parse", "HEAD"]).output().ok()?;
+    let sha = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (out.status.success() && !sha.is_empty()).then_some(sha)
+}
+
+#[cfg(test)]
+mod news_tests {
+    use super::*;
+
+    fn git(repo: &Path, args: &[&str]) {
+        let ok = Command::new("git").arg("-C").arg(repo).args(args).status().unwrap().success();
+        assert!(ok, "git {args:?}");
+    }
+
+    fn commit(repo: &Path, file: &str, msg: &str) -> String {
+        let p = repo.join(file);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, msg).unwrap();
+        git(repo, &["add", file]);
+        git(repo, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", msg]);
+        head_commit(repo).unwrap()
+    }
+
+    #[test]
+    fn wiki_commits_since_lists_wiki_only() {
+        let d = tempfile::tempdir().unwrap();
+        git(d.path(), &["init", "-q"]);
+        let a = commit(d.path(), "README.md", "start");
+        commit(d.path(), "wiki/x.md", "wiki change");
+        commit(d.path(), "src.rs", "code change");
+        assert_eq!(wiki_commits_since(d.path(), &a, "wiki"), Some(vec!["wiki change".to_string()]));
+    }
+
+    #[test]
+    fn wiki_commits_since_unknown_commit() {
+        let d = tempfile::tempdir().unwrap();
+        git(d.path(), &["init", "-q"]);
+        commit(d.path(), "README.md", "start");
+        assert_eq!(wiki_commits_since(d.path(), "deadbeef", "wiki"), None);
+    }
+}

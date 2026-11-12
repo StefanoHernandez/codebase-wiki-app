@@ -22,11 +22,28 @@ const RECENTS_KEY: &str = "recents";
 const MAX_RECENTS: usize = 12;
 pub const WIKI_CHANGED_EVENT: &str = "wiki-changed";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecentProject {
     pub path: String,
     pub name: String,
+    /// Baseline for "news since the last visit", set by `mark_project_seen` (epoch ms).
+    #[serde(default)]
+    pub last_seen_at: Option<u64>,
+    #[serde(default)]
+    pub last_seen_commit: Option<String>,
+    /// Dated entries in the log page at that visit (news for a wiki git does not track).
+    #[serde(default)]
+    pub last_seen_log_entries: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectNews {
+    /// Subjects of wiki commits since the last visit; `None` when git cannot tell.
+    pub commits: Option<Vec<String>>,
+    pub last_seen_log_entries: Option<usize>,
+    pub last_seen_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -48,7 +65,15 @@ fn same_repo_path(a: &str, b: &str) -> bool {
     }
 }
 
-pub fn with_recent(list: &[RecentProject], entry: RecentProject) -> Vec<RecentProject> {
+pub fn with_recent(list: &[RecentProject], mut entry: RecentProject) -> Vec<RecentProject> {
+    // Re-opening keeps the last-seen baseline: only `mark_project_seen` moves it.
+    if let Some(old) = list.iter().find(|r| same_repo_path(&r.path, &entry.path)) {
+        if entry.last_seen_at.is_none() {
+            entry.last_seen_at = old.last_seen_at;
+            entry.last_seen_commit = old.last_seen_commit.clone();
+            entry.last_seen_log_entries = old.last_seen_log_entries;
+        }
+    }
     let mut out = Vec::with_capacity(MAX_RECENTS);
     out.push(entry.clone());
     out.extend(
@@ -427,6 +452,7 @@ pub async fn open_project(app: AppHandle, path: String) -> Result<WikiSnapshot, 
             let entry = RecentProject {
                 path: repo.to_string_lossy().into_owned(),
                 name,
+                ..Default::default()
             };
             let list = with_recent(&read_recents(&app)?, entry);
             write_recents(&app, &list)?;
@@ -777,6 +803,55 @@ pub async fn rag_preview(
     .await
 }
 
+/// Moves the "news since the last visit" baseline of an opened project to now.
+#[tauri::command]
+pub async fn mark_project_seen(app: AppHandle, repo: String, log_entries: Option<usize>) -> Result<(), String> {
+    blocking(move || {
+        let canonical = opened_repo(&app, &repo)?;
+        with_recents_lock(|| {
+            let mut list = read_recents(&app)?;
+            for r in list.iter_mut().filter(|r| same_repo_path(&r.path, &canonical.to_string_lossy())) {
+                r.last_seen_at = Some(rag_core::activity::now_ms());
+                r.last_seen_commit = wiki_core::head_commit(&canonical);
+                r.last_seen_log_entries = log_entries;
+            }
+            write_recents(&app, &list)
+        })
+    })
+    .await
+}
+
+/// What changed in the wiki of a recent project since its last visit.
+#[tauri::command]
+pub async fn project_news(app: AppHandle, repo: String) -> Result<ProjectNews, String> {
+    blocking(move || {
+        let canonical = opened_repo(&app, &repo)?;
+        let entry = read_recents(&app)?
+            .into_iter()
+            .find(|r| same_repo_path(&r.path, &canonical.to_string_lossy()))
+            .unwrap_or_default();
+        let wiki = resolve_wiki_root(&canonical).wiki_root;
+        let commits = match (&entry.last_seen_commit, &wiki) {
+            (Some(c), Some(w)) if !wiki_core::is_ignored(&canonical, w) => {
+                wiki_core::wiki_commits_since(&canonical, c, w)
+            }
+            _ => None,
+        };
+        Ok(ProjectNews {
+            commits,
+            last_seen_log_entries: entry.last_seen_log_entries,
+            last_seen_at: entry.last_seen_at,
+        })
+    })
+    .await
+}
+
+/// The latest MCP tool calls across every repository, newest first.
+#[tauri::command]
+pub async fn agent_activity(limit: usize) -> Result<Vec<rag_core::activity::ActivityLine>, String> {
+    blocking(move || Ok(rag_core::activity::read_all(&rag_core::paths::activity_dir(), limit.min(1000)))).await
+}
+
 #[tauri::command]
 pub async fn rag_harness_state() -> Result<Vec<rag_core::harness::HarnessRow>, String> {
     blocking(|| Ok(rag_core::harness::harness_state())).await
@@ -841,7 +916,24 @@ mod tests {
         RecentProject {
             path: path.into(),
             name: path.rsplit('/').next().unwrap_or(path).into(),
+            ..Default::default()
         }
+    }
+
+    #[test]
+    fn old_recents_json_loads() {
+        let list: Vec<RecentProject> = serde_json::from_str(r#"[{"path":"/p","name":"p"}]"#).unwrap();
+        assert_eq!(list[0].last_seen_at, None);
+        assert_eq!(list[0].last_seen_commit, None);
+    }
+
+    #[test]
+    fn with_recent_keeps_baseline() {
+        let old = RecentProject { last_seen_commit: Some("abc".into()), last_seen_at: Some(5), ..rp("/p") };
+        let out = with_recent(&[old], rp("/p"));
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].last_seen_commit.as_deref(), Some("abc"));
+        assert_eq!(out[0].last_seen_at, Some(5));
     }
 
     #[test]
@@ -857,6 +949,7 @@ mod tests {
         let listed = vec![RecentProject {
             path: a_canon.to_string_lossy().into_owned(),
             name: "a".into(),
+            ..Default::default()
         }];
         assert!(is_opened(&listed, &a_canon));
         assert!(!is_opened(&listed, &b_canon));
@@ -866,6 +959,7 @@ mod tests {
         let loose = vec![RecentProject {
             path: format!("{}/./", a.display()),
             name: "a".into(),
+            ..Default::default()
         }];
         assert!(is_opened(&loose, &a_canon));
 

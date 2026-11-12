@@ -9,7 +9,7 @@ pub mod wiki_schema;
 pub use prompts::build_workflow_prompt;
 pub use git_ops::{
     changed_files_since_commit, file_diff_since_commit, git_user_name, inspect_git_state,
-    is_git_repo, GitState,
+    head_commit, is_git_repo, is_ignored, wiki_commits_since, GitState,
 };
 pub use validator::{
     parse_lint_output, run_structural_lint, run_structural_lint_with, run_structural_lint_with_args,
