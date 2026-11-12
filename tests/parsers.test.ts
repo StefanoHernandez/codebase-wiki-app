@@ -335,3 +335,27 @@ test('page types: Page types rows first, then Page frontmatter defaults; * cross
   assert.equal(t('project/adr/readme.md'), null);
   assert.equal(t('index.md'), null);
 });
+
+test('tracker Depends on: IDs and external conditions', async () => {
+  const { parseDependsOn } = await import('../src/lib/markdown-tables.ts');
+  assert.deepEqual(parseDependsOn('T17, distribution received'), { ids: ['T17'], external: ['distribution received'] });
+  assert.deepEqual(parseDependsOn('—'), { ids: [], external: [] });
+  assert.deepEqual(parseDependsOn(''), { ids: [], external: [] });
+  assert.deepEqual(parseDependsOn('`T9`'), { ids: [], external: ['`T9`'] });
+  const md = `## Open
+<!-- wiki:open -->
+| ID | Status | Goal | Done when | Owner | Next verification | Evidence | depends ON |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| T1 | 🟡 | g | d | o | n | e | T2 |
+
+## Done
+<!-- wiki:done -->
+| ID | Status | Goal | Closed | Criteria met | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| T2 | 🟢 | g | 2026-11-01 | c | e |
+`;
+  const t = parseTrackerMarkdown(md);
+  assert.deepEqual(t.open[0].dependsOn, { ids: ['T2'], external: [] });
+  assert.equal(t.open[0].extra['depends ON'], 'T2');
+  assert.deepEqual(t.done[0].dependsOn, { ids: [], external: [] });
+});

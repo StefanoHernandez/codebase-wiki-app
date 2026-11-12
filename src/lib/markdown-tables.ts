@@ -193,6 +193,24 @@ function sectionTable(doc: ReturnType<typeof parseDoc>, marker: string, headings
   return findTable(doc, section);
 }
 
+export type DependsOn = { ids: string[]; external: string[] };
+
+/** `Depends on` cell: tracker IDs and external conditions in free text; empty or `—` is none. */
+export function parseDependsOn(cell: string): DependsOn {
+  const out: DependsOn = { ids: [], external: [] };
+  for (const raw of cell.split(',')) {
+    const item = raw.trim();
+    if (!item || item === '—') continue;
+    (/^T[1-9]\d*$/.test(item) ? out.ids : out.external).push(item);
+  }
+  return out;
+}
+
+const dependsOf = (extra: Record<string, string>): DependsOn => {
+  const key = Object.keys(extra).find((k) => k.trim().toLowerCase() === 'depends on');
+  return parseDependsOn(key ? extra[key] : '');
+};
+
 export function parseTrackerMarkdown(markdown: string): TrackerData {
   const doc = parseDoc(markdown);
 
@@ -227,6 +245,7 @@ export function parseTrackerMarkdown(markdown: string): TrackerData {
         owner: r.fields.owner || '',
         nextVerification: r.fields.nextVerification || '',
         evidence: r.fields.evidence || '',
+        dependsOn: dependsOf(r.extra),
         extra: r.extra,
       })),
     proposals: proposals.rows
@@ -247,6 +266,7 @@ export function parseTrackerMarkdown(markdown: string): TrackerData {
         closed: r.fields.closed || '',
         criteriaMet: r.fields.criteriaMet || '',
         evidence: r.fields.evidence || '',
+        dependsOn: dependsOf(r.extra),
         extra: r.extra,
       })),
     openHeader: open.header,

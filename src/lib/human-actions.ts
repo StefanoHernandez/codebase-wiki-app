@@ -98,15 +98,18 @@ function canonicalOpenFieldIndex(field: string): number | undefined {
   return undefined;
 }
 
+type OpenCellKey = Exclude<keyof TrackerOpenRow, 'dependsOn'>;
+
 function openColumnKey(
   header: string[],
   index: number,
-): keyof TrackerOpenRow | 'extra' {
+): OpenCellKey | 'extra' {
+  // Every key the tables map is a string cell; `dependsOn` is derived, never a column key.
   if (requireColumnMode(header, OPEN_COLUMNS) === 'named') {
-    const key = OPEN_KEYS[header[index]!.trim().toLowerCase()];
+    const key = OPEN_KEYS[header[index]!.trim().toLowerCase()] as OpenCellKey | undefined;
     return key ?? 'extra';
   }
-  return index < OPEN_PROPS.length ? OPEN_PROPS[index]! : 'extra';
+  return index < OPEN_PROPS.length ? (OPEN_PROPS[index] as OpenCellKey) : 'extra';
 }
 
 function doneColumnKey(header: string[], index: number): keyof TrackerDoneRow | 'extra' {

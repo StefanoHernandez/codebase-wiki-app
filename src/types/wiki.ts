@@ -70,6 +70,8 @@ export interface TrackerOpenRow {
   owner: string;
   nextVerification: string;
   evidence: string;
+  /** `Depends on` cell; the parser always sets it, rows built for writes may not. */
+  dependsOn?: { ids: string[]; external: string[] };
   extra: Record<string, string>;
 }
 
@@ -88,6 +90,8 @@ export interface TrackerDoneRow {
   closed: string;
   criteriaMet: string;
   evidence: string;
+  /** `Depends on` cell; the parser always sets it, rows built for writes may not. */
+  dependsOn?: { ids: string[]; external: string[] };
   extra: Record<string, string>;
 }
 
