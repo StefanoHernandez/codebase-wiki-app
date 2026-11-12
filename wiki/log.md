@@ -49,3 +49,8 @@ confidence: high
 - What: nuova vista Progetti (tutti i progetti recenti con per te, indice, novità dall'ultima visita, ultimo agente; attività degli agenti; agenti configurati). Il server MCP scrive una riga per chiamata in `activity/<repo_id>.jsonl` nella cartella dati, con la query mascherata se contiene un termine riservato. Spec e piano in `docs/superpowers/`. Branch `feat/progetti`, non unito.
 - Evidence: `npm test` → 140 pass; `cargo test --workspace` → verde; chiamata stdio al server → riga con `agent: test-agent` @47eaee0
 - IDs: T10
+
+## 2026-11-12 · Vista Progetti unita a main · agent
+- What: dopo la prova a mano con `npm run tauri dev` Stefano ha approvato il merge di `feat/progetti` su `main`; il server MCP installato nella cartella dati è stato sostituito con quello nuovo che registra le chiamate.
+- Evidence: chiamata `search_code` reale → riga in `activity/` con `agent: claude-code` e `top: src/lib/graph-builder.ts`
+- IDs: T10

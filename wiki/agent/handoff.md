@@ -17,11 +17,11 @@ confidence: high
 ## Stato del lavoro
 <!-- wiki:state -->
 
-- Tracker IDs: T10, T1, T3, T4, T5
-- Goal: far provare a Stefano la vista Progetti (T10) e, con il suo ok, unirla a `main`; poi primo avvio e tracker con dipendenze
-- Last completed step: vista Progetti e registro delle chiamate MCP implementati (spec e piano in `docs/superpowers/`)
-- Current branch: `feat/progetti`
-- Last commit: wiki sync sopra `47eaee0`
+- Tracker IDs: T1, T3, T4, T5
+- Goal: prossimo sottoprogetto (identità: icona e palette; poi seconda passata di UI, primo avvio guidato, tracker con dipendenze)
+- Last completed step: vista Progetti e registro delle chiamate MCP uniti a `main` (T10)
+- Current branch: `main`
+- Last commit: merge di `feat/progetti` su `main` (sopra `6648f9f`)
 - Worktree: clean
 
 ## Baton per il prossimo agente
@@ -29,9 +29,8 @@ confidence: high
 
 | Order | Task | Start files | Done when | Verification command | Notes / blockers |
 | --- | --- | --- | --- | --- | --- |
-| 1 | T10 - prova a mano della vista Progetti | `src/views/Progetti.tsx`, `src/lib/overview.ts` | see T10 | `npm run tauri dev` | merge su `main` solo con l'ok di Stefano |
-| 2 | T3 - adopt della copia di prova di Versal e prova delle azioni umane | `resources/validate-wiki.py`, `src/lib/md-edit.ts` | see T3 | `python3 resources/validate-wiki.py --json versal-test/docs` | la copia sta nello scratchpad di una sessione: se non c'è più, rifarla dallo zip in `~/Downloads` senza toccare gli originali |
-| 3 | T4 - osservare lo scarico dei modelli del server MCP | `crates/wiki-mcp/src/serve.rs` | see T4 | Monitoraggio Attività | serve un server avviato dall'eseguibile 0.3.1 |
+| 1 | T3 - adopt della copia di prova di Versal e prova delle azioni umane | `resources/validate-wiki.py`, `src/lib/md-edit.ts` | see T3 | `python3 resources/validate-wiki.py --json versal-test/docs` | la copia sta nello scratchpad di una sessione: se non c'è più, rifarla dallo zip in `~/Downloads` senza toccare gli originali |
+| 2 | T4 - osservare lo scarico dei modelli del server MCP | `crates/wiki-mcp/src/serve.rs` | see T4 | Monitoraggio Attività | serve un server avviato dall'eseguibile 0.3.1 |
 
 ## Blocchi
 <!-- wiki:blockers -->
@@ -70,5 +69,5 @@ confidence: high
 <!-- wiki:evidence-trail -->
 
 - `log`: [log.md](../log.md), voci del 2026-11-11
-- `tracker`: T10 in corso; T1, T3, T4, T5, T6 aperti; T9 chiuso
+- `tracker`: T1, T3, T4, T5, T6 aperti; T9, T10 chiusi
 - `decisions`: [0004](../project/decisions/0004-rag-solo-codice.md), [0005](../project/decisions/0005-reranker-facoltativo.md)
