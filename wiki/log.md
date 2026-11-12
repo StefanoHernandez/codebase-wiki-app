@@ -64,3 +64,8 @@ confidence: high
 - What: chiavi e valori fissi del formato del plugin in italiano a schermo (Handoff, Lavori, Decisioni, pannello pagina) tramite `lib/labels.ts`; i contatori della barra laterale dicono cosa contano (tooltip e testo per lettori di schermo, calcolo spostato in `lib/attention.ts`); legenda del grafo richiudibile, chiusa di default, stato ricordato.
 - Evidence: `npm test` → 145 pass; `npm run build` ok; viste non controllate a schermo dall'agente
 - IDs: none
+
+## 2026-11-12 · Primi passi guidati · agent
+- What: nuova vista Primi passi per chi installa l'app da zero: cinque passi (nome, progetto con wiki o prompt /wiki-init, Python per il validatore, modello e indice, agente collegato) che si spuntano dallo stato reale; il collegamento agli agenti resta in Impostazioni con anteprima e conferma. All'avvio si apre finché non è chiusa o saltata; "Rivedi i primi passi" in Impostazioni la riapre.
+- Evidence: `npm test` → 149 pass; `npm run build` ok; vista non controllata a schermo dall'agente
+- IDs: none

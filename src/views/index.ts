@@ -8,7 +8,7 @@ import Salute from './Salute';
 import Grafo from './Grafo';
 import Ricerca from './Ricerca';
 
-export type SectionId = 'progetti' | 'per-te' | 'lavori' | 'decisioni' | 'handoff' | 'salute' | 'ricerca' | 'grafo' | 'impostazioni';
+export type SectionId = 'progetti' | 'per-te' | 'lavori' | 'decisioni' | 'handoff' | 'salute' | 'ricerca' | 'grafo' | 'impostazioni' | 'primi-passi';
 
 /** Sections in nav order; position + 1 is the ⌘/Ctrl shortcut digit. */
 export const SECTIONS: Array<{ id: SectionId; label: string; View: ComponentType }> = [

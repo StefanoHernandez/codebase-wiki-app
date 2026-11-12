@@ -1,0 +1,55 @@
+.primi-passi {
+  max-width: 640px;
+}
+.primi-passi-list {
+  display: grid;
+  gap: 4px;
+  margin: 20px 0;
+  padding: 0;
+  list-style: none;
+}
+.primi-passi-step {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--radius-panel);
+}
+.primi-passi-step.is-current {
+  background: var(--surface-raised);
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+.primi-passi-mark {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid var(--rule-strong);
+  border-radius: 50%;
+  color: var(--ok);
+  font-size: var(--text-sm);
+}
+.is-done .primi-passi-mark {
+  border-color: var(--ok);
+  background: var(--ok-wash);
+}
+.primi-passi-main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.primi-passi-title {
+  margin: 1px 0 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+.is-done .primi-passi-title {
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+.primi-passi-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}

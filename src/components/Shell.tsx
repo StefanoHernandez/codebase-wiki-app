@@ -12,6 +12,7 @@ import { IncompatibleWiki } from './Compat';
 import { useToast } from './Toast';
 import markUrl from '../assets/mark.svg';
 import { sectionCounts } from '../lib/attention';
+import PrimiPassi, { firstRunDone } from '../views/PrimiPassi';
 
 /** Two letters from a folder name: initials of its first two words, else its first two letters. */
 function monogram(name: string): string {
@@ -88,9 +89,16 @@ export function Shell() {
   }, [nav.go]);
 
   // With several projects the app starts on Progetti; with one it stays on Per te.
+  // Until the first run is finished or skipped, the app starts on Primi passi.
   const startedOn = useRef(false);
   useEffect(() => {
-    if (startedOn.current || project.recent.length === 0) return;
+    if (startedOn.current) return;
+    if (!firstRunDone()) {
+      startedOn.current = true;
+      nav.go('primi-passi');
+      return;
+    }
+    if (project.recent.length === 0) return;
     startedOn.current = true;
     if (project.recent.length > 1) nav.go('progetti');
   }, [project.recent.length, nav.go]);
@@ -108,7 +116,11 @@ export function Shell() {
       />
 
       <main className="content">
-        {nav.section === 'impostazioni' ? (
+        {nav.section === 'primi-passi' ? (
+          <div className="content-body">
+            <PrimiPassi />
+          </div>
+        ) : nav.section === 'impostazioni' ? (
           <div className="content-body">
             <Impostazioni theme={theme} setTheme={setTheme} />
           </div>
@@ -194,6 +206,7 @@ function Banner({ tone, children }: { tone: 'error' | 'drift'; children: React.R
 }
 
 const ICONS: Record<SectionId | 'impostazioni' | 'comandi', string> = {
+  'primi-passi': 'M3 4.5l1.2 1.2 2.3-2.4M3 10.5l1.2 1.2 2.3-2.4M8.5 4.5h5M8.5 10.5h5',
   progetti: 'M2.5 4.5h4l1.5 1.5h5.5v6.5h-11z',
   'per-te': 'M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM8 5.5v3l2 1.2',
   lavori: 'M2.5 3.5h3v9h-3zM6.5 3.5h3v6h-3zM10.5 3.5h3v4h-3z',
@@ -262,6 +275,17 @@ function Sidebar({
           })}
         </ul>
         <div className="sidebar-bottom">
+          {(!firstRunDone() || nav.section === 'primi-passi') && (
+            <button
+              type="button"
+              className="section-link"
+              aria-current={nav.section === 'primi-passi' ? 'page' : undefined}
+              onClick={() => nav.go('primi-passi')}
+            >
+              <Icon name="primi-passi" />
+              <span>Primi passi</span>
+            </button>
+          )}
           <button type="button" className="section-link" onClick={onPalette}>
             <Icon name="comandi" />
             <span>Comandi</span>

@@ -6,6 +6,8 @@ import { useToast } from '../components/Toast';
 import { parseIndexStatus, type IndexStatus } from '../lib/rag-format';
 import { PYTHON_KEY, useProject } from '../state/project';
 import { useRag } from '../state/rag';
+import { useNav } from '../state/nav';
+import { markFirstRunDone } from './PrimiPassi';
 import type { ThemeChoice } from '../state/theme';
 import './ricerca.css';
 
@@ -51,6 +53,7 @@ export default function Impostazioni(props: ThemeProps) {
 }
 
 function Profilo({ theme, setTheme }: ThemeProps) {
+  const nav = useNav();
   const { actor, nameError, setActor } = useProject();
   // Draft keeps what is typed (spaces between names); the context exposes it trimmed.
   const [draft, setDraft] = useState(actor);
@@ -112,6 +115,16 @@ function Profilo({ theme, setTheme }: ThemeProps) {
           </div>
         </fieldset>
       </div>
+      <button
+        type="button"
+        className="btn btn-link"
+        onClick={() => {
+          markFirstRunDone(false);
+          nav.go('primi-passi');
+        }}
+      >
+        Rivedi i primi passi
+      </button>
     </section>
   );
 }

@@ -13,6 +13,7 @@ sources:
   - src/lib/human-actions.ts
   - src/lib/attention.ts
   - src/lib/labels.ts
+  - src/lib/first-run.ts
   - src/api.ts
   - src-tauri/src/commands.rs
 source_commit: 206cc3c
@@ -25,6 +26,7 @@ confidence: high
 
 | Vista | Cosa mostra |
 | --- | --- |
+| Primi passi | nome, progetto con wiki, controllo struttura (Python), modello e indice, agente collegato; ogni passo si spunta dallo stato reale (`lib/first-run.ts`); prima vista finché non si chiude (`firstRun.done` in localStorage), riapribile da Impostazioni |
 | Progetti | tutti i progetti recenti (per te, indice, novità dall'ultima visita, ultimo agente) e l'attività degli agenti MCP; prima vista all'avvio con più di un progetto |
 | Per te | lista unica di ciò che aspetta una persona (`lib/attention.ts`) |
 | Lavori | kanban del tracker, Prossimi passi, promuovi / chiudi ⚫ |

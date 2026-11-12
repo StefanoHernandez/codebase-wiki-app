@@ -18,7 +18,7 @@ confidence: high
 <!-- wiki:state -->
 
 - Tracker IDs: T1, T3, T4, T5
-- Goal: prossimo sottoprogetto: primo avvio guidato (identità e secondo giro UI fatti; poi tracker con dipendenze, che chiede prima un cambio di formato nel plugin)
+- Goal: prossimo sottoprogetto: tracker con dipendenze, che chiede prima un cambio di formato nel plugin (identità, secondo giro UI e primi passi fatti)
 - Last completed step: secondo giro UI (etichette in italiano, contatori spiegati, legenda del grafo) unito a `main`
 - Current branch: `main`
 - Last commit: `0971972`
