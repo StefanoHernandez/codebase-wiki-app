@@ -6,8 +6,10 @@ use std::time::{Duration, Instant};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{CallToolResult, ContentBlock as Content, Implementation, ServerCapabilities, ServerConfig},
-    schemars, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler, ServiceExt,
+    schemars, service::RequestContext, tool, tool_handler, tool_router, ErrorData as McpError, RoleServer,
+    ServerHandler, ServiceExt,
 };
+use rag_core::activity::{self, ActivityLine, PRIVATE_QUERY};
 use rag_core::{
     data_dir, embed::{load_embedder, load_installed_reranker, search_reranked}, file_changed, head_sha, index_path, indexed_repos, model_by_id,
     model_dir, read_config, repo_id, resolve_repo, wiki_root, FileSource, Store,
@@ -186,36 +188,133 @@ fn tool_result(r: Result<String, String>) -> Result<CallToolResult, McpError> {
     })
 }
 
+/// First three distinct `path` values of the JSON hit lines in a `search_code` result.
+fn top_paths(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in text.lines().skip(1) {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        if let Some(p) = v.get("path").and_then(|p| p.as_str()) {
+            if !out.iter().any(|o| o == p) {
+                out.push(p.to_string());
+            }
+        }
+        if out.len() == 3 {
+            break;
+        }
+    }
+    out
+}
+
+/// The query as it goes into the log: masked when it holds a private term or when the terms
+/// file cannot be read (fail-closed).
+fn logged_query(q: &str, terms: Result<Option<String>, String>) -> String {
+    match terms {
+        Ok(None) => q.to_string(),
+        Ok(Some(t)) if !content_has_forbidden_term(&t, q) => q.to_string(),
+        _ => PRIVATE_QUERY.to_string(),
+    }
+}
+
+fn agent_name(ctx: &RequestContext<RoleServer>) -> String {
+    ctx.peer
+        .peer_info()
+        .map(|i| i.client_info.name.clone())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "unknown".into())
+}
+
+/// Records one tool call. Never fails: a log that cannot be written is skipped.
+fn log_call(agent: String, tool: &str, repo: Option<&std::path::Path>, query: Option<&str>, started: Instant, result: &Result<String, String>) {
+    let query = query.map(|q| {
+        let terms = match repo.and_then(|r| wiki_root(r).map(|w| r.join(w))) {
+            Some(wiki) => read_private_terms(&wiki),
+            None => Ok(None),
+        };
+        logged_query(q, terms)
+    });
+    let private = query.as_deref() == Some(PRIVATE_QUERY);
+    let top = match result {
+        Ok(text) if tool == "search_code" && !private => top_paths(text),
+        _ => Vec::new(),
+    };
+    let line = ActivityLine {
+        ts: activity::now_ms(),
+        repo: repo.map(|r| r.display().to_string()),
+        agent,
+        tool: tool.into(),
+        query,
+        top,
+        ms: started.elapsed().as_millis() as u64,
+        error: result.as_ref().err().cloned(),
+    };
+    let stem = repo.map(repo_id).unwrap_or_else(|| "_global".into());
+    let _ = activity::append(&rag_core::paths::activity_dir(), &stem, &line);
+}
+
 #[tool_router]
 impl WikiMcp {
     #[tool(description = "Search this repository's source code (hybrid keyword + semantic). Use it for where/how questions before grepping; write the query in English with likely identifiers. Returns a header line, then one JSON object per hit: path, start_line, end_line, score, stale, snippet.")]
-    fn search_code(&self, Parameters(p): Parameters<SearchParams>) -> Result<CallToolResult, McpError> {
-        tool_result(self.search_inner(p.repo.as_deref(), &p.query, p.k, p.path_glob.as_deref()))
+    fn search_code(&self, Parameters(p): Parameters<SearchParams>, ctx: RequestContext<RoleServer>) -> Result<CallToolResult, McpError> {
+        let started = Instant::now();
+        let r = self.search_inner(p.repo.as_deref(), &p.query, p.k, p.path_glob.as_deref());
+        let repo = pick_repo(p.repo.as_deref()).ok();
+        log_call(agent_name(&ctx), "search_code", repo.as_deref(), Some(&p.query), started, &r);
+        tool_result(r)
     }
 
     #[tool(description = "State of the local index for this repository: model, indexed commit, HEAD, files, chunks, files changed since indexing.")]
-    fn index_status(&self, Parameters(p): Parameters<RepoParams>) -> Result<CallToolResult, McpError> {
-        tool_result(pick_repo(p.repo.as_deref()).map(|r| crate::run::status_json(&r).to_string()))
+    fn index_status(&self, Parameters(p): Parameters<RepoParams>, ctx: RequestContext<RoleServer>) -> Result<CallToolResult, McpError> {
+        let started = Instant::now();
+        let repo = pick_repo(p.repo.as_deref());
+        let r = repo.as_ref().map(|r| crate::run::status_json(r).to_string()).map_err(|e| e.clone());
+        log_call(agent_name(&ctx), "index_status", repo.as_deref().ok(), None, started, &r);
+        tool_result(r)
     }
 
     #[tool(description = "Repositories with a local Codebase Wiki index: one JSON object per line with name and path, plus which one this session is in. Use a name or path as `repo` in the other tools.")]
-    fn list_repos(&self) -> Result<CallToolResult, McpError> {
-        let current = REPO.get();
-        let repos = indexed_repos(&data_dir().join("indexes"));
-        if repos.is_empty() {
-            return tool_result(Err(repo_names()));
-        }
-        let lines: Vec<String> = repos
-            .iter()
-            .map(|r| {
-                serde_json::json!({
-                    "name": r.name, "path": r.root.display().to_string(),
-                    "current": current.is_some_and(|c| c.canonicalize().ok() == r.root.canonicalize().ok()),
-                })
-                .to_string()
+    fn list_repos(&self, ctx: RequestContext<RoleServer>) -> Result<CallToolResult, McpError> {
+        let started = Instant::now();
+        let r = list_repos_text();
+        log_call(agent_name(&ctx), "list_repos", None, None, started, &r);
+        tool_result(r)
+    }
+}
+
+fn list_repos_text() -> Result<String, String> {
+    let current = REPO.get();
+    let repos = indexed_repos(&data_dir().join("indexes"));
+    if repos.is_empty() {
+        return Err(repo_names());
+    }
+    let lines: Vec<String> = repos
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "name": r.name, "path": r.root.display().to_string(),
+                "current": current.is_some_and(|c| c.canonicalize().ok() == r.root.canonicalize().ok()),
             })
-            .collect();
-        tool_result(Ok(lines.join("\n")))
+            .to_string()
+        })
+        .collect();
+    Ok(lines.join("\n"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn top_paths_from_result() {
+        let t = "header\n{\"path\":\"a.rs\",\"score\":1}\n{\"path\":\"a.rs\"}\n{\"path\":\"b.rs\"}";
+        assert_eq!(top_paths(t), vec!["a.rs", "b.rs"]);
+    }
+
+    #[test]
+    fn private_query_is_masked() {
+        assert_eq!(logged_query("where is acme", Ok(Some("Acme".into()))), PRIVATE_QUERY);
+        assert_eq!(logged_query("where is x", Err("unreadable".into())), PRIVATE_QUERY);
+        assert_eq!(logged_query("where is x", Ok(None)), "where is x");
+        assert_eq!(logged_query("where is x", Ok(Some("Acme".into()))), "where is x");
     }
 }
 
