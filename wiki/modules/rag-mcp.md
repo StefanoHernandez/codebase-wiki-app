@@ -40,6 +40,7 @@ l'app la mostra in Ricerca, gli agenti la usano via MCP.
 
 ## Invarianti
 - Il registro delle chiamate non cambia mai il risultato di un tool: un errore di scrittura viene ignorato.
+- Un risultato con un termine riservato nel testo **o nel percorso** del file non esce mai, né verso l'agente né nel registro.
 - Senza indice o modello il server dà un errore chiaro e non scarica né indicizza nulla.
 - Termini di `.private-terms` filtrati in indicizzazione e di nuovo a ogni ricerca; file illeggibile → nessun risultato.
 - Un risultato con `stale: true` è cambiato dopo l'indice: va riletto dal disco.
