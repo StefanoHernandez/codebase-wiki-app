@@ -54,3 +54,8 @@ confidence: high
 - What: dopo la prova a mano con `npm run tauri dev` Stefano ha approvato il merge di `feat/progetti` su `main`; il server MCP installato nella cartella dati è stato sostituito con quello nuovo che registra le chiamate.
 - Evidence: chiamata `search_code` reale → riga in `activity/` con `agent: claude-code` e `top: src/lib/graph-builder.ts`
 - IDs: T10
+
+## 2026-11-12 · Icona e logotipo "timbro cw" · agent
+- What: icona provvisoria sostituita dal timbro "cw" (Newsreader su oltremare, doppio anello; variante ad anello pieno per 16–32 px); logotipo "Codebase Wiki" in cima alla barra laterale e favicon. Scelta di Stefano tra tre direzioni (pagina firmata, timbro cw, pagina ↔ codice).
+- Evidence: `npm run build` ok; `npm test` → 140 pass; PNG 256 e 32 px controllati a occhio
+- IDs: none

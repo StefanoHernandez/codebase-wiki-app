@@ -39,6 +39,15 @@ vecchio: `npm ci`.
 All'avvio l'app lo copia in `<data>/bin/` per dare agli agenti un percorso stabile; gli agenti
 già collegati usano il vecchio finché non vengono riavviati (banner in Ricerca).
 
+## Icona
+Sorgenti in `src-tauri/icons/src/`: `icon.svg` (timbro "cw" con doppio anello, per le taglie grandi) e
+`icon-small.svg` (anello pieno, per 16–32 px). Le lettere sono tracciati del font Newsreader, quindi
+non serve il font per generarle. Per rigenerare: `npx tauri icon src-tauri/icons/src/icon.svg -o <tmp>`
+e `npx tauri icon src-tauri/icons/src/icon-small.svg -o <tmp-small>`; copiare in `src-tauri/icons/`
+i file esistenti dal primo, poi `32x32.png`, `Square30x30Logo.png`, `Square44x44Logo.png` e
+`icon.ico` dal secondo (le cartelle `android/` e `ios/` non servono). `src/assets/mark.svg` è la
+copia di `icon-small.svg` usata nella barra laterale e come favicon.
+
 ## Convenzioni
 Le regole non negoziabili stanno nel [contesto per gli agenti](../agent/context.md#regole-non-negoziabili).
 Regole per gli agenti e confini dei file storici: `docs/tasks/COMMON.md`, `docs/tasks/global-constraints.md`.

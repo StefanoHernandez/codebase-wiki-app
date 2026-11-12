@@ -10,6 +10,7 @@ import { CommandPalette, MOD } from './CommandPalette';
 import { Empty } from './Empty';
 import { IncompatibleWiki } from './Compat';
 import { useToast } from './Toast';
+import markUrl from '../assets/mark.svg';
 
 /** Two letters from a folder name: initials of its first two words, else its first two letters. */
 function monogram(name: string): string {
@@ -248,6 +249,10 @@ function Sidebar({
   const nav = useNav();
   return (
     <aside className="sidebar" aria-label="Progetto e sezioni">
+      <div className="brand">
+        <img src={markUrl} alt="" width="20" height="20" />
+        <span className="brand-name">Codebase Wiki</span>
+      </div>
       <ProjectSwitcher onAdd={onAdd} />
       <nav className="sections" aria-label="Sezioni">
         <ul>
