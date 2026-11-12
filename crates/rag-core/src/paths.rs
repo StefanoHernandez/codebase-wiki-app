@@ -25,6 +25,10 @@ pub fn data_dir() -> PathBuf {
         .join("rag")
 }
 
+pub fn activity_dir() -> PathBuf {
+    data_dir().join("activity")
+}
+
 pub fn models_dir() -> PathBuf {
     data_dir().join("models")
 }
