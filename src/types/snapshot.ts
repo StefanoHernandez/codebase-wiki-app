@@ -71,4 +71,27 @@ export interface LintReport {
 export interface RecentProject {
   path: string;
   name: string;
+  /** Epoch ms of the last visit (baseline for news). */
+  lastSeenAt?: number | null;
+  lastSeenCommit?: string | null;
+  lastSeenLogEntries?: number | null;
+}
+
+export interface ProjectNews {
+  /** Wiki commit subjects since the last visit; null when git cannot tell. */
+  commits: string[] | null;
+  lastSeenLogEntries: number | null;
+  lastSeenAt: number | null;
+}
+
+/** One MCP tool call from the activity log. `ts` is epoch ms. */
+export interface ActivityLine {
+  ts: number;
+  repo: string | null;
+  agent: string;
+  tool: string;
+  query: string | null;
+  top: string[];
+  ms: number;
+  error: string | null;
 }

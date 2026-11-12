@@ -13,6 +13,7 @@ import { personId, validateHumanActor } from '../lib/human-actions';
 import { wikiCompat, type WikiCompat } from '../lib/wiki-compat';
 import { parseNextSteps, parseRiskRegister, type NextSteps, type RiskRow } from '../lib/wiki-extras';
 import { clearNavRef } from './nav';
+import { countLogEntries } from '../lib/overview';
 
 export interface WikiPage {
   relPath: string;
@@ -118,7 +119,7 @@ function actorProblem(name: string): string | null {
   }
 }
 
-function derive(snapshot: WikiSnapshot | null, lint: LintReport | null): Derived {
+export function deriveProject(snapshot: WikiSnapshot | null, lint: LintReport | null): Derived {
   if (!snapshot || !snapshot.wikiRoot) return EMPTY;
   try {
     const byPath = new Map(snapshot.pages.map((p) => [p.wikiRelPath, p.content]));
@@ -190,7 +191,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const openSeq = useRef(0);
   currentRef.current = current;
 
-  const derived = useMemo(() => derive(snapshot, lint), [snapshot, lint]);
+  const derived = useMemo(() => deriveProject(snapshot, lint), [snapshot, lint]);
   const compat = useMemo(() => wikiCompat(lint, derived.schema), [lint, derived.schema]);
   const clearLint = () => {
     lintSeq.current++;
@@ -223,6 +224,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         clearNavRef();
         clearLint();
         setSnapshot(snap);
+        const seen = deriveProject(snap, null);
+        const logMd = snap.pages.find((pg) => pg.wikiRelPath === (seen.schema?.coreMap.log ?? DEFAULT_CORE_MAP.log))?.content;
+        // The baseline moves only after the project loaded: news reset on a real visit.
+        await api.markProjectSeen(snap.repoPath, logMd !== undefined ? countLogEntries(logMd) : null).catch(() => undefined);
         if (!readStoredActor()) {
           const name = (await api.gitUserName(snap.repoPath).catch(() => null))?.trim();
           if (seq === openSeq.current && name && !actorProblem(name)) setActorState(name);

@@ -4,7 +4,9 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import type {
+  ActivityLine,
   LintReport,
+  ProjectNews,
   RecentProject,
   RepoFilePayload,
   WikiSnapshot,
@@ -27,6 +29,18 @@ export function listRecent(): Promise<RecentProject[]> {
 
 export function removeRecent(path: string): Promise<void> {
   return invoke('remove_recent', { path });
+}
+
+export function markProjectSeen(repo: string, logEntries: number | null): Promise<void> {
+  return invoke('mark_project_seen', { repo, logEntries });
+}
+
+export function projectNews(repo: string): Promise<ProjectNews> {
+  return invoke('project_news', { repo });
+}
+
+export function agentActivity(limit: number): Promise<ActivityLine[]> {
+  return invoke('agent_activity', { limit });
 }
 
 export function loadSnapshot(repo: string): Promise<WikiSnapshot> {
