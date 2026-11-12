@@ -18,10 +18,10 @@ confidence: high
 <!-- wiki:state -->
 
 - Tracker IDs: T1, T3, T4, T5
-- Goal: prossimo sottoprogetto (identità: icona e palette; poi seconda passata di UI, primo avvio guidato, tracker con dipendenze)
-- Last completed step: vista Progetti e registro delle chiamate MCP uniti a `main` (T10)
+- Goal: prossimo sottoprogetto: primo avvio guidato (identità e secondo giro UI fatti; poi tracker con dipendenze, che chiede prima un cambio di formato nel plugin)
+- Last completed step: secondo giro UI (etichette in italiano, contatori spiegati, legenda del grafo) unito a `main`
 - Current branch: `main`
-- Last commit: merge di `feat/progetti` su `main` (sopra `6648f9f`)
+- Last commit: `0971972`
 - Worktree: clean
 
 ## Baton per il prossimo agente
