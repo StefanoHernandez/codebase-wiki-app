@@ -66,7 +66,8 @@ export interface ProjectState extends Derived {
   /** Attention counts of projects seen this session, by repo path. */
   attentionCounts: Record<string, number>;
   reload(): Promise<void>;
-  open(path: string): Promise<void>;
+  /** `markSeen: false` opens without moving the news baseline (startup reopen). */
+  open(path: string, opts?: { markSeen?: boolean }): Promise<void>;
   forget(path: string): Promise<void>;
   /** Reads wiki files from disk, applies edits, writes atomically, then reloads. */
   act(edits: FileEdit[]): Promise<void>;
@@ -214,7 +215,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const open = useCallback(
-    async (path: string) => {
+    async (path: string, opts?: { markSeen?: boolean }) => {
       const seq = ++openSeq.current;
       setLoading(true);
       setError(null);
@@ -224,10 +225,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         clearNavRef();
         clearLint();
         setSnapshot(snap);
-        const seen = deriveProject(snap, null);
-        const logMd = snap.pages.find((pg) => pg.wikiRelPath === (seen.schema?.coreMap.log ?? DEFAULT_CORE_MAP.log))?.content;
-        // The baseline moves only after the project loaded: news reset on a real visit.
-        await api.markProjectSeen(snap.repoPath, logMd !== undefined ? countLogEntries(logMd) : null).catch(() => undefined);
+        if (opts?.markSeen !== false) {
+          const seen = deriveProject(snap, null);
+          const logMd = snap.pages.find((pg) => pg.wikiRelPath === (seen.schema?.coreMap.log ?? DEFAULT_CORE_MAP.log))?.content;
+          // The baseline moves only after the project loaded: news reset on a real visit.
+          await api.markProjectSeen(snap.repoPath, logMd !== undefined ? countLogEntries(logMd) : null).catch(() => undefined);
+        }
         if (!readStoredActor()) {
           const name = (await api.gitUserName(snap.repoPath).catch(() => null))?.trim();
           if (seq === openSeq.current && name && !actorProblem(name)) setActorState(name);
@@ -357,7 +360,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       .then((list) => {
         if (cancelled) return;
         setRecent(list);
-        if (list.length > 0) void open(list[0].path);
+        // Reopening at startup is not a visit: the news of that project stay until it is opened.
+        if (list.length > 0) void open(list[0].path, { markSeen: false });
       })
       .catch((e) => setError(message(e)));
     return () => {

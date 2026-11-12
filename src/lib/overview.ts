@@ -94,3 +94,18 @@ export function lastUseByAgent(activity: ActivityLine[]): Map<string, number> {
   for (const a of activity) out.set(a.agent, Math.max(out.get(a.agent) ?? 0, a.ts));
   return out;
 }
+
+/** MCP client names each harness sends at initialize (`claude-code`, `claude-ai`, `codex-mcp-client`…). */
+function clientMatches(harnessId: string, client: string): boolean {
+  const c = client.toLowerCase();
+  if (harnessId === 'claude') return c === 'claude-code';
+  if (harnessId === 'claude-desktop') return c === 'claude-ai';
+  return c.startsWith(harnessId);
+}
+
+/** Last call of a harness, by its id in `rag_harness_state`. */
+export function lastUseOfHarness(harnessId: string, uses: Map<string, number>): number | null {
+  let best: number | null = null;
+  for (const [client, ts] of uses) if (clientMatches(harnessId, client) && (best === null || ts > best)) best = ts;
+  return best;
+}

@@ -3,6 +3,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { Empty } from '../components/Empty';
 import { useToast } from '../components/Toast';
 import { formatBytes, parseIndexStatus, type IndexStatus } from '../lib/rag-format';
+import { relativeTime } from '../lib/overview';
+import { agentActivity } from '../api';
+import type { ActivityLine } from '../types/snapshot';
 import { useNav } from '../state/nav';
 import { useProject } from '../state/project';
 import { useRag } from '../state/rag';
@@ -70,6 +73,12 @@ export default function Ricerca() {
   useEffect(() => {
     void refresh();
   }, [refresh, rag.tick]);
+  const [lastCall, setLastCall] = useState<ActivityLine | null>(null);
+  useEffect(() => {
+    agentActivity(200)
+      .then((a) => setLastCall(a.find((l) => l.repo === repo) ?? null))
+      .catch(() => setLastCall(null));
+  }, [repo, rag.tick]);
   useEffect(() => {
     invoke<HarnessRow[]>('rag_harness_state')
       .then(setHarness)
@@ -166,6 +175,12 @@ export default function Ricerca() {
             <span className="rag-tile-label">Agenti (MCP)</span>
             <span className="rag-tile-value">{connected.length === 1 ? '1 collegato' : connected.length ? `${connected.length} collegati` : 'Nessuno'}</span>
             <span className="rag-tile-sub">{connected.map((h) => h.label).join(', ') || 'Collegali dalle Impostazioni'}</span>
+            <span className="rag-tile-sub">
+              {lastCall ? `Ultima chiamata: ${lastCall.agent} ${relativeTime(lastCall.ts, Date.now())}` : 'Nessuna chiamata da questo repo'}
+            </span>
+            <button type="button" className="btn btn-link" onClick={() => nav.go('progetti')}>
+              Vedi attività
+            </button>
           </div>
         </div>
         <button type="button" className="btn btn-link" onClick={() => nav.go('impostazioni')}>

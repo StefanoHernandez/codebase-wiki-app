@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildRow, countLogEntries, lastUseByAgent, newLogEntries, relativeTime, type RowInput } from '../src/lib/overview.ts';
+import { buildRow, countLogEntries, lastUseByAgent, lastUseOfHarness, newLogEntries, relativeTime, type RowInput } from '../src/lib/overview.ts';
 import type { ActivityLine } from '../src/types/snapshot.ts';
 
 const LOG = `# Log
@@ -74,3 +74,11 @@ test('overview: reads index state', () => {
 test('overview: keeps the newest use per agent', () => {
     assert.equal(lastUseByAgent([act('/a', 3), act('/b', 7), act('/a', 2, 'codex')]).get('claude-code'), 7);
   });
+
+test('overview: maps harness ids to MCP client names', () => {
+  const uses = new Map([['claude-code', 5], ['claude-ai', 9], ['codex-mcp-client', 7]]);
+  assert.equal(lastUseOfHarness('claude', uses), 5);
+  assert.equal(lastUseOfHarness('claude-desktop', uses), 9);
+  assert.equal(lastUseOfHarness('codex', uses), 7);
+  assert.equal(lastUseOfHarness('cursor', uses), null);
+});

@@ -85,6 +85,14 @@ export function Shell() {
     return () => window.removeEventListener('keydown', onKey);
   }, [nav.go]);
 
+  // With several projects the app starts on Progetti; with one it stays on Per te.
+  const startedOn = useRef(false);
+  useEffect(() => {
+    if (startedOn.current || project.recent.length === 0) return;
+    startedOn.current = true;
+    if (project.recent.length > 1) nav.go('progetti');
+  }, [project.recent.length, nav.go]);
+
   const counts = sectionCounts(project.attention);
   const hasWiki = !!project.snapshot?.wikiRoot;
 
@@ -101,6 +109,10 @@ export function Shell() {
         {nav.section === 'impostazioni' ? (
           <div className="content-body">
             <Impostazioni theme={theme} setTheme={setTheme} />
+          </div>
+        ) : nav.section === 'progetti' ? (
+          <div className="content-body">
+            <CurrentView section="progetti" />
           </div>
         ) : project.snapshot ? (
           <>
@@ -201,6 +213,7 @@ function Banner({ tone, children }: { tone: 'error' | 'drift'; children: React.R
 }
 
 const ICONS: Record<SectionId | 'impostazioni' | 'comandi', string> = {
+  progetti: 'M2.5 4.5h4l1.5 1.5h5.5v6.5h-11z',
   'per-te': 'M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM8 5.5v3l2 1.2',
   lavori: 'M2.5 3.5h3v9h-3zM6.5 3.5h3v6h-3zM10.5 3.5h3v4h-3z',
   decisioni: 'M8 2l5.5 6L8 14 2.5 8z',
@@ -246,7 +259,7 @@ function Sidebar({
                   type="button"
                   className="section-link"
                   aria-current={nav.section === s.id ? 'page' : undefined}
-                  disabled={!hasWiki}
+                  disabled={!hasWiki && s.id !== 'progetti'}
                   onClick={() => nav.go(s.id)}
                   title={`${MOD}${i + 1}`}
                 >

@@ -1,0 +1,38 @@
+.progetti-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.progetti-row {
+  flex-wrap: wrap;
+}
+.progetti-git {
+  margin-left: 10px;
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+.progetti-human {
+  color: var(--human);
+  font-weight: 500;
+}
+.progetti-drift {
+  color: var(--drift);
+}
+.progetti-news {
+  flex-basis: 100%;
+  margin: 0 0 4px;
+  padding-left: 20px;
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+.progetti-call {
+  align-items: flex-start;
+}
+.progetti-time {
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  padding-top: 2px;
+}
