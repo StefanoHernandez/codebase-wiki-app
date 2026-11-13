@@ -29,6 +29,7 @@ scritto la pagina il 2026-11-11: le decide una persona.
 | R4 | Un termine riservato finisce nei risultati della ricerca | high | si assume che il filtro fail-closed su `.private-terms` copra indice e risultati; lo smentirebbe un termine visibile in `search_code` | filtro in indicizzazione e alla ricerca; `.private-terms` illeggibile blocca tutto | unknown | T6 |
 | R5 | Il validatore incluso diverge da quello del plugin | medium | si assume che `resources/validate-wiki.py` sia identico al plugin installato; lo smentirebbe un risultato diverso tra Salute e `/wiki-lint` | aggiornarlo copiandolo a ogni release del plugin | Stefano | none |
 | R6 | Aperta dal Finder, l'app non trova `claude` o Python nel PATH | medium | si assume che i percorsi cercati coprano le installazioni comuni; lo smentirebbe "Collega" che mostra solo il comando, o Salute senza Python | ricerca di Python su più percorsi; comando da copiare come ripiego | unknown | T1 |
+| R7 | Si perde la chiave di firma degli aggiornamenti | high | si assume che `~/.tauri/codebase-wiki.key` e la sua password restino disponibili; lo smentirebbe un tag che non riesce a firmare o una chiave cancellata | copia della chiave e della password in un posto sicuro fuori dal Mac; senza, chi ha l'app deve reinstallarla a mano con una chiave nuova | Stefano | T13 |
 
 ## Dettagli
 

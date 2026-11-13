@@ -4,12 +4,15 @@ Applicazione desktop **Tauri v2** + React: pannello di controllo per una persona
 
 ## Viste
 
+- **Progetti** — tutti i progetti recenti, novità e attività degli agenti.
 - **Per te** — ciò che richiede la tua attenzione (revisioni, drift, handoff stale).
 - **Lavori** — tracker `Open` / `Proposals` / `Done` con azioni umane (promuovi, chiudi).
 - **Decisioni** — ADR in `project/decisions/` con accetta / rifiuta da `proposed`.
 - **Handoff** — stato e baton per il prossimo agente.
 - **Salute** — lint strutturale (`validate-wiki.py`) e budget di lettura.
-- **Grafo** — pagine wiki e sorgenti collegate, drift e filtri.
+- **Grafo** — pagine wiki e sorgenti collegate, drift e filtri; **Storia** riproduce la crescita commit per commit.
+- **Ricerca** — indice locale del codice per gli agenti (MCP `search_code`).
+- **Impostazioni** — modelli, collegamento agli agenti, installazione del plugin, aggiornamenti dell'app.
 
 ## Requisiti
 
@@ -37,8 +40,11 @@ npm test
 npx tsc --noEmit
 cargo test --workspace
 npm run build          # solo frontend (Vite)
-npm run tauri build    # bundle desktop (.dmg, .msi, .deb, .AppImage, …)
+npm run build:app      # app macOS locale, senza artefatti di aggiornamento
 ```
+
+Le build dei tag firmano gli aggiornamenti con la chiave nei secret `TAURI_SIGNING_PRIVATE_KEY` e
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; senza chiave si usa `--config src-tauri/tauri.no-updater.conf.json`.
 
 La CI multipiattaforma è in `.github/workflows/build.yml` (test su Ubuntu, build su macOS Apple Silicon (i Mac Intel non sono supportati: ONNX Runtime non ha binari precompilati), Windows e Linux su Ubuntu 24.04).
 
@@ -53,6 +59,10 @@ Allineati al plugin e a `docs/tasks/global-constraints.md`:
 | **`verified:`** nel frontmatter | Una riga: `{ by, at }` o lista; attore umano `human:<id>`; timestamp ISO 8601 con `Z`; opzionale `commit: <sha>`. |
 
 Ogni azione umana aggiorna i file wiki nella root configurata e appende una voce a `log.md` (`## YYYY-MM-DD · <titolo> · human` con `What`, `Evidence`, `IDs`).
+
+## Contributi
+
+Chi ha contribuito è in [CONTRIBUTORS.md](CONTRIBUTORS.md). Issue e pull request sono benvenute.
 
 ## Licenza
 

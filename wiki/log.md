@@ -124,3 +124,8 @@ confidence: high
 - What: sulla 0.5.1 installata su Windows ogni `git`, Python e `claude --version` apriva una finestra di console (`CREATE_NO_WINDOW` c'era solo per il sidecar) e l'apertura di un progetto restava senza risposta: circa 66 processi `git` in fila e l'errore non mostrato in Primi passi. Sul branch `fix/windows-console`: `wiki_core::no_window_command` per ogni processo figlio (no-op su macOS e Linux), un controllo per `source_commit` invece che per pagina, caricamento ed errore nel passo del progetto di Primi passi.
 - Evidence: `recent.json` vuoto dopo la prova; 20 `git rev-parse` → 5,2 s su quella macchina; `npm test` → 157 pass, 8 fail nei test del validatore (Python dei test non trovato su Windows, `|` in una riga). ⚠️ NOT VERIFIED - Rust non compilato: nessun toolchain Rust su quella macchina
 - IDs: T2
+
+## 2026-11-13 · Aggiornamenti dell'app e del plugin; PR #5 unita · agent
+- What: l'app controlla all'avvio e ogni 24 ore se c'è una release nuova (`tauri-plugin-updater` 2.14.1, `latest.json` della release `latest`) e se un agente ha il plugin indietro; un banner propone "Aggiorna e riavvia" (o "Scarica" su Linux fuori da un AppImage) e porta a Impostazioni → Plugin, senza installare niente da solo. La CI firma gli aggiornamenti solo sui tag. Unita la PR #5 di Alessandro Cianfaglione (@cianf4): niente console su Windows per i processi figli e apertura del progetto più veloce. Aggiunti `CONTRIBUTORS.md` e la sezione Contributi nel README.
+- Evidence: `npm test` → 171 pass (6 in `tests/updates.test.ts`); `cargo test --workspace --features wiki-mcp/embed` → 123 pass; clippy 0 avvisi; `npm run build:app` ok e app avviata 10 s senza errori; aggiornamento reale non provato (T13)
+- IDs: T2, T13

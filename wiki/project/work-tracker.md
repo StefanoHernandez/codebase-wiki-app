@@ -21,11 +21,12 @@ aperti sotto sono stati aperti da Stefano il 2026-11-11, nella sessione con Clau
 ## Prossimi passi
 <!-- wiki:next -->
 
-**In una riga:** 0.5.1 del 2026-11-13: note dei modelli per un indice solo codice e validatore del plugin 0.14.1 (regola di contesto senza `search_wiki`). Manca ancora la prova a mano su Windows e con un agente vero.
+**In una riga:** 0.6.0 del 2026-11-13: l'app controlla e installa i propri aggiornamenti e segnala i plugin indietro; correzioni Windows di Alessandro Cianfaglione (PR #5). Mancano le prove a mano (Windows, aggiornamento automatico, agente vero).
 
 1. Provare l'app installata e un agente vero collegato via MCP (T1, T5) e lo scarico della memoria (T4)
 2. Adopt della copia di prova di Versal e azioni umane su una wiki 0.13 (T3)
 3. Test su Windows, anche "Installa plugin" (T2)
+4. Aggiornamento automatico dalla 0.6.0 alla release successiva (T13)
 
 ## Aperti
 <!-- wiki:open -->
@@ -38,6 +39,7 @@ aperti sotto sono stati aperti da Stefano il 2026-11-11, nella sessione con Clau
 | T4 | ⚪ | Verificare che il server MCP liberi i modelli dopo 5 minuti senza ricerche | in Monitoraggio Attività `codebase-wiki-mcp serve` scende da ~1–2 GB a pochi MB | unknown | Monitoraggio Attività dopo una ricerca + 6 minuti | ⚠️ NOT VERIFIED - codice in `crates/wiki-mcp/src/serve.rs` (`unload_when_idle`), mai osservato |
 | T5 | ⚪ | Prova di un agente reale collegato alla 0.3.1 | una domanda dove/come usa `search_code` con una query in inglese; una su stato o rischi apre la wiki da `index.md` | Stefano | sessione Claude Code o Codex dopo il riavvio | ⚠️ NOT VERIFIED - provato solo con il server 0.2.0 |
 | T6 | ⚪ | Prova di privacy del RAG | un termine di `.private-terms` messo in un file di codice non compare mai nei risultati di `search_code` | unknown | `codebase-wiki-mcp search` su repo di prova | ⚠️ NOT VERIFIED - coperto solo da test unitari (`filter_private_chunks`) |
+| T13 | ⚪ | Provare l'aggiornamento automatico dell'app | con la 0.6.0 installata dal `.dmg`, pubblicata una release successiva: al riavvio compare il banner, "Aggiorna e riavvia" installa e l'app riparte con la versione nuova; annotare se Gatekeeper chiede di nuovo "Apri comunque" | Stefano | prova a mano alla prossima release | ⚠️ NOT VERIFIED - serve una release dopo la 0.6.0 |
 
 ## Proposte
 <!-- wiki:proposals -->

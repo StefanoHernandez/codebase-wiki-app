@@ -28,7 +28,7 @@ da installare: nessuna `.venv` necessaria.
 | App in sviluppo | `npm run tauri dev` |
 | Build frontend | `npm run build` |
 | Eseguibile di ricerca per l'app | `node scripts/build-sidecar.mjs` (in dev: `--if-missing`) |
-| Bundle macOS locale | `npx tauri build --bundles app` |
+| Bundle macOS locale | `npm run build:app` (senza artefatti di aggiornamento: la chiave sta solo nei secret della CI) |
 
 Se la build del frontend fallisce su un import mancante (es. un font), `node_modules` è
 vecchio: `npm ci`.
