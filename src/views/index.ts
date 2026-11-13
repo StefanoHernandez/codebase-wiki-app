@@ -10,7 +10,7 @@ import Ricerca from './Ricerca';
 
 export type SectionId = 'progetti' | 'per-te' | 'lavori' | 'decisioni' | 'handoff' | 'salute' | 'ricerca' | 'grafo' | 'impostazioni' | 'primi-passi';
 
-/** Sections in nav order; position + 1 is the ⌘/Ctrl shortcut digit. */
+/** Sections in nav order; the position is the ⌘/Ctrl shortcut digit (Progetti ⌘0, Per te ⌘1…). */
 export const SECTIONS: Array<{ id: SectionId; label: string; View: ComponentType }> = [
   { id: 'progetti', label: 'Progetti', View: Progetti },
   { id: 'per-te', label: 'Per te', View: PerTe },

@@ -78,10 +78,11 @@ export function Shell() {
       }
       const t = e.target as HTMLElement | null;
       if (t?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
-      const digit = /^Digit(\d)$/.exec(e.code) ? Number(e.code.slice(5)) : 0;
-      if (digit >= 1 && digit <= SECTIONS.length) {
+      const m = /^Digit(\d)$/.exec(e.code);
+      const digit = m ? Number(m[1]) : -1;
+      if (digit >= 0 && digit < SECTIONS.length) {
         e.preventDefault();
-        nav.go(SECTIONS[digit - 1].id);
+        nav.go(SECTIONS[digit].id);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -259,7 +260,7 @@ function Sidebar({
                   aria-current={nav.section === s.id ? 'page' : undefined}
                   disabled={!hasWiki && s.id !== 'progetti'}
                   onClick={() => nav.go(s.id)}
-                  title={`${MOD}${i + 1}`}
+                  title={`${MOD}${i}`}
                 >
                   <Icon name={s.id} />
                   <span>{s.label}</span>

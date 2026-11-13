@@ -14,6 +14,8 @@ import './progetti.css';
 type HarnessRow = { id: string; label: string; status: 'connected' | 'outdated' | 'absent' };
 
 const PAGE = 20;
+/** Every line kept on disk (each repo file holds at most 600): last use must not depend on a window. */
+const ACTIVITY_ALL = 1_000_000;
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** One project row: snapshot → attention and log, plus index status and news. */
@@ -60,13 +62,18 @@ export default function Progetti() {
   const [shown, setShown] = useState(PAGE);
   const [filter, setFilter] = useState('');
   const [openNews, setOpenNews] = useState<string | null>(null);
-  const now = Date.now();
+  // Relative times move while the view stays open.
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
   const recentKey = project.recent.map((r) => r.path).join('\n');
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const act = await api.agentActivity(200).catch(() => [] as ActivityLine[]);
+      const act = await api.agentActivity(ACTIVITY_ALL).catch(() => [] as ActivityLine[]);
       if (cancelled) return;
       setActivity(act);
       // One repo at a time: each snapshot walks the repo.
@@ -99,8 +106,8 @@ export default function Progetti() {
   };
 
   const go = async (path: string) => {
-    await project.open(path);
-    nav.go('per-te');
+    if (await project.open(path)) nav.go('per-te');
+    else toast('Progetto non aperto: vedi il messaggio in alto', 'error');
   };
 
   if (project.recent.length === 0) {
@@ -145,7 +152,7 @@ export default function Progetti() {
                   <span className="row-detail error-text">{row.error}</span>
                 ) : (
                   <span className="row-detail">
-                    <span className={row.attention ? 'progetti-human' : undefined}>{row.attention} per te</span>
+                    <span className={row.attention ? 'progetti-human' : undefined}>{row.attention ? `${row.attention} per te` : 'niente per te'}</span>
                     {' · '}
                     <span className={row.index === 'indietro' ? 'progetti-drift' : undefined}>{indexText(row)}</span>
                     {' · '}
@@ -192,7 +199,9 @@ export default function Progetti() {
           </select>
         </div>
         {filtered.length === 0 ? (
-          <p className="muted">Nessun agente ha ancora cercato: collegane uno dalle Impostazioni</p>
+          <p className="muted">
+            {filter ? 'Nessuna chiamata degli agenti su questo progetto.' : 'Nessun agente ha ancora cercato: collegane uno dalle Impostazioni'}
+          </p>
         ) : (
           <ul className="rows">
             {filtered.slice(0, shown).map((a, i) => (

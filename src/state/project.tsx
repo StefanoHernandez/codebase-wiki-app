@@ -67,7 +67,8 @@ export interface ProjectState extends Derived {
   attentionCounts: Record<string, number>;
   reload(): Promise<void>;
   /** `markSeen: false` opens without moving the news baseline (startup reopen). */
-  open(path: string, opts?: { markSeen?: boolean }): Promise<void>;
+  /** Resolves true when this call loaded the project (false on error or when superseded). */
+  open(path: string, opts?: { markSeen?: boolean }): Promise<boolean>;
   forget(path: string): Promise<void>;
   /** Reads wiki files from disk, applies edits, writes atomically, then reloads. */
   act(edits: FileEdit[]): Promise<void>;
@@ -221,7 +222,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       setError(null);
       try {
         const snap = await api.openProject(path);
-        if (seq !== openSeq.current) return;
+        if (seq !== openSeq.current) return false;
         clearNavRef();
         clearLint();
         setSnapshot(snap);
@@ -235,8 +236,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
           const name = (await api.gitUserName(snap.repoPath).catch(() => null))?.trim();
           if (seq === openSeq.current && name && !actorProblem(name)) setActorState(name);
         }
+        return seq === openSeq.current;
       } catch (e) {
         if (seq === openSeq.current) setError(message(e));
+        return false;
       } finally {
         if (seq === openSeq.current) setLoading(false);
         await refreshRecent();

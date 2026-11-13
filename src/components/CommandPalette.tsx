@@ -44,7 +44,7 @@ export function CommandPalette({ open, onOpenChange, onLint, onCopySync, onToggl
                 <span>{s.label}</span>
                 <kbd>
                   {MOD}
-                  {i + 1}
+                  {i}
                 </kbd>
               </Command.Item>
             ))}

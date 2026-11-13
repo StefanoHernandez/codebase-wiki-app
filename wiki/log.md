@@ -74,3 +74,8 @@ confidence: high
 - What: la colonna `Depends on` del tracker ha un significato (plugin 0.14.0, branch `feat/tracker-deps` non ancora unito): ID che il lavoro aspetta e condizioni esterne in testo libero; il validatore segnala ID inesistenti, dipendenze da sé e cicli. L'app copia il validatore 0.14.0, legge la colonna e in Lavori mostra "Pronto" o "Aspetta T5 · TRR".
 - Evidence: plugin `bash scripts/run-tests.sh` → exit 0 (10 casi nuovi), copia della wiki Versal identica a 0.13.1 salvo la versione; app `npm test` → 152 pass, `npm run build` ok; viste non controllate a schermo dall'agente
 - IDs: none
+
+## 2026-11-13 · Correzioni rimandate: dipendenze, Progetti, registro MCP · agent
+- What: validatore (plugin, branch `feat/tracker-deps`): un ID duplicato non nasconde più un ciclo, solo cifre ASCII negli ID, regola "never invent one", test per riga malformata e cicli sovrapposti. App: i link "Aspetta Tn" raggiungono anche schede filtrate per fase o già selezionate; un'apertura fallita da Progetti non porta più a Per te; le novità dopo un'archiviazione del log usano la data dell'ultima visita; l'attività degli agenti legge tutto il registro, non 200 righe; "niente per te", testo vuoto sotto filtro, tempi relativi aggiornati ogni minuto; scorciatoie: Progetti ⌘0, Per te ⌘1…; il registro `_global` non riporta più il nome del repo richiesto quando non si risolve. Test del validatore Rust allineato a 0.14.0.
+- Evidence: plugin `bash scripts/run-tests.sh` → exit 0; app `npm test` → 154 pass, `cargo test --workspace --features wiki-mcp/embed` → 104 pass, `npm run build` ok
+- IDs: none

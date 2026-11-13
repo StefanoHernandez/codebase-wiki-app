@@ -75,9 +75,13 @@ export default function Ricerca() {
   }, [refresh, rag.tick]);
   const [lastCall, setLastCall] = useState<ActivityLine | null>(null);
   useEffect(() => {
-    agentActivity(200)
-      .then((a) => setLastCall(a.find((l) => l.repo === repo) ?? null))
-      .catch(() => setLastCall(null));
+    let cancelled = false;
+    agentActivity(1_000_000)
+      .then((a) => !cancelled && setLastCall(a.find((l) => l.repo === repo) ?? null))
+      .catch(() => !cancelled && setLastCall(null));
+    return () => {
+      cancelled = true;
+    };
   }, [repo, rag.tick]);
   useEffect(() => {
     invoke<HarnessRow[]>('rag_harness_state')

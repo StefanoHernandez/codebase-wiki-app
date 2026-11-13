@@ -230,6 +230,15 @@ fn agent_name(ctx: &RequestContext<RoleServer>) -> String {
 }
 
 /// Records one tool call. Never fails: a log that cannot be written is skipped.
+/// Error text for the global log: a repo that could not be resolved is not echoed, since the
+/// requested name may contain a private term and `_global` has no wiki to check it against.
+const UNRESOLVED_REPO: &str = "repo non risolto";
+
+fn logged_error(repo: Option<&std::path::Path>, result: &Result<String, String>) -> Option<String> {
+    let err = result.as_ref().err()?;
+    Some(if repo.is_some() { err.clone() } else { UNRESOLVED_REPO.into() })
+}
+
 fn log_call(agent: String, tool: &str, repo: Option<&std::path::Path>, query: Option<&str>, started: Instant, result: &Result<String, String>) {
     let query = query.map(|q| {
         let terms = match repo.and_then(|r| wiki_root(r).map(|w| r.join(w))) {
@@ -251,7 +260,7 @@ fn log_call(agent: String, tool: &str, repo: Option<&std::path::Path>, query: Op
         query,
         top,
         ms: started.elapsed().as_millis() as u64,
-        error: result.as_ref().err().cloned(),
+        error: logged_error(repo, result),
     };
     let stem = repo.map(repo_id).unwrap_or_else(|| "_global".into());
     let _ = activity::append(&rag_core::paths::activity_dir(), &stem, &line);
@@ -308,6 +317,15 @@ fn list_repos_text() -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn global_log_does_not_echo_the_requested_repo() {
+        let err: Result<String, String> = Err("Nessun repo chiamato `segreto`".into());
+        assert_eq!(logged_error(None, &err).as_deref(), Some(UNRESOLVED_REPO));
+        let p = std::path::Path::new("/r");
+        assert_eq!(logged_error(Some(p), &err).as_deref(), Some("Nessun repo chiamato `segreto`"));
+        assert_eq!(logged_error(None, &Ok("x".into())), None);
+    }
 
     #[test]
     fn top_paths_from_result() {

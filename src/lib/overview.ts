@@ -18,9 +18,16 @@ export function countLogEntries(logMd: string): number {
 }
 
 /** Log entries added since the visit that saw `seen` of them, as heading text. */
-export function newLogEntries(logMd: string, seen: number | null, order: LogOrder): string[] {
+export function newLogEntries(logMd: string, seen: number | null, order: LogOrder, seenAt?: number | null): string[] {
   if (seen === null) return [];
   const all = datedHeadings(logMd);
+  // Fewer entries than at the last visit: the log was archived, so counting no longer works.
+  // Entries dated on or after the visit day are shown (same-day ones may repeat).
+  if (all.length < seen) {
+    if (!seenAt) return [];
+    const day = new Date(seenAt).toISOString().slice(0, 10);
+    return all.filter((h) => h.slice(0, 10) >= day);
+  }
   const added = Math.max(0, all.length - seen);
   if (added === 0) return [];
   return order === 'newest-first' ? all.slice(0, added) : all.slice(all.length - added);
@@ -72,7 +79,7 @@ export function buildRow(recent: RecentProject, input: RowInput): ProjectRow {
   const { news, log } = input;
   let items: string[] = [];
   if (news?.commits) items = news.commits;
-  else if (news && log) items = newLogEntries(log.markdown, news.lastSeenLogEntries, log.order);
+  else if (news && log) items = newLogEntries(log.markdown, news.lastSeenLogEntries, log.order, news.lastSeenAt);
   const last = input.activity.filter((a) => a.repo === recent.path).sort((a, b) => b.ts - a.ts)[0];
   return {
     path: recent.path,

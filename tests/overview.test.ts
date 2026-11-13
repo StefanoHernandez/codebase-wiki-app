@@ -82,3 +82,11 @@ test('overview: maps harness ids to MCP client names', () => {
   assert.equal(lastUseOfHarness('codex', uses), 7);
   assert.equal(lastUseOfHarness('cursor', uses), null);
 });
+
+test('overview: after a log archive, news fall back to entries dated since the last visit', () => {
+  // Seen 5 entries; 3 were archived, so the log now has fewer than 5 headings.
+  const md = `# Log\n\n## 2026-11-10 · Old · agent\n## 2026-11-12 · Same day · agent\n## 2026-11-13 · New · agent\n`;
+  const seenAt = Date.UTC(2026, 10, 12, 9, 0);
+  assert.deepEqual(newLogEntries(md, 5, 'oldest-first', seenAt), ['2026-11-12 · Same day · agent', '2026-11-13 · New · agent']);
+  assert.deepEqual(newLogEntries(md, 5, 'oldest-first'), []);
+});
