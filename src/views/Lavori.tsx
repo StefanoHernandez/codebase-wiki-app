@@ -48,12 +48,14 @@ export default function Lavori() {
   useEffect(() => {
     if (!nav.ref) return;
     if (tracker?.done.some((r) => r.id === nav.ref)) setShowClosed(true);
+    // A phase filter must not hide the selected open card.
+    if (tracker?.open.some((r) => r.id === nav.ref)) setPhase('');
   }, [nav.ref, tracker]);
   useEffect(() => {
     if (!nav.ref) return;
     const el = document.querySelector(`[data-key="${CSS.escape(nav.ref)}"]`);
     el?.scrollIntoView({ block: 'nearest' });
-  }, [nav.ref, showClosed]);
+  }, [nav.ref, showClosed, phase]);
 
   if (!tracker) {
     return (
@@ -121,7 +123,15 @@ export default function Lavori() {
             {r.unknown.includes(id) ? (
               <span title="ID non presente nel tracker">{id}</span>
             ) : (
-              <button type="button" className="btn btn-link" onClick={() => nav.go('lavori', id)}>
+              <button
+                type="button"
+                className="btn btn-link"
+                onClick={() => {
+                  // Same ref twice: the effect does not re-run, so scroll here.
+                  if (nav.ref === id) document.querySelector(`[data-key="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest' });
+                  else nav.go('lavori', id);
+                }}
+              >
                 {id}
               </button>
             )}

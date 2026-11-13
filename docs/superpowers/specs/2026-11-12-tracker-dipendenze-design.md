@@ -51,7 +51,7 @@ plugin release becomes 0.14.0.
 - `references/work-tracker-template.md`, Rules: one bullet defining the cell, satisfaction and
   readiness as above; agents add a dependency when work order matters, never invent one.
 - `/wiki-sync` (`## Next steps`) and the handoff template (baton): ready tasks come first; a step
-  on a task that is not ready names what it waits for ("T29 — waits for T17").
+  on a task that is not ready names what it waits for ("T29 - waits for T17").
 
 ### Plugin tests
 

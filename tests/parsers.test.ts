@@ -361,3 +361,15 @@ test('tracker Depends on: IDs and external conditions', async () => {
   assert.equal(t.open[0].extra['depends ON'], 'T2');
   assert.deepEqual(t.done[0].dependsOn, { ids: [], external: [] });
 });
+
+test('tracker Depends on: positional (translated) table keeps it by header', () => {
+  const md = `## Aperti
+<!-- wiki:open -->
+| A | B | C | D | E | F | G | Depends on |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| T1 | 🟡 | g | d | o | n | e | T2, TRR |
+`;
+  const t = parseTrackerMarkdown(md);
+  assert.equal(t.open[0].id, 'T1');
+  assert.deepEqual(t.open[0].dependsOn, { ids: ['T2'], external: ['TRR'] });
+});
