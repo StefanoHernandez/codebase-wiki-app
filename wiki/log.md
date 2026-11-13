@@ -139,3 +139,8 @@ confidence: high
 - Evidence: CI del tag https://github.com/StefanoHernandez/codebase-wiki-app/actions/runs/43424572413 verde dopo il rilancio; release https://github.com/StefanoHernandez/codebase-wiki-app/releases/tag/v0.6.0 con 14 file e `latest.json`; `releases/latest/download/latest.json` → HTTP 200
 - IDs: T13
 
+## 2026-11-13 · Icona "00_modern" e barra laterale "Notte" · agent
+- What: nuova icona dell'app dalla proposta "00_modern" di Alessandro Cianfaglione (anello pieno, gradiente oltremare), unica sorgente per tutte le taglie. Stefano ha scelto la direzione B "Notte" fra tre mockup (`docs/design/mockup-ui-2026-11-13.html`, chiaro e scuro): barra laterale blu notte in entrambi i temi, anello di salute attorno al progetto (pagine con verifica ancora valida), blu delle azioni umane più scuro nel tema chiaro. Branch `feat/notte`, non ancora rilasciato.
+- Evidence: `npm test` → 172 pass (1 nuovo su `verifiedShare`); `npm run build:app` ok, app installata in Applicazioni; barra laterale vista nel browser in chiaro e scuro senza progetto; anello con un progetto aperto da verificare a mano
+- IDs: none
+

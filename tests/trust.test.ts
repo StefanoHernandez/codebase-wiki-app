@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { trustTier } from '../src/lib/trust.ts';
+import { trustTier, verifiedShare } from '../src/lib/trust.ts';
 
 test('trustTier: no verification is unverified, regardless of source changes', () => {
   assert.equal(trustTier({ verified: [] }, false), 'unverified');
@@ -26,4 +26,10 @@ test('trustTier: only non-human verifiers are machine-confirmed, any human: veri
 test('trustTier: verified pages whose sources changed since verification are stale-verified', () => {
   assert.equal(trustTier({ verified: [{ by: 'human:stefano', at: '2026-01-02T00:00:00Z' }] }, true), 'stale-verified');
   assert.equal(trustTier({ verified: [{ by: 'codex', at: '2026-01-02T00:00:00Z' }] }, true), 'stale-verified');
+});
+
+test('verifiedShare counts current verifications only', () => {
+  const pages = [{ trust: 'human-reviewed' }, { trust: 'machine-confirmed' }, { trust: 'stale-verified' }, { trust: 'unverified' }] as const;
+  assert.deepEqual(verifiedShare([...pages]), { verified: 2, total: 4 });
+  assert.deepEqual(verifiedShare([]), { verified: 0, total: 0 });
 });

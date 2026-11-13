@@ -5,25 +5,17 @@
   height: 100%;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 2px 6px 0;
-}
-.brand-name {
-  font-family: var(--font-read);
-  font-size: var(--text-md);
-  color: var(--ink);
-}
 .sidebar {
   display: flex;
   flex-direction: column;
   min-height: 0;
   padding: 10px 8px;
   gap: 10px;
-  background: var(--surface-sunk);
-  border-right: 1px solid var(--rule);
+  background: var(--side-bg);
+  color: var(--side-muted);
+}
+.sidebar :focus-visible {
+  outline-color: var(--side-focus);
 }
 
 /* Project switcher: the current repo, its git state, and the menu of the others. */
@@ -33,20 +25,23 @@
 .switcher-btn {
   width: 100%;
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) 14px;
+  grid-template-columns: 44px minmax(0, 1fr) 14px;
   align-items: center;
-  gap: 9px;
-  padding: 6px;
+  gap: 10px;
+  padding: 8px 6px;
   border: 1px solid transparent;
   border-radius: var(--radius-control);
   background: transparent;
   text-align: left;
   cursor: pointer;
 }
+.switcher-btn {
+  color: var(--side-ink);
+}
 .switcher-btn:hover,
 .switcher-btn[aria-expanded='true'] {
-  background: var(--surface-hover);
-  border-color: var(--rule);
+  background: var(--side-hover);
+  border-color: var(--side-rule);
 }
 .monogram {
   position: relative;
@@ -66,8 +61,37 @@
   color: var(--ink-muted);
   box-shadow: inset 0 0 0 1px var(--rule);
 }
+/* The ring around the project fills with the pages whose verification still holds. */
+.health-ring {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-read);
+  font-size: var(--text-md);
+  color: var(--side-ink);
+}
+.health-ring svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+.health-ring-track {
+  stroke: var(--side-rule);
+}
+.health-ring-fill {
+  stroke: var(--side-ink);
+  transition: stroke-dasharray 0.4s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .health-ring-fill {
+    transition: none;
+  }
+}
 .switcher-name {
   display: block;
+  color: var(--side-ink);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -78,7 +102,7 @@
   gap: 6px;
   align-items: baseline;
   min-width: 0;
-  color: var(--ink-muted);
+  color: var(--side-muted);
   font-size: var(--text-xs);
   white-space: nowrap;
   overflow: hidden;
@@ -88,13 +112,17 @@
   text-overflow: ellipsis;
 }
 .switcher-chevron {
-  color: var(--ink-faint);
+  color: var(--side-faint);
+}
+.sidebar .dirty {
+  color: var(--side-dirty);
 }
 .dirty {
   color: var(--drift);
   font-weight: 500;
 }
 .switcher-menu {
+  color: var(--ink);
   position: absolute;
   z-index: 30;
   top: calc(100% + 4px);
@@ -168,25 +196,25 @@
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
-  color: var(--ink-muted);
+  color: var(--side-muted);
   font-weight: 500;
   text-align: left;
   cursor: pointer;
 }
 .section-link svg {
-  color: var(--ink-faint);
+  color: var(--side-faint);
 }
 .section-link:hover:not(:disabled) {
-  color: var(--ink);
-  background: var(--surface-hover);
+  color: var(--side-ink);
+  background: var(--side-hover);
 }
 .section-link[aria-current='page'] {
-  color: var(--ink);
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1px var(--rule);
+  color: var(--side-ink);
+  background: var(--side-current);
+  box-shadow: inset 3px 0 0 var(--side-ink);
 }
 .section-link[aria-current='page'] svg {
-  color: var(--ink);
+  color: var(--side-ink);
 }
 .section-link:disabled {
   opacity: 0.4;
@@ -203,15 +231,16 @@
   text-align: center;
 }
 .section-count-human {
-  background: var(--human);
-  color: var(--on-human);
+  background: var(--side-count);
+  color: var(--side-on-count);
 }
 .section-count-drift {
-  background: var(--drift-wash);
-  color: var(--drift);
+  background: transparent;
+  color: var(--side-dirty);
+  box-shadow: inset 0 0 0 1px var(--side-dirty);
 }
 .section-count-muted {
-  color: var(--ink-muted);
+  color: var(--side-faint);
   font-weight: 500;
 }
 .sidebar-bottom {
@@ -220,7 +249,12 @@
   flex-direction: column;
   gap: 1px;
   padding-top: 8px;
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--side-rule);
+}
+.sidebar kbd {
+  color: var(--side-muted);
+  border-color: var(--side-rule);
+  background: transparent;
 }
 
 kbd {

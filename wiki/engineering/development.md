@@ -40,13 +40,12 @@ All'avvio l'app lo copia in `<data>/bin/` per dare agli agenti un percorso stabi
 già collegati usano il vecchio finché non vengono riavviati (banner in Ricerca).
 
 ## Icona
-Sorgenti in `src-tauri/icons/src/`: `icon.svg` (timbro "cw" con doppio anello, per le taglie grandi) e
-`icon-small.svg` (anello pieno, per 16–32 px). Le lettere sono tracciati del font Newsreader, quindi
-non serve il font per generarle. Per rigenerare: `npx tauri icon src-tauri/icons/src/icon.svg -o <tmp>`
-e `npx tauri icon src-tauri/icons/src/icon-small.svg -o <tmp-small>`; copiare in `src-tauri/icons/`
-i file esistenti dal primo, poi `32x32.png`, `Square30x30Logo.png`, `Square44x44Logo.png` e
-`icon.ico` dal secondo (le cartelle `android/` e `ios/` non servono). `src/assets/mark.svg` è la
-copia di `icon-small.svg` usata nella barra laterale e come favicon.
+Sorgente unica `src-tauri/icons/src/icon.svg`: "00_modern" di Alessandro Cianfaglione (anello pieno su
+gradiente oltremare, lettere già in tracciati), messa sulla griglia macOS (824 px dentro 1024). L'anello
+pieno si legge anche a 16–32 px, quindi non serve più una versione piccola. Per rigenerare:
+`npx tauri icon src-tauri/icons/src/icon.svg -o <tmp>` e copiare in `src-tauri/icons/` i file che già
+ci sono (non `android/` e `ios/`). `src/assets/mark.svg` è l'originale a tutto quadro, usato come favicon.
+Dopo l'installazione macOS può mostrare la vecchia icona: `lsregister -f` sull'app e `killall Dock`.
 
 ## Convenzioni
 Le regole non negoziabili stanno nel [contesto per gli agenti](../agent/context.md#regole-non-negoziabili).

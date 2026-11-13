@@ -11,3 +11,9 @@ export function trustTier(page: { verified: Attribution[] }, changedSourcesSince
   if (changedSourcesSinceVerified) return 'stale-verified';
   return page.verified.some((v) => v.by.startsWith('human:')) ? 'human-reviewed' : 'machine-confirmed';
 }
+
+/** Pages whose verification still holds (human or machine, sources unchanged), out of all pages. */
+export function verifiedShare(pages: Array<{ trust: TrustTier }>): { verified: number; total: number } {
+  const verified = pages.filter((p) => p.trust === 'human-reviewed' || p.trust === 'machine-confirmed').length;
+  return { verified, total: pages.length };
+}

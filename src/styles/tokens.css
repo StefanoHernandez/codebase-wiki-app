@@ -12,8 +12,8 @@
   --ink-faint: #8a90a0;
   --rule: #dcdfe6;
   --rule-strong: #c4c8d2;
-  --human: #2b45d4;
-  --human-wash: #e7eafc;
+  --human: #23389f;
+  --human-wash: #e6e9fb;
   --on-human: #ffffff;
   --drift: #a65300;
   --drift-wash: #fbefe1;
@@ -21,7 +21,20 @@
   --error-wash: #fbe9e7;
   --ok: #1f7a4c;
   --ok-wash: #e4f3eb;
-  --focus: #2b45d4;
+  --focus: #23389f;
+
+  /* Sidebar "Notte": the icon's night blue frames the app in both themes. */
+  --side-bg: linear-gradient(180deg, #1b2c8f 0%, #0c1650 100%);
+  --side-ink: #ffffff;
+  --side-muted: rgb(255 255 255 / 0.74);
+  --side-faint: rgb(255 255 255 / 0.5);
+  --side-rule: rgb(255 255 255 / 0.12);
+  --side-hover: rgb(255 255 255 / 0.08);
+  --side-current: rgb(255 255 255 / 0.14);
+  --side-count: #ffffff;
+  --side-on-count: #142477;
+  --side-dirty: #ffcf86;
+  --side-focus: #ffffff;
 
   --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
   --font-read: 'Newsreader', Georgia, serif;
@@ -66,6 +79,8 @@
     --ok: #5fc795;
     --ok-wash: #18301f;
     --focus: #8c9cff;
+    --side-bg: linear-gradient(180deg, #16247a 0%, #0a1240 100%);
+    --side-on-count: #0c1650;
     --shadow-overlay: 0 16px 48px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
   }
 }
@@ -92,5 +107,7 @@
   --ok: #5fc795;
   --ok-wash: #18301f;
   --focus: #8c9cff;
+  --side-bg: linear-gradient(180deg, #16247a 0%, #0a1240 100%);
+  --side-on-count: #0c1650;
   --shadow-overlay: 0 16px 48px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
 }
