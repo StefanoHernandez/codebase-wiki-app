@@ -25,7 +25,7 @@ confidence: high
 | `wiki-core` | `crates/wiki-core/` | risoluzione della wiki, lettura e scrittura protette, validatore, watcher, git ([wiki-core](modules/wiki-core.md)) |
 | `rag-core` | `crates/rag-core/` | elenco file, chunk, indice SQLite, catalogo e download dei modelli, config degli agenti ([rag](modules/rag-mcp.md)) |
 | `wiki-mcp` | `crates/wiki-mcp/` | eseguibile `codebase-wiki-mcp`: CLI `index`/`search`/`status`/`models` e server MCP `serve` |
-| Validatore | `resources/validate-wiki.py` | copia identica di quello del plugin 0.14.0, lanciata con `--json` |
+| Validatore | `resources/validate-wiki.py` | copia identica di quello del plugin 0.14.1, lanciata con `--json` |
 
 ## Flusso
 

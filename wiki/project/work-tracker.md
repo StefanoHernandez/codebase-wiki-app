@@ -21,12 +21,11 @@ aperti sotto sono stati aperti da Stefano il 2026-11-11, nella sessione con Clau
 ## Prossimi passi
 <!-- wiki:next -->
 
-**In una riga:** 0.5.0 pubblicata il 2026-11-13 (plugin installabile dall'app, Storia del grafo, CLI trovate su Windows; installazione del plugin provata da Stefano con Codex sul Mac). Manca ancora la prova su Windows.
+**In una riga:** 0.5.1 del 2026-11-13: note dei modelli per un indice solo codice e validatore del plugin 0.14.1 (regola di contesto senza `search_wiki`). Manca ancora la prova a mano su Windows e con un agente vero.
 
-1. Note del catalogo dei modelli (T12)
-2. Provare l'app installata e un agente vero collegato via MCP (T1, T5) e lo scarico della memoria (T4)
-3. Adopt della copia di prova di Versal e azioni umane su una wiki 0.13 (T3)
-4. Test su Windows, anche "Installa plugin" (T2)
+1. Provare l'app installata e un agente vero collegato via MCP (T1, T5) e lo scarico della memoria (T4)
+2. Adopt della copia di prova di Versal e azioni umane su una wiki 0.13 (T3)
+3. Test su Windows, anche "Installa plugin" (T2)
 
 ## Aperti
 <!-- wiki:open -->
@@ -39,7 +38,6 @@ aperti sotto sono stati aperti da Stefano il 2026-11-11, nella sessione con Clau
 | T4 | ⚪ | Verificare che il server MCP liberi i modelli dopo 5 minuti senza ricerche | in Monitoraggio Attività `codebase-wiki-mcp serve` scende da ~1–2 GB a pochi MB | unknown | Monitoraggio Attività dopo una ricerca + 6 minuti | ⚠️ NOT VERIFIED - codice in `crates/wiki-mcp/src/serve.rs` (`unload_when_idle`), mai osservato |
 | T5 | ⚪ | Prova di un agente reale collegato alla 0.3.1 | una domanda dove/come usa `search_code` con una query in inglese; una su stato o rischi apre la wiki da `index.md` | Stefano | sessione Claude Code o Codex dopo il riavvio | ⚠️ NOT VERIFIED - provato solo con il server 0.2.0 |
 | T6 | ⚪ | Prova di privacy del RAG | un termine di `.private-terms` messo in un file di codice non compare mai nei risultati di `search_code` | unknown | `codebase-wiki-mcp search` su repo di prova | ⚠️ NOT VERIFIED - coperto solo da test unitari (`filter_private_chunks`) |
-| T12 | ⚪ | Note del catalogo dei modelli scritte per chi sceglie | ogni modello in Impostazioni ha una nota breve in italiano (lingua, velocità), senza risultati delle prove | Claude (agente) | `cargo test -p rag-core` | ⚠️ NOT VERIFIED - testo proposto in chat, non approvato |
 
 ## Proposte
 <!-- wiki:proposals -->
@@ -61,4 +59,5 @@ Idee e lavori suggeriti che nessuno ha ancora approvato: senza ID né icona.
 | T7 | 🟢 | Release 0.3.0 con pacchetti per Windows, macOS e Linux | 2026-11-11 | CI del tag verde su test e tre build; release pubblicata con 7 pacchetti | run GitHub Actions 43073107982; [release v0.3.0](https://github.com/StefanoHernandez/codebase-wiki-app/releases/tag/v0.3.0) |
 | T9 | 🟢 | Release 0.3.1 con pacchetti per Windows, macOS e Linux | 2026-11-12 | CI del tag verde su test e tre build; release pubblicata con 7 pacchetti; build macOS firmata ad-hoc | run GitHub Actions 43117157795; [release v0.3.1](https://github.com/StefanoHernandez/codebase-wiki-app/releases/tag/v0.3.1) |
 | T11 | 🟢 | Merge di `feat/plugin-install` su `main` e release 0.5.0 | 2026-11-13 | branch unito; CI del tag verde su test e tre build; release pubblicata con 7 pacchetti | run GitHub Actions 43411334416; [release v0.5.0](https://github.com/StefanoHernandez/codebase-wiki-app/releases/tag/v0.5.0) |
+| T12 | 🟢 | Note del catalogo dei modelli scritte per chi sceglie | 2026-11-13 | ogni modello ha una nota breve in italiano su lingua e velocità, senza risultati delle prove; rilasciate nella 0.5.1 | `crates/rag-core/src/catalog.rs`; `cargo test --workspace --features wiki-mcp/embed` → 122 pass |
 | T8 | 🟢 | RAG solo sul codice, senza `search_wiki` | 2026-11-11 | indice solo codice; tool `search_wiki` rimosso; test verdi | commit fe7bba6; `cargo test --workspace` e `npm test` verdi @fe7bba6; [log](../log.md) |

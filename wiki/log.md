@@ -114,3 +114,8 @@ confidence: high
 - What: app 0.5.0 pubblicata come Latest: installazione del plugin per agente, Storia del grafo, grafo a tutta altezza, CLI di Claude Code e Codex trovate su Windows. Stesso flusso della 0.4.0: push del solo tag, poi `main` con `[skip ci]`. Aggiornati anche i conteggi dei test e la versione del validatore in architettura.
 - Evidence: CI del tag https://github.com/StefanoHernandez/codebase-wiki-app/actions/runs/43411334416 verde (test + build macOS, Windows, Linux: il codice `cfg(windows)` compila); release https://github.com/StefanoHernandez/codebase-wiki-app/releases/tag/v0.5.0 con 7 pacchetti
 - IDs: T11
+
+## 2026-11-13 · Release 0.5.1: note dei modelli e plugin 0.14.1 · agent
+- What: le note del catalogo dei modelli dicevano ancora "adatto a wiki in italiano" e riportavano risultati delle prove; ora dicono lingua e velocità, utili per un indice che copre solo il codice. Plugin codebase-wiki-llm 0.14.1: la regola di contesto non nomina più `search_wiki` (tolto dal server MCP con la [0004](project/decisions/0004-rag-solo-codice.md)) e lascia alla wiki stato, decisioni, rischi e perché. L'app include il validatore 0.14.1.
+- Evidence: plugin `bash scripts/run-tests.sh` → exit 0; app `npm test` → 165 pass, `cargo test --workspace --features wiki-mcp/embed` → 122 pass
+- IDs: T12

@@ -8,7 +8,7 @@ sources:
   - wiki/log.md
   - wiki/project/work-tracker.md
   - crates/wiki-mcp/src/serve.rs
-source_commit: c73e9bd
+source_commit: 0eba9e4
 confidence: high
 ---
 
@@ -17,11 +17,11 @@ confidence: high
 ## Stato del lavoro
 <!-- wiki:state -->
 
-- Tracker IDs: T1, T2, T3, T4, T5, T12
-- Goal: nessun sottoprogetto aperto; prossimo passo proposto: note del catalogo dei modelli (T12)
-- Last completed step: release app 0.5.0 pubblicata (plugin dall'app, Storia del grafo, CLI su Windows)
+- Tracker IDs: T1, T2, T3, T4, T5
+- Goal: nessun sottoprogetto aperto; restano le prove a mano (T1–T5)
+- Last completed step: release app 0.5.1 (note dei modelli) e plugin 0.14.1 (regola di contesto senza `search_wiki`)
 - Current branch: `main`
-- Last commit: `c73e9bd` (release: 0.5.0) più questo aggiornamento della wiki
+- Last commit: `release: 0.5.1`
 - Worktree: clean
 
 ## Baton per il prossimo agente
@@ -29,9 +29,8 @@ confidence: high
 
 | Order | Task | Start files | Done when | Verification command | Notes / blockers |
 | --- | --- | --- | --- | --- | --- |
-| 1 | T12 - note del catalogo dei modelli | `crates/rag-core/src/catalog.rs` | note brevi in italiano, senza risultati delle prove | `cargo test -p rag-core` | testo proposto in chat, in attesa di sì |
-| 2 | T3 - adopt della copia di prova di Versal e prova delle azioni umane | `resources/validate-wiki.py`, `src/lib/md-edit.ts` | see T3 | `python3 resources/validate-wiki.py --json versal-test/docs` | la copia sta nello scratchpad di una sessione: se non c'è più, rifarla dallo zip in `~/Downloads` senza toccare gli originali |
-| 3 | T4 - osservare lo scarico dei modelli del server MCP | `crates/wiki-mcp/src/serve.rs` | see T4 | Monitoraggio Attività | serve un server avviato dall'eseguibile 0.3.1 |
+| 1 | T3 - adopt della copia di prova di Versal e prova delle azioni umane | `resources/validate-wiki.py`, `src/lib/md-edit.ts` | see T3 | `python3 resources/validate-wiki.py --json versal-test/docs` | la copia sta nello scratchpad di una sessione: se non c'è più, rifarla dallo zip in `~/Downloads` senza toccare gli originali |
+| 2 | T4 - osservare lo scarico dei modelli del server MCP | `crates/wiki-mcp/src/serve.rs` | see T4 | Monitoraggio Attività | serve un server avviato dall'eseguibile 0.3.1 |
 
 ## Blocchi
 <!-- wiki:blockers -->
@@ -70,5 +69,5 @@ confidence: high
 <!-- wiki:evidence-trail -->
 
 - `log`: [log.md](../log.md), voci fino al 2026-11-13
-- `tracker`: T1–T6, T12 aperti; T9, T10, T11 chiusi
+- `tracker`: T1–T6 aperti; T9–T12 chiusi
 - `decisions`: [0004](../project/decisions/0004-rag-solo-codice.md), [0005](../project/decisions/0005-reranker-facoltativo.md)
