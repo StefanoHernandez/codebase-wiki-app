@@ -95,6 +95,11 @@ export function copyText(text: string): Promise<void> {
   return writeText(text);
 }
 
+/** Subscribes to `wiki-watch-error`: the OS watcher reported errors, live updates may be missing. */
+export function onWatchError(cb: (event: { repo: string; message: string }) => void): Promise<UnlistenFn> {
+  return listen<{ repo: string; message: string }>('wiki-watch-error', (e) => cb(e.payload));
+}
+
 /** Subscribes to `wiki-changed` events emitted by the repo watcher. */
 export function onWikiChanged(cb: (event: WikiChangedEvent) => void): Promise<UnlistenFn> {
   return listen<WikiChangedEvent>('wiki-changed', (e) => cb(e.payload));

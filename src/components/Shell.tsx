@@ -133,6 +133,11 @@ export function Shell() {
           <>
             {project.error && <Banner tone="error">{project.error}</Banner>}
             {project.snapshot.warning && <Banner tone="drift">{project.snapshot.warning}</Banner>}
+            {project.watchError && (
+              <Banner tone="drift">
+                L’app potrebbe non vedere le ultime modifiche ai file: premi Ricarica. ({project.watchError})
+              </Banner>
+            )}
             {project.compat.pluginOutdated && (
               <Banner tone="drift">La wiki è più nuova del plugin: aggiorna il plugin.</Banner>
             )}

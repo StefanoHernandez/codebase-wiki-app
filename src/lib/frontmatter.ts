@@ -11,12 +11,34 @@ function stripQuotes(value: string): string {
   return trimmed;
 }
 
+/** Splits on `sep` outside quotes and outside nested `{}` / `[]`. */
+function splitTopLevel(text: string, sep: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let quote = '';
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === quote) quote = '';
+    } else if (c === '"' || c === "'") quote = c;
+    else if (c === '{' || c === '[') depth++;
+    else if (c === '}' || c === ']') depth--;
+    else if (c === sep && depth === 0) {
+      parts.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts;
+}
+
 export function parseMapBody(text: string): Record<string, string> {
   const trimmed = text.trim();
   const map: Record<string, string> = {};
   const isInline = trimmed.startsWith('{');
   const body = isInline ? trimmed.replace(/^\{/, '').replace(/\}$/, '') : trimmed;
-  for (const part of isInline ? body.split(',') : [body]) {
+  for (const part of isInline ? splitTopLevel(body, ',') : [body]) {
     const idx = part.indexOf(':');
     if (idx === -1) continue;
     map[part.slice(0, idx).trim()] = stripQuotes(part.slice(idx + 1));
@@ -86,6 +108,11 @@ export function parseFrontmatter(markdown: string): ParsedFrontmatter {
       verifiedMaps[verifiedMaps.length - 1][continuation[1]] = stripQuotes(continuation[2]);
       continue;
     }
+    if (continuation && currentKey === 'generated') {
+      generatedMap ??= {};
+      generatedMap[continuation[1]] = stripQuotes(continuation[2]);
+      continue;
+    }
 
     const scalarMatch = line.match(/^([a-zA-Z0-9_-]+):(?:\s*(.*))?$/);
     if (scalarMatch) {
@@ -95,12 +122,15 @@ export function parseFrontmatter(markdown: string): ParsedFrontmatter {
       if (key === 'sources') continue;
       if (key === 'verified') {
         if (rawVal.startsWith('[')) {
-          for (const flowMap of rawVal.match(/\{[^}]*\}/g) ?? []) verifiedMaps.push(parseMapBody(flowMap));
+          const list = rawVal.replace(/^\[/, '').replace(/\]$/, '');
+          for (const item of splitTopLevel(list, ',')) if (item.trim().startsWith('{')) verifiedMaps.push(parseMapBody(item));
         } else if (rawVal.startsWith('{')) {
           verifiedMaps.push(parseMapBody(rawVal));
         }
       } else if (key === 'generated') {
         if (rawVal.startsWith('{')) generatedMap = parseMapBody(rawVal);
+        // Not a map: keep the text, it still says where the page came from.
+        else if (rawVal) fields.generated = stripQuotes(rawVal);
       } else {
         fields[key] = stripQuotes(rawVal);
       }

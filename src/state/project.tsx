@@ -50,6 +50,8 @@ export interface ProjectState extends Derived {
   lintRunning: boolean;
   /** Last lint call that threw (Python not found, ...); null after a successful run. */
   lintError: string | null;
+  /** The file watcher reported errors: live updates may be missing until a reload. */
+  watchError: string | null;
   lintAt: Date | null;
   /** Gating from the validator's upgrade codes. */
   compat: WikiCompat;
@@ -179,6 +181,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const [lint, setLint] = useState<LintReport | null>(null);
   const [lintRunning, setLintRunning] = useState(false);
   const [lintError, setLintError] = useState<string | null>(null);
+  const [watchError, setWatchError] = useState<string | null>(null);
   const [lintAt, setLintAt] = useState<Date | null>(null);
   /** Only the latest lint run may set state. */
   const lintSeq = useRef(0);
@@ -225,6 +228,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         if (seq !== openSeq.current) return false;
         clearNavRef();
         clearLint();
+        setWatchError(null);
         setSnapshot(snap);
         if (opts?.markSeen !== false) {
           const seen = deriveProject(snap, null);
@@ -256,6 +260,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const snap = await api.loadSnapshot(repo);
       if (currentRef.current === repo) {
         setSnapshot(snap);
+        setWatchError(null);
         setError(null);
       }
     } catch (e) {
@@ -380,15 +385,24 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     api
       .onWikiChanged((event) => {
         if (event.repo !== currentRef.current) return;
+        setWatchError(null);
         clearTimeout(timer);
         timer = setTimeout(() => void reload(), RELOAD_DEBOUNCE_MS);
       })
       .then((fn) => (disposed ? fn() : (unlisten = fn)))
       .catch(() => {});
+    let unlistenError: (() => void) | undefined;
+    api
+      .onWatchError((event) => {
+        if (event.repo === currentRef.current) setWatchError(event.message);
+      })
+      .then((fn) => (disposed ? fn() : (unlistenError = fn)))
+      .catch(() => {});
     return () => {
       disposed = true;
       clearTimeout(timer);
       unlisten?.();
+      unlistenError?.();
     };
   }, [reload]);
 
@@ -401,6 +415,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       lint,
       lintRunning,
       lintError,
+      watchError,
       lintAt,
       compat,
       runLint,
@@ -426,6 +441,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       lint,
       lintRunning,
       lintError,
+      watchError,
       lintAt,
       compat,
       runLint,

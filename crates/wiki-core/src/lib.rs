@@ -15,7 +15,7 @@ pub use validator::{
     parse_lint_output, run_structural_lint, run_structural_lint_with, run_structural_lint_with_args,
     LintFinding, LintInfo, LintReport, LintUpgrade,
 };
-pub use watcher::{watch_repo, WatchHandle};
+pub use watcher::{watch_repo, watch_repo_reporting, WatchHandle};
 pub use wiki_fs::{
     collect_repo_files_recursive, content_has_forbidden_term, is_private_terms_name,
     load_wiki_snapshot, read_private_terms, read_repo_file_safe, read_wiki_file_safe,
@@ -437,10 +437,12 @@ sources:
         let wiki = repo.join("wiki");
         fs::create_dir_all(&wiki).unwrap();
         fs::write(wiki.join(".private-terms"), "acme\n").unwrap();
-        for name in [".PRIVATE-TERMS", ".Private-Terms", ".private-terms.", ".private-terms. ", ".private-terms::$DATA", "a:b.md"] {
+        for name in [".PRIVATE-TERMS", ".Private-Terms", ".private-terms.", ".private-terms. ", ".private-terms::$DATA"] {
             assert!(write_wiki_file_safe(repo, "wiki", name, "").is_err(), "write {name}");
             assert!(read_repo_file_safe(repo, &format!("wiki/{name}"), None).is_err(), "read {name}");
         }
+        // Any other `:` name is refused only where it can reach an NTFS stream.
+        assert_eq!(write_wiki_file_safe(repo, "wiki", "a:b.md", "").is_err(), cfg!(windows));
         assert_eq!(fs::read_to_string(wiki.join(".private-terms")).unwrap(), "acme\n");
         // A symlink inside the wiki pointing at .private-terms is refused too.
         #[cfg(unix)]

@@ -23,6 +23,16 @@ pub fn watch_repo(
     repo: &Path,
     on_change: impl Fn(Vec<String>) + Send + 'static,
 ) -> Result<WatchHandle, String> {
+    watch_repo_reporting(repo, on_change, |e| eprintln!("wiki watcher error: {e}"))
+}
+
+/// As [`watch_repo`], and calls `on_error` once per debounced batch that carried watcher
+/// errors (e.g. the OS dropped events), so the UI can say live updates may be missing.
+pub fn watch_repo_reporting(
+    repo: &Path,
+    on_change: impl Fn(Vec<String>) + Send + 'static,
+    on_error: impl Fn(String) + Send + 'static,
+) -> Result<WatchHandle, String> {
     let root = repo
         .canonicalize()
         .map_err(|e| format!("Cannot watch {}: {}", repo.display(), e))?;
@@ -42,15 +52,19 @@ pub fn watch_repo(
                     Err(RecvTimeoutError::Disconnected) => return,
                 }
             }
+            let mut errors = Vec::new();
             let mut paths: Vec<String> = batch
                 .into_iter()
-                .filter_map(|r| r.map_err(|e| eprintln!("wiki watcher error: {e}")).ok())
+                .filter_map(|r| r.map_err(|e| errors.push(e.to_string())).ok())
                 .filter(|e| !matches!(e.kind, EventKind::Access(_)))
                 .flat_map(|e| e.paths)
                 .filter_map(|p| relative_path(&root, &p))
                 .collect();
             paths.sort();
             paths.dedup();
+            if !errors.is_empty() {
+                on_error(errors.join("; "));
+            }
             if !paths.is_empty() {
                 on_change(paths);
             }

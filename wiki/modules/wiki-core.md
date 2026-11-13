@@ -27,14 +27,15 @@ Tutto ciò che tocca i file della wiki e il repo git, usato dal backend Tauri e 
 | `wiki_fs.rs` | `read_wiki_file_safe`, `write_wiki_file_safe`, `write_wiki_files_safe`, `read_repo_file_safe`, `load_wiki_snapshot`, `read_private_terms`, `content_has_forbidden_term`, `is_private_terms_name` |
 | `wiki_schema.rs` | lettura di SCHEMA (Core map, Excluded paths) |
 | `validator.rs` | lancia `resources/validate-wiki.py --json` e legge il report con serde |
-| `watcher.rs` | watcher ricorsivo (`notify`) con debounce di ~300 ms |
+| `watcher.rs` | watcher ricorsivo (`notify`) con debounce di ~300 ms; `watch_repo_reporting` passa anche gli errori, che l'app mostra come banner |
 | `git_ops.rs` | comandi git con validazione degli argomenti contro l'injection |
 | `prompts.rs` | prompt dei workflow del plugin, solo da allow-list |
 
 ## Invarianti
 - Le scritture restano dentro la wiki canonica, che a sua volta sta dentro il repo canonico.
 - `.private-terms` non è mai leggibile né scrivibile dall'interfaccia (anche ADS, maiuscole,
-  link simbolici); il controllo dei termini è fail-closed.
+  link simbolici); il controllo dei termini è fail-closed. Un `:` nel nome di un file è rifiutato
+  solo su Windows (flussi NTFS).
 - Lo snapshot non segue cartelle simboliche che escono dalla wiki.
 
 ## Come cambiarlo in sicurezza

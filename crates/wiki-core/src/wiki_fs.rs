@@ -40,9 +40,13 @@ pub struct RepoFilePayload {
 }
 
 /// True for any spelling the OS may resolve to `.private-terms`: case-insensitive
-/// (APFS/NTFS) and ignoring trailing dots/spaces (Windows).
+/// (APFS/NTFS), ignoring trailing dots/spaces and an NTFS stream suffix (Windows).
 pub fn is_private_terms_name(name: &std::ffi::OsStr) -> bool {
-    name.to_string_lossy()
+    let name = name.to_string_lossy();
+    // `.private-terms::$DATA` names the same file on NTFS: compare what precedes the stream.
+    name.split(':')
+        .next()
+        .unwrap_or_default()
         .trim_end_matches(['.', ' '])
         .eq_ignore_ascii_case(".private-terms")
 }
@@ -56,8 +60,9 @@ fn is_safe_relative_path(path_str: &str) -> bool {
         match comp {
             Component::ParentDir => return false,
             Component::Normal(s) => {
-                // `:` would allow NTFS alternate data streams (`.private-terms::$DATA`).
-                if is_private_terms_name(s) || s.to_string_lossy().contains(':') {
+                // On Windows `:` would reach NTFS alternate data streams (`.private-terms::$DATA`);
+                // elsewhere it is an ordinary character in file names.
+                if is_private_terms_name(s) || (cfg!(windows) && s.to_string_lossy().contains(':')) {
                     return false;
                 }
             }
@@ -367,6 +372,13 @@ pub fn write_wiki_file_safe(
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn colon_in_a_name_is_only_refused_on_windows() {
+        // NTFS alternate data streams use `:`; other systems allow it in file names.
+        assert_eq!(is_safe_relative_path("notes/meeting 10:30.md"), !cfg!(windows));
+        assert!(!is_safe_relative_path("wiki/.private-terms"));
+    }
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
 

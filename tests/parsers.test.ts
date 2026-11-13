@@ -373,3 +373,20 @@ test('tracker Depends on: positional (translated) table keeps it by header', () 
   assert.equal(t.open[0].id, 'T1');
   assert.deepEqual(t.open[0].dependsOn, { ids: ['T2'], external: ['TRR'] });
 });
+
+test('parseFrontmatter: quoted commas and braces stay inside their value', () => {
+  const md = `---
+generated: { by: "claude-code/opus, 5", at: 2026-11-13T09:00:00Z }
+verified: [{ by: "human:stefano", at: "2026-11-13", note: "a } b" }, { by: codex/gpt-5, at: 2026-11-12 }]
+---
+`;
+  const p = parseFrontmatter(md);
+  assert.deepEqual(p.generated, { by: 'claude-code/opus, 5', at: '2026-11-13T09:00:00Z' });
+  assert.deepEqual(p.verified.map((v) => v.by), ['human:stefano', 'codex/gpt-5']);
+});
+
+test('parseFrontmatter: scalar and block generated are kept', () => {
+  assert.equal(parseFrontmatter('---\ngenerated: imported from Notion\n---\n').fields.generated, 'imported from Notion');
+  const block = parseFrontmatter('---\ngenerated:\n  by: claude-code/opus\n  at: 2026-11-13\n---\n');
+  assert.deepEqual(block.generated, { by: 'claude-code/opus', at: '2026-11-13' });
+});

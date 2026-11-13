@@ -10,7 +10,7 @@ use tauri_plugin_store::StoreExt;
 use wiki_core::{
     build_workflow_prompt, collect_repo_files_recursive, file_diff_since_commit, inspect_git_state,
     is_git_repo, load_wiki_snapshot, read_repo_file_safe, resolve_wiki_root,
-    read_wiki_file_safe, run_structural_lint_with, watch_repo,
+    read_wiki_file_safe, run_structural_lint_with, watch_repo_reporting,
     write_wiki_file_safe, write_wiki_files_safe, LintReport, RepoFilePayload, WatchHandle,
     WikiFileWrite, WikiSnapshot,
 };
@@ -21,6 +21,13 @@ const RECENTS_FILE: &str = "recent.json";
 const RECENTS_KEY: &str = "recents";
 const MAX_RECENTS: usize = 12;
 pub const WIKI_CHANGED_EVENT: &str = "wiki-changed";
+pub const WATCH_ERROR_EVENT: &str = "wiki-watch-error";
+
+#[derive(Debug, Clone, Serialize)]
+struct WatchError {
+    repo: String,
+    message: String,
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -174,15 +181,23 @@ fn snapshot_for(repo: &Path) -> Result<WikiSnapshot, String> {
 fn start_watch(app: &AppHandle, repo: &Path) -> Result<(), String> {
     let emitter = app.clone();
     let repo_str = repo.to_string_lossy().into_owned();
-    let handle = watch_repo(repo, move |paths| {
-        let _ = emitter.emit(
-            WIKI_CHANGED_EVENT,
-            WikiChanged {
-                repo: repo_str.clone(),
-                paths,
-            },
-        );
-    })?;
+    let error_emitter = app.clone();
+    let error_repo = repo_str.clone();
+    let handle = watch_repo_reporting(
+        repo,
+        move |paths| {
+            let _ = emitter.emit(
+                WIKI_CHANGED_EVENT,
+                WikiChanged {
+                    repo: repo_str.clone(),
+                    paths,
+                },
+            );
+        },
+        move |message| {
+            let _ = error_emitter.emit(WATCH_ERROR_EVENT, WatchError { repo: error_repo.clone(), message });
+        },
+    )?;
     let slot = app.state::<Mutex<Option<WatchHandle>>>();
     let mut guard = match slot.lock() {
         Ok(g) => g,
