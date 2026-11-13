@@ -15,6 +15,7 @@ sources:
   - src/lib/labels.ts
   - src/lib/first-run.ts
   - src/lib/dependencies.ts
+  - src/lib/plugin.ts
   - src/api.ts
   - src-tauri/src/commands.rs
 source_commit: 206cc3c
@@ -27,7 +28,7 @@ confidence: high
 
 | Vista | Cosa mostra |
 | --- | --- |
-| Primi passi | nome, progetto con wiki, controllo struttura (Python), modello e indice, agente collegato; ogni passo si spunta dallo stato reale (`lib/first-run.ts`); prima vista finché non si chiude (`firstRun.done` in localStorage), riapribile da Impostazioni |
+| Primi passi | nome, progetto con wiki, controllo struttura (Python), modello e indice, un agente con plugin e ricerca; ogni passo si spunta dallo stato reale (`lib/first-run.ts`); prima vista finché non si chiude (`firstRun.done` in localStorage), riapribile da Impostazioni |
 | Progetti | tutti i progetti recenti (per te, indice, novità dall'ultima visita, ultimo agente) e l'attività degli agenti MCP; prima vista all'avvio con più di un progetto |
 | Per te | lista unica di ciò che aspetta una persona (`lib/attention.ts`) |
 | Lavori | kanban del tracker, Prossimi passi, promuovi / chiudi ⚫; dalla colonna `Depends on` ogni scheda dice "Pronto" o cosa aspetta (`lib/dependencies.ts`) |
@@ -36,7 +37,7 @@ confidence: high
 | Salute | validatore, livelli di fiducia, budget, rischi, log |
 | Grafo | wiki ↔ codice, filtri e drift |
 | Ricerca | stato dell'indice, Indicizza/Annulla, prova di `search_code` |
-| Impostazioni | profilo, tema, modelli, collegamento degli agenti (MCP) |
+| Impostazioni | profilo, tema, modelli, collegamento degli agenti (MCP), plugin per agente (installa / aggiorna, `lib/plugin.ts`) |
 
 ## Etichette del formato
 - `lib/labels.ts` traduce solo il vocabolario fisso del plugin: chiavi note (`fieldLabel`) e

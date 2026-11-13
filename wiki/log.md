@@ -94,3 +94,8 @@ confidence: high
 - What: app 0.4.0 pubblicata (Progetti, primi passi, dipendenze nel tracker, icona, secondo giro UI, correzioni) con i 7 pacchetti; plugin codebase-wiki-llm 0.14.0 su `main` con tag. Per risparmiare minuti di CI si pusha prima solo il tag e poi `main` con `[skip ci]`; le build Linux e Windows sono state rilanciate a repo reso pubblico da Stefano. Il marketplace `stefano-wiki` di Claude Code ora segue `main` del plugin (prima `dev`, fermo alla 0.13.0).
 - Evidence: CI tag app https://github.com/StefanoHernandez/codebase-wiki-app/actions/runs/43395240820 verde (test + 3 build); CI tag plugin https://github.com/StefanoHernandez/codebase-wiki-llm/actions/runs/43395066612 verde (4 job); `.dmg` installato in Applicazioni, versione 0.4.0, firma ad-hoc valida
 - IDs: none
+
+## 2026-11-13 · Plugin installabile dall'app · agent
+- What: Impostazioni ha la sezione "Plugin Codebase Wiki LLM": per Claude Code, Codex, Antigravity, Cursor e OpenCode mostra la versione installata contro l'ultimo tag del plugin e la installa o aggiorna dopo un'anteprima (comandi delle CLI; copia di cartelle da un checkout del tag in `<data>/plugin-src`). Cursor e OpenCode ricevono solo le skill, senza hook. Primi passi chiede plugin e ricerca sullo stesso agente. CLI Codex del Mac di Stefano riparata (reinstallata la 0.169.0 con npm), comandi verificati su quella.
+- Evidence: `cargo test --workspace --features wiki-mcp/embed` → 118 pass (13 nuovi in `plugin_install`); `npm test` → 159 pass; `npm run build` ok; installazione reale non ancora provata a mano
+- IDs: none
