@@ -1,3 +1,4 @@
+import { t, type Key } from '../i18n/index.ts';
 import type { GraphEdge, GraphNodeCategory } from '../types/wiki';
 
 export const LABEL_ZOOM_THRESHOLD = 2.2;
@@ -23,14 +24,7 @@ export function neighborIds(nodeId: string, edges: GraphEdge[]): Set<string> {
 
 export const CATEGORIES: GraphNodeCategory[] = ['core', 'decision', 'tracker', 'agent', 'topic', 'source'];
 
-export const CATEGORY_LABEL: Record<GraphNodeCategory, string> = {
-  core: 'Pagine base',
-  decision: 'Decisioni',
-  tracker: 'Tracker e rischi',
-  agent: 'Contesto e handoff',
-  topic: 'Argomenti',
-  source: 'File di codice',
-};
+export const categoryLabel = (c: GraphNodeCategory): string => t(`esplora.grafo.cat.${c}` as Key);
 
 export function readCategoryColors(root: HTMLElement): Record<GraphNodeCategory, string> {
   const cs = getComputedStyle(root);

@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import type { HandoffData } from '../types/wiki.ts';
 
 export type HandoffLagAction = { kind: 'promote' } | { kind: 'close'; taskId: string };
@@ -14,14 +15,14 @@ export function handoffLag(handoff: HandoffData | null, action: HandoffLagAction
   if (!handoff) return null;
 
   if (action.kind === 'promote' && handoff.noOpenWork) {
-    return "L'handoff dice «No open work.» ma stai aprendo un lavoro nel tracker. Aggiorna l'handoff con /wiki-sync.";
+    return t('revisione.lag.promote');
   }
 
   if (action.kind === 'close') {
     for (const row of handoff.baton) {
       const id = batonTaskId(row.task);
       if (id === action.taskId) {
-        return `L'handoff ha ancora ${id} nel baton ma lo stai chiudendo nel tracker. Aggiorna l'handoff con /wiki-sync.`;
+        return t('revisione.lag.close', { id });
       }
     }
   }

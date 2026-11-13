@@ -10,6 +10,7 @@ import {
   type RagJobState,
 } from '../lib/rag-format';
 import { useProject } from './project';
+import { t } from '../i18n/index.ts';
 
 const AUTO_INDEX_KEY = 'cw.rag.autoIndex';
 const QUIET_MS = 5000;
@@ -115,7 +116,7 @@ export function RagProvider({ children }: { children: ReactNode }) {
         if (j.event === 'download') {
           setDownload({ id: j.model ?? '', file: j.file ?? '', done: j.done ?? 0, total: j.total ?? 0 });
         } else if (j.event === 'error') {
-          setDownloadError(j.message ?? 'Download fallito');
+          setDownloadError(j.message ?? t('esplora.rag.downloadFailed'));
         } else if (j.event === 'exit') {
           setDownload(null);
           setTick((t) => t + 1);

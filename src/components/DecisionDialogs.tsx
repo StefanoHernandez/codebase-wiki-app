@@ -1,6 +1,6 @@
 import { useState } from 'react';
+import { t } from '../i18n';
 import { Dialog, Field } from './Dialog';
-import { SIGN_HINT } from './TrackerDialogs';
 import { todayLocal } from '../lib/dates';
 import { useProject, type ProjectState } from '../state/project';
 import { DEFAULT_CORE_MAP } from '../lib/schema-parser';
@@ -9,12 +9,9 @@ import { acceptDecisionHuman, rejectDecisionHuman } from '../lib/human-actions';
 import { parseFrontmatter } from '../lib/frontmatter';
 import type { Decision } from '../types/wiki';
 
-const NOT_READY = 'La wiki non è ancora caricata. Premi Ricarica e riprova.';
-const STALE = 'La decisione non è più in attesa. Ricarica.';
-
 class StaleError extends Error {
   constructor() {
-    super(STALE);
+    super(t('revisione.decisions.stale'));
   }
 }
 
@@ -32,7 +29,7 @@ function decisionPaths(project: ProjectState, relPath: string): DecisionPaths | 
 }
 
 function errorText(e: unknown): string {
-  return `Non riesco a salvare. ${e instanceof Error ? e.message : String(e)}`;
+  return t('revisione.dialog.saveError', { error: e instanceof Error ? e.message : String(e) });
 }
 
 function useDecisionSigned(onDone: (number: string) => void) {
@@ -51,7 +48,7 @@ function useDecisionSigned(onDone: (number: string) => void) {
     }
     const paths = decisionPaths(project, relPath);
     if (!paths) {
-      setError(NOT_READY);
+      setError(t('revisione.dialog.notReady'));
       return;
     }
     setError(null);
@@ -61,7 +58,7 @@ function useDecisionSigned(onDone: (number: string) => void) {
       onDone(id);
     } catch (e) {
       if (e instanceof StaleError) setError(e.message);
-      else if (e instanceof Error && /only be (accepted|rejected) from proposed/.test(e.message)) setError(STALE);
+      else if (e instanceof Error && /only be (accepted|rejected) from proposed/.test(e.message)) setError(t('revisione.decisions.stale'));
       else setError(errorText(e));
       setBusy(false);
     }
@@ -87,7 +84,7 @@ export function DecideDialog({ decision, verdict, onClose, onDone }: DecideDialo
   const submit = () =>
     run(
       decision.relPath,
-      !where.trim() ? "Scrivi dove l'hai decisa: messaggio, riunione, PR…" : null,
+      !where.trim() ? t('revisione.decisions.whereRequired') : null,
       async (paths) => {
         let logOut = '';
         await project.act([
@@ -118,8 +115,8 @@ export function DecideDialog({ decision, verdict, onClose, onDone }: DecideDialo
       },
     );
 
-  const title = accept ? 'Accetta decisione' : 'Rifiuta decisione';
-  const confirm = accept ? 'Accetta decisione' : 'Rifiuta decisione';
+  const title = accept ? t('revisione.decisions.accept') : t('revisione.decisions.reject');
+  const confirm = title;
 
   return (
     <Dialog
@@ -133,13 +130,12 @@ export function DecideDialog({ decision, verdict, onClose, onDone }: DecideDialo
       onCancel={onClose}
     >
       <p className="dialog-note">
-        {decision.number} — {decision.title}. Lo firmi come {project.actor || '…'}.
+        {t('revisione.decisions.signNote', { number: decision.number, title: decision.title, actor: project.actor || '…' })}
       </p>
-      <Field label="Dove è stata decisa" hint={SIGN_HINT}>
-        <input value={where} onChange={(e) => setWhere(e.target.value)} placeholder="Messaggio, riunione, PR…" />
+      <Field label={t('revisione.decisions.whereLabel')} hint={t('lavori.dialog.signHint')}>
+        <input value={where} onChange={(e) => setWhere(e.target.value)} placeholder={t('revisione.decisions.wherePlaceholder')} />
       </Field>
     </Dialog>
   );
 }
 
-export { SIGN_HINT };

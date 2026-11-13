@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { checkAppUpdate, installAppUpdate, pluginState, updaterSupported, type Update } from '../api';
 import type { PluginRow } from '../lib/plugin';
+import { t } from '../i18n/index.ts';
 import { updateBanner, type AppCheck, type UpdateBanner } from '../lib/updates';
 
 const FIRST_CHECK_MS = 5_000;
@@ -69,7 +70,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       setProgress(undefined);
       const msg = e instanceof Error ? e.message : String(e);
-      setBanner((b) => b && { ...b, error: `Aggiornamento non riuscito: ${msg}` });
+      setBanner((b) => b && { ...b, error: t('impostazioni.upd.failed', { message: msg }) });
     }
   }, []);
 

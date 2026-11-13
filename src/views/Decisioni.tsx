@@ -1,9 +1,10 @@
+import { t, type Key } from '../i18n';
 import { fixedValue } from '../lib/labels';
 import { useEffect, useMemo, useState } from 'react';
 import { Empty } from '../components/Empty';
 import { Markdown } from '../components/Markdown';
-import { DecideDialog, SIGN_HINT } from '../components/DecisionDialogs';
-import { DECISION_BLOCKED_REASON } from '../lib/wiki-compat';
+import { DecideDialog } from '../components/DecisionDialogs';
+import { decisionBlockedReason } from '../lib/wiki-compat';
 import { useStamp } from '../components/stamp';
 import { useToast } from '../components/Toast';
 import { parseFrontmatter } from '../lib/frontmatter';
@@ -12,27 +13,21 @@ import { useNav } from '../state/nav';
 import type { Decision, DecisionStatus } from '../types/wiki';
 import './decisioni.css';
 
-const GROUPS: Array<{ status: DecisionStatus; title: string; human?: boolean }> = [
-  { status: 'proposed', title: 'In attesa', human: true },
-  { status: 'accepted', title: 'Accettate' },
-  { status: 'rejected', title: 'Rifiutate' },
-  { status: 'superseded', title: 'Superate' },
-  { status: 'unknown', title: 'Altro' },
+const GROUPS: Array<{ status: DecisionStatus; human?: boolean }> = [
+  { status: 'proposed', human: true },
+  { status: 'accepted' },
+  { status: 'rejected' },
+  { status: 'superseded' },
+  { status: 'unknown' },
 ];
 
-const STATUS_LABEL: Record<DecisionStatus, string> = {
-  proposed: 'In attesa',
-  accepted: 'Accettata',
-  rejected: 'Rifiutata',
-  superseded: 'Superata',
-  unknown: 'Sconosciuto',
-};
+const statusLabel = (s: DecisionStatus) => t(`revisione.decisions.status.${s}` as Key);
 
 function statusChip(decision: Decision) {
   const label =
     decision.status === 'superseded' && decision.supersededBy
-      ? `Superata da ${decision.supersededBy}`
-      : STATUS_LABEL[decision.status];
+      ? t('revisione.decisions.supersededBy', { id: decision.supersededBy })
+      : statusLabel(decision.status);
   const cls =
     decision.status === 'proposed'
       ? 'badge badge-human'
@@ -97,7 +92,7 @@ export default function Decisioni() {
       type="button"
       className="btn btn-human-outline"
       aria-disabled={!signable || blocked}
-      title={blocked ? DECISION_BLOCKED_REASON : signable ? undefined : SIGN_HINT}
+      title={blocked ? decisionBlockedReason() : signable ? undefined : t('lavori.dialog.signHint')}
       onClick={() => signable && !blocked && onClick()}
     >
       {label}
@@ -107,21 +102,21 @@ export default function Decisioni() {
   if (project.decisions.length === 0) {
     return (
       <section className="view">
-        <h1 className="view-title">Decisioni</h1>
-        <Empty title="Questa wiki non ha decisioni registrate." />
+        <h1 className="view-title">{t('revisione.decisions.title')}</h1>
+        <Empty title={t('revisione.decisions.empty')} />
       </section>
     );
   }
 
   return (
     <section className="view">
-      <h1 className="view-title">Decisioni</h1>
+      <h1 className="view-title">{t('revisione.decisions.title')}</h1>
       <div className="decisioni-layout">
         <div className="decisioni-list">
           {grouped.map((group) => (
             <div key={group.status}>
               <h2 className={`decisioni-group-title${group.human ? ' decisioni-group-title--human' : ''}`}>
-                {group.title}
+                {t(`revisione.decisions.group.${group.status}` as Key)}
               </h2>
               {group.items.map((d) => (
                 <button
@@ -144,18 +139,18 @@ export default function Decisioni() {
             <>
               <dl className="decisioni-meta">
                 <div>
-                  <dt>Stato</dt>
-                  <dd>{STATUS_LABEL[active.status]}</dd>
+                  <dt>{t('revisione.decisions.metaStatus')}</dt>
+                  <dd>{statusLabel(active.status)}</dd>
                 </div>
                 {meta && meta.sources.length > 0 && (
                   <div>
-                    <dt>Fonti</dt>
+                    <dt>{t('revisione.decisions.metaSources')}</dt>
                     <dd>{meta.sources.join(', ')}</dd>
                   </div>
                 )}
                 {meta?.fields.confidence && (
                   <div>
-                    <dt>Affidabilità</dt>
+                    <dt>{t('revisione.decisions.metaConfidence')}</dt>
                     <dd>{fixedValue(meta.fields.confidence)}</dd>
                   </div>
                 )}
@@ -170,14 +165,14 @@ export default function Decisioni() {
               </div>
               {active.status === 'proposed' && (
                 <div className="decisioni-actions">
-                  {signButton('Accetta decisione', () => setPending({ decision: active, verdict: 'accepted' }), activeBlocked)}
-                  {signButton('Rifiuta decisione', () => setPending({ decision: active, verdict: 'rejected' }), activeBlocked)}
-                  {activeBlocked && <p className="muted">{DECISION_BLOCKED_REASON}</p>}
+                  {signButton(t('revisione.decisions.accept'), () => setPending({ decision: active, verdict: 'accepted' }), activeBlocked)}
+                  {signButton(t('revisione.decisions.reject'), () => setPending({ decision: active, verdict: 'rejected' }), activeBlocked)}
+                  {activeBlocked && <p className="muted">{decisionBlockedReason()}</p>}
                 </div>
               )}
             </>
           ) : (
-            <Empty title="Seleziona una decisione dall'elenco." />
+            <Empty title={t('revisione.decisions.select')} />
           )}
         </div>
       </div>
@@ -188,7 +183,7 @@ export default function Decisioni() {
           verdict={pending.verdict}
           onClose={() => setPending(null)}
           onDone={(number) =>
-            finish(pending.verdict === 'accepted' ? 'Decisione accettata' : 'Decisione rifiutata', number)
+            finish(pending.verdict === 'accepted' ? t('revisione.decisions.accepted') : t('revisione.decisions.rejected'), number)
           }
         />
       )}

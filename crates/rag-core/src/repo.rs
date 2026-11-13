@@ -16,7 +16,7 @@ pub fn resolve_repo(arg: Option<&Path>) -> Result<PathBuf, String> {
     } else {
         std::env::current_dir().map_err(|e| e.to_string())?
     };
-    find_git_root(start).ok_or_else(|| "Repository git non trovato".into())
+    find_git_root(start).ok_or_else(|| wiki_core::tr("Repository git non trovato", "Git repository not found"))
 }
 
 fn find_git_root(mut dir: PathBuf) -> Option<PathBuf> {

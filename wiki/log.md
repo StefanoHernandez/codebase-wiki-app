@@ -149,3 +149,7 @@ confidence: high
 - Evidence: `npm test` → 172 pass; Primi passi e Impostazioni viste nel browser in chiaro e scuro; `npm run build:app` ok, app installata in Applicazioni; viste con un progetto aperto da verificare a mano
 - IDs: none
 
+## 2026-11-13 · Interfaccia in inglese · agent
+- What: su richiesta di Stefano l'app parla italiano o inglese (Impostazioni → Lingua, automatica dalla lingua del Mac), senza riavvio. Circa 610 testi spostati in `src/i18n/` per sei aree, date con `locale()`, messaggi del backend con `tr`, note del catalogo dei modelli tradotte per id; il testo scritto nella wiki resta invariato. Regola 3 di `CLAUDE.md` aggiornata. Branch `feat/notte`, non ancora rilasciato.
+- Evidence: `npm test` → 177 pass (compreso `no-italian.test.ts`); `cargo test --workspace --features wiki-mcp/embed` → verde; Primi passi e Impostazioni viste nel browser in inglese e in italiano, cambio lingua dal vivo; viste con un progetto aperto e revisione dei testi inglesi da fare a mano
+- IDs: none

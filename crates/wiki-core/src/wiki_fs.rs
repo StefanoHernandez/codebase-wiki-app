@@ -157,7 +157,7 @@ pub fn read_private_terms(wiki_dir: &Path) -> Result<Option<String>, String> {
     let private_terms_path = wiki_dir.join(".private-terms");
     match fs::symlink_metadata(&private_terms_path) {
         Ok(meta) if meta.file_type().is_symlink() => {
-            return Err(PRIVATE_TERMS_SYMLINK_MSG.into());
+            return Err(crate::tr(PRIVATE_TERMS_SYMLINK_MSG, "`.private-terms` is a symbolic link: write refused."));
         }
         Ok(_) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -215,7 +215,7 @@ pub fn write_wiki_files_safe(
         let target_path = resolve_wiki_target(repo_path, wiki_root, &file.rel_path, "written")?;
         if let Some(ref terms) = terms_content {
             if content_has_forbidden_term(terms, &file.content) {
-                return Err(FORBIDDEN_TERM_MSG.into());
+                return Err(crate::tr(FORBIDDEN_TERM_MSG, "The text contains a term forbidden by .private-terms."));
             }
         }
 
@@ -278,7 +278,7 @@ pub fn write_wiki_files_safe(
         };
         if actual != p.expected_sha256 {
             remove_pending_temps(&pending);
-            return Err(SHA_MISMATCH_MSG.into());
+            return Err(crate::tr(SHA_MISMATCH_MSG, "The file changed on disk after it was read; edit cancelled."));
         }
     }
 

@@ -92,7 +92,7 @@ pub fn delete_index(path: &Path) -> Result<(), String> {
         match std::fs::remove_file(std::path::PathBuf::from(s)) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(format!("Impossibile cancellare l'indice: {e}")),
+            Err(e) => return Err(wiki_core::tr(&format!("Impossibile cancellare l'indice: {e}"), &format!("Cannot delete the index: {e}"))),
         }
     }
     Ok(())

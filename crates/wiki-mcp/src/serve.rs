@@ -62,7 +62,7 @@ fn active_spec() -> Result<&'static rag_core::ModelSpec, String> {
     let cfg = read_config().map_err(|e| e.to_string())?;
     let spec = model_by_id(&cfg.model).ok_or_else(|| format!("Modello sconosciuto: {}", cfg.model))?;
     if !rag_core::models::is_installed(spec) {
-        return Err("Nessun modello installato: apri Codebase Wiki → Ricerca".into());
+        return Err("No model installed: open Codebase Wiki → Search".into());
     }
     Ok(spec)
 }
@@ -123,7 +123,7 @@ impl WikiMcp {
             );
         }
         if lines.len() == 1 {
-            lines.push("Nessun risultato.".into());
+            lines.push("No results.".into());
         }
         Ok(lines.join("\n"))
     }
@@ -144,7 +144,7 @@ fn pick_repo(repo: Option<&str>) -> Result<PathBuf, String> {
         return REPO
             .get()
             .cloned()
-            .ok_or_else(|| format!("Nessun repo in questa sessione: passa `repo`. Progetti indicizzati: {}", repo_names()));
+            .ok_or_else(|| format!("No repo in this session: pass `repo`. Indexed projects: {}", repo_names()));
     };
     let path = std::path::Path::new(wanted);
     if path.is_absolute() {
@@ -156,9 +156,9 @@ fn pick_repo(repo: Option<&str>) -> Result<PathBuf, String> {
         .collect();
     match matches.as_slice() {
         [one] => Ok(one.root.clone()),
-        [] => Err(format!("Nessun progetto indicizzato si chiama {wanted:?}. Progetti indicizzati: {}", repo_names())),
+        [] => Err(format!("No indexed project is named {wanted:?}. Indexed projects: {}", repo_names())),
         many => Err(format!(
-            "Più progetti si chiamano {wanted:?}: passa il percorso assoluto ({})",
+            "Several projects are named {wanted:?}: pass the absolute path ({})",
             many.iter().map(|r| r.root.display().to_string()).collect::<Vec<_>>().join(", ")
         )),
     }
@@ -362,7 +362,7 @@ impl ServerHandler for WikiMcp {
 pub fn run(repo: Option<&std::path::Path>) -> Result<(), String> {
     // An explicit --repo must exist; otherwise starting outside a repo is fine (desktop chats).
     match resolve_repo(repo) {
-        Ok(root) => REPO.set(root).map_err(|_| "repo già impostato")?,
+        Ok(root) => REPO.set(root).map_err(|_| "repo already set")?,
         Err(e) if repo.is_some() => return Err(e),
         Err(_) => eprintln!("codebase-wiki: avviato fuori da un repo, i tool chiedono `repo` (vedi list_repos)"),
     }

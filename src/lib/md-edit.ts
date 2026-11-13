@@ -1,7 +1,8 @@
 import { isDelimiterRow, splitTableRow } from './markdown-tables.ts';
+import { t } from '../i18n/index.ts';
 
 export class StaleError extends Error {
-  constructor(message = "Il file è cambiato da quando l'hai aperto: ricarico, riprova.") {
+  constructor(message = t('lavori.errors.stale')) {
     super(message);
     this.name = 'StaleError';
   }

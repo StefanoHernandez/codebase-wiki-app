@@ -16,13 +16,15 @@ import {
 } from '../lib/human-actions';
 import { parseTrackerMarkdown } from '../lib/markdown-tables';
 import type { TrackerOpenRow, TrackerProposalRow } from '../types/wiki';
+import { t } from '../i18n';
 
 /** Shown on every human action that is disabled because no signing name is set. */
+/** Italian only: other files must call t('lavori.dialog.signHint') so the text follows the language. */
 export const SIGN_HINT = 'Imposta il tuo nome nelle impostazioni per firmare.';
 
-const NOT_READY = 'La wiki non è ancora caricata. Premi Ricarica e riprova.';
-const STALE_PROPOSAL = 'La proposta è cambiata o non c\'è più. Ricarica e riprova.';
-const STALE_ROW = 'Il lavoro non è più aperto. Ricarica.';
+const NOT_READY = () => t('lavori.dialog.notReady');
+const STALE_PROPOSAL = () => t('lavori.dialog.staleProposal');
+const STALE_ROW = () => t('lavori.dialog.staleRow');
 
 interface TrackerPaths {
   trackerPath: string;
@@ -39,7 +41,7 @@ function trackerPaths(project: ProjectState): TrackerPaths | null {
 }
 
 function errorText(e: unknown): string {
-  return `Non riesco a salvare. ${e instanceof Error ? e.message : String(e)}`;
+  return t('lavori.dialog.saveFailed', { reason: e instanceof Error ? e.message : String(e) });
 }
 
 interface Handlers {
@@ -64,7 +66,7 @@ function useSigned(onDone: (id: string) => void) {
     }
     const paths = trackerPaths(project);
     if (!paths) {
-      setError(NOT_READY);
+      setError(NOT_READY());
       return;
     }
     setError(null);
@@ -73,7 +75,7 @@ function useSigned(onDone: (id: string) => void) {
       onDone(await write(paths));
     } catch (e) {
       if (e instanceof StaleError) setError(e.message);
-      else if (e instanceof Error && /not found in open tracker/.test(e.message)) setError(STALE_ROW);
+      else if (e instanceof Error && /not found in open tracker/.test(e.message)) setError(STALE_ROW());
       else setError(errorText(e));
       setBusy(false);
     }
@@ -97,9 +99,9 @@ function HandoffLagNotice({ action }: { action: HandoffLagAction }) {
     if (!repo) return;
     try {
       await copyText(await workflowPrompt(repo, 'wiki-sync'));
-      toast('Prompt copiato');
+      toast(t('lavori.dialog.promptCopied'));
     } catch {
-      toast('Non riesco a copiare il prompt');
+      toast(t('lavori.dialog.promptCopyFailed'));
     }
   };
 
@@ -107,7 +109,7 @@ function HandoffLagNotice({ action }: { action: HandoffLagAction }) {
     <div className="handoff-freshness handoff-freshness--stale">
       <p className="handoff-freshness-text">{warning}</p>
       <button type="button" className="btn" onClick={() => void copySync()} disabled={!project.current}>
-        Copia prompt /wiki-sync
+        {t('lavori.dialog.copyPrompt')}
       </button>
     </div>
   );
@@ -123,18 +125,18 @@ export function PromoteDialog({ proposal, onClose, onDone }: Handlers & { propos
   const submit = () =>
     run(
       !owner.trim()
-        ? 'Scrivi il responsabile.'
+        ? t('lavori.dialog.needOwner')
         : !doneWhen.trim()
-          ? 'Scrivi quando il lavoro è fatto.'
+          ? t('lavori.dialog.needDoneWhen')
           : !nextVerification.trim()
-            ? 'Scrivi come verificherai il lavoro.'
+            ? t('lavori.dialog.needVerification')
             : null,
       async (paths) => {
         const snap = project.pages.find((p) => p.relPath === paths.trackerPath)?.markdown ?? '';
         const onSnap = parseTrackerMarkdown(snap).proposals.filter(
           (p) => p.proposal === proposal.proposal && p.by === proposal.by && p.date === proposal.date,
         );
-        if (onSnap.length !== 1) throw new StaleError(STALE_PROPOSAL);
+        if (onSnap.length !== 1) throw new StaleError(STALE_PROPOSAL());
 
         let assignedId = '';
         let logOut = '';
@@ -172,8 +174,8 @@ export function PromoteDialog({ proposal, onClose, onDone }: Handlers & { propos
   return (
     <Dialog
       open
-      title="Promuovi a lavoro"
-      confirmLabel="Promuovi a lavoro"
+      title={t('lavori.board.promote')}
+      confirmLabel={t('lavori.board.promote')}
       human
       busy={busy}
       error={error}
@@ -181,16 +183,16 @@ export function PromoteDialog({ proposal, onClose, onDone }: Handlers & { propos
       onCancel={onClose}
     >
       <Note>
-        Proposta: {proposal.proposal}. Diventa un lavoro aperto con il prossimo ID. Lo firmi tu come {project.actor}.
+        {t('lavori.dialog.promoteNote', { proposal: proposal.proposal, actor: project.actor })}
       </Note>
       <HandoffLagNotice action={{ kind: 'promote' }} />
-      <Field label="Responsabile">
+      <Field label={t('lavori.field.owner')}>
         <input value={owner} onChange={(e) => setOwner(e.target.value)} />
       </Field>
-      <Field label="Fatto quando">
+      <Field label={t('lavori.field.doneWhen')}>
         <input value={doneWhen} onChange={(e) => setDoneWhen(e.target.value)} />
       </Field>
-      <Field label="Prossima verifica" hint="Un comando o un controllo, per esempio `npm test`.">
+      <Field label={t('lavori.field.nextVerification')} hint={t('lavori.dialog.verificationHint')}>
         <input value={nextVerification} onChange={(e) => setNextVerification(e.target.value)} />
       </Field>
     </Dialog>
@@ -206,9 +208,9 @@ export function CloseDialog({ row, onClose, onDone }: Handlers & { row: TrackerO
   const submit = () =>
     run(
       !notProven.trim()
-        ? 'Scrivi cosa non è provato.'
+        ? t('lavori.dialog.needNotProven')
         : !source.trim()
-          ? "Scrivi dove l'hai deciso: messaggio, riunione, PR."
+          ? t('lavori.dialog.needSource')
           : null,
       async (paths) => {
         let logOut = '';
@@ -242,8 +244,8 @@ export function CloseDialog({ row, onClose, onDone }: Handlers & { row: TrackerO
   return (
     <Dialog
       open
-      title={`Chiudi ${row.id} senza prova`}
-      confirmLabel="Chiudi senza prova"
+      title={t('lavori.dialog.closeTitle', { id: row.id })}
+      confirmLabel={t('lavori.board.closeUnproven')}
       human
       busy={busy}
       error={error}
@@ -251,14 +253,13 @@ export function CloseDialog({ row, onClose, onDone }: Handlers & { row: TrackerO
       onCancel={onClose}
     >
       <Note>
-        Chiudere a mano registra che sei tu a chiudere {row.goal} senza prova. Il lavoro esce dai lavori aperti come
-        ⚫ e non diventa verificato.
+        {t('lavori.dialog.closeNote', { goal: row.goal })}
       </Note>
       <HandoffLagNotice action={{ kind: 'close', taskId: row.id }} />
-      <Field label="Cosa non è provato">
+      <Field label={t('lavori.dialog.notProven')}>
         <input value={notProven} onChange={(e) => setNotProven(e.target.value)} />
       </Field>
-      <Field label="Dove l'hai deciso" hint="Messaggio, riunione o PR dove hai preso la decisione.">
+      <Field label={t('lavori.dialog.source')} hint={t('lavori.dialog.sourceHint')}>
         <input value={source} onChange={(e) => setSource(e.target.value)} />
       </Field>
     </Dialog>
@@ -279,7 +280,7 @@ export function FieldDialog({
   const [value, setValue] = useState(initial);
 
   const submit = () =>
-    run(!value.trim() ? `Scrivi ${label.toLowerCase()}.` : null, async (paths) => {
+    run(!value.trim() ? t('lavori.dialog.needField', { field: label.toLowerCase() }) : null, async (paths) => {
       const date = todayLocal();
       let logOut = '';
       await project.act([

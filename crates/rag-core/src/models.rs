@@ -110,7 +110,7 @@ fn pick_onnx_remote(hf_repo: &str) -> Result<String, String> {
             return Ok(candidate.into());
         }
     }
-    Err("Nessun file ONNX trovato nel repo".into())
+    Err(wiki_core::tr("Nessun file ONNX trovato nel repo", "No ONNX file found in the repo"))
 }
 
 #[cfg(feature = "download")]
@@ -129,11 +129,11 @@ pub fn custom_id(hf_repo: &str) -> Result<String, String> {
     };
     let parts: Vec<&str> = hf_repo.split('/').collect();
     if parts.len() != 2 || !parts.iter().all(|p| ok(p)) {
-        return Err(format!("repo Hugging Face non valido: {hf_repo} (atteso proprietario/nome)"));
+        return Err(wiki_core::tr(&format!("repo Hugging Face non valido: {hf_repo} (atteso proprietario/nome)"), &format!("invalid Hugging Face repo: {hf_repo} (expected owner/name)")));
     }
     let id = parts[1].replace('.', "-");
     if crate::catalog::catalog().iter().any(|m| m.id == id) {
-        return Err(format!("{id} è già nel catalogo: usa Scarica"));
+        return Err(wiki_core::tr(&format!("{id} è già nel catalogo: usa Scarica"), &format!("{id} is already in the catalog: use Download")));
     }
     Ok(id)
 }
@@ -164,8 +164,8 @@ pub fn add_custom(hf_repo: &str) -> Result<String, String> {
             "mean".into()
         },
         size_mb: 0,
-        languages: "non indicato".into(),
-        note: "Modello custom da Hugging Face".into(),
+        languages: "not stated".into(),
+        note: "Custom model from Hugging Face".into(),
         tested: false,
     };
     let dir = model_dir(&id);
@@ -278,7 +278,7 @@ pub fn pull(
         }
         drop(file);
         if total > 0 && done != total {
-            return Err(format!("dimensione scaricata errata per {local}: {done} != {total}"));
+            return Err(wiki_core::tr(&format!("dimensione scaricata errata per {local}: {done} != {total}"), &format!("wrong downloaded size for {local}: {done} != {total}")));
         }
         fs::rename(&part, &final_path).map_err(|e| e.to_string())?;
     }

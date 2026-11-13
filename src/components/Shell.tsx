@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { t, tn } from "../i18n";
 import { copyText, pickFolder, workflowPrompt } from "../api";
 import { useProject } from "../state/project";
 import { useNav } from "../state/nav";
@@ -50,10 +51,10 @@ export function Shell() {
     if (!project.current) return;
     try {
       await copyText(await workflowPrompt(project.current, workflow));
-      toast(`Prompt /${workflow} copiato`);
+      toast(t('shell.toast.promptCopied', { workflow }));
     } catch (e) {
       toast(
-        `Copia non riuscita: ${e instanceof Error ? e.message : String(e)}`,
+        t('shell.toast.copyFailed', { error: e instanceof Error ? e.message : String(e) }),
         "error",
       );
     }
@@ -64,16 +65,16 @@ export function Shell() {
       const report = await project.runLint();
       if (!report) return;
       if (report.error)
-        return toast(`Lint non eseguito: ${report.error}`, "error");
+        return toast(t('shell.toast.lintNotRun', { error: report.error }), "error");
       const n = report.findings.length;
       toast(
         n === 0
-          ? "Lint eseguito: nessun problema"
-          : `Lint eseguito: ${n} ${n === 1 ? "problema" : "problemi"}`,
+          ? t('shell.toast.lintClean')
+          : tn('shell.toast.lintIssues', n),
       );
     } catch (e) {
       toast(
-        `Lint non riuscito: ${e instanceof Error ? e.message : String(e)}`,
+        t('shell.toast.lintFailed', { error: e instanceof Error ? e.message : String(e) }),
         "error",
       );
     }
@@ -89,9 +90,9 @@ export function Shell() {
         setPaletteOpen((o) => !o);
         return;
       }
-      const t = e.target as HTMLElement | null;
+      const target = e.target as HTMLElement | null;
       if (
-        t?.closest?.(
+        target?.closest?.(
           'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
         )
       )
@@ -156,19 +157,17 @@ export function Shell() {
             )}
             {project.watchError && (
               <Banner tone="drift">
-                L’app potrebbe non vedere le ultime modifiche ai file: premi
-                Ricarica. ({project.watchError})
+                {t('shell.banner.watch', { error: project.watchError })}
               </Banner>
             )}
             {project.compat.pluginOutdated && (
               <Banner tone="drift">
-                La wiki è più nuova del plugin: aggiorna il plugin.
+                {t('shell.banner.pluginOutdated')}
               </Banner>
             )}
             {project.parseError && (
               <Banner tone="error">
-                Non riesco a leggere la wiki: {project.parseError}. Correggi il
-                file e premi Ricarica.
+                {t('shell.banner.parseError', { error: project.parseError })}
               </Banner>
             )}
             <div
@@ -184,18 +183,18 @@ export function Shell() {
                 <CurrentView section={nav.section} />
               ) : (
                 <Empty
-                  title="Questa cartella non ha una wiki. Avvia /wiki-init in Claude Code o Codex."
+                  title={t('shell.empty.noWiki')}
                   action={
                     <button
                       type="button"
                       className="btn"
                       onClick={() => copyPrompt("wiki-init")}
                     >
-                      Copia prompt /wiki-init
+                      {t('shell.empty.copyInit')}
                     </button>
                   }
                 >
-                  Quando la wiki esiste, questa finestra si aggiorna da sola.
+                  {t('shell.empty.noWikiHint')}
                 </Empty>
               )}
             </div>
@@ -203,10 +202,10 @@ export function Shell() {
         ) : (
           <div className="content-body welcome">
             {project.loading ? (
-              <p className="muted">Apertura del progetto…</p>
+              <p className="muted">{t('shell.opening')}</p>
             ) : (
               <Empty
-                title="Apri una repository per vedere cosa aspetta te."
+                title={t('shell.welcome.title')}
                 action={
                   <button
                     type="button"
@@ -214,14 +213,14 @@ export function Shell() {
                     onClick={addProject}
                     disabled={project.loading}
                   >
-                    Aggiungi progetto
+                    {t('shell.addProject')}
                   </button>
                 }
               >
                 {project.error ? (
                   <p className="error-text">{project.error}</p>
                 ) : (
-                  "Scegli una cartella git che contiene una wiki Codebase Wiki LLM. L’app la legge e scrive solo quando firmi un’azione."
+                  t('shell.welcome.hint')
                 )}
               </Empty>
             )}
@@ -307,9 +306,9 @@ function Sidebar({
 }) {
   const nav = useNav();
   return (
-    <aside className="sidebar" aria-label="Progetto e sezioni">
+    <aside className="sidebar" aria-label={t('shell.sidebar.aria')}>
       <ProjectSwitcher onAdd={onAdd} />
-      <nav className="sections" aria-label="Sezioni">
+      <nav className="sections" aria-label={t('shell.sections.aria')}>
         <ul>
           {SECTIONS.map((s, i) => {
             const count = counts[s.id as keyof typeof counts];
@@ -348,12 +347,12 @@ function Sidebar({
               onClick={() => nav.go("primi-passi")}
             >
               <Icon name="primi-passi" />
-              <span>Primi passi</span>
+              <span>{t('shell.section.primi-passi')}</span>
             </button>
           )}
           <button type="button" className="section-link" onClick={onPalette}>
             <Icon name="comandi" />
-            <span>Comandi</span>
+            <span>{t('shell.commands')}</span>
             <kbd>{MOD}K</kbd>
           </button>
           <button
@@ -363,7 +362,7 @@ function Sidebar({
             onClick={() => nav.go("impostazioni")}
           >
             <Icon name="impostazioni" />
-            <span>Impostazioni</span>
+            <span>{t('shell.section.impostazioni')}</span>
           </button>
         </div>
       </nav>
@@ -427,21 +426,21 @@ function ProjectSwitcher({ onAdd }: { onAdd(): void }) {
           <span className="monogram monogram-quiet">+</span>
         )}
         <span>
-          <span className="switcher-name">{name ?? "Nessun progetto"}</span>
+          <span className="switcher-name">{name ?? t('shell.noProject')}</span>
           {git ? (
             <span className="switcher-ref">
-              <span className="mono">{git.branch || "HEAD staccato"}</span>
+              <span className="mono">{git.branch || t('shell.detachedHead')}</span>
               {git.headSha && (
                 <span className="mono">@{git.headSha.slice(0, 7)}</span>
               )}
               {git.isDirty && (
                 <span className="dirty" title={git.dirtyFiles.join("\n")}>
-                  modificato
+                  {t('shell.dirty')}
                 </span>
               )}
             </span>
           ) : (
-            <span className="switcher-ref">Apri una repository</span>
+            <span className="switcher-ref">{t('shell.openRepo')}</span>
           )}
         </span>
         <svg
@@ -487,7 +486,7 @@ function ProjectSwitcher({ onAdd }: { onAdd(): void }) {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <span>{loading ? "Ricarico…" : "Ricarica il progetto"}</span>
+                <span>{loading ? t('shell.reloading') : t('shell.reload')}</span>
               </button>
               <button
                 type="button"
@@ -495,7 +494,7 @@ function ProjectSwitcher({ onAdd }: { onAdd(): void }) {
                 onClick={run(() => void forget(current))}
               >
                 <span />
-                <span>Rimuovi dai recenti</span>
+                <span>{t('shell.forget')}</span>
               </button>
               {others.length > 0 && <hr />}
             </>
@@ -538,7 +537,7 @@ function ProjectSwitcher({ onAdd }: { onAdd(): void }) {
                 strokeLinecap="round"
               />
             </svg>
-            <span>Aggiungi progetto</span>
+            <span>{t('shell.addProject')}</span>
           </button>
         </div>
       )}
@@ -576,8 +575,8 @@ function HealthRing({
   const c = 2 * Math.PI * r;
   const filled = total ? (verified / total) * c : 0;
   const title = total
-    ? `${verified} di ${total} pagine verificate`
-    : "Nessuna pagina nella wiki";
+    ? t('shell.ring.verified', { verified, total })
+    : t('shell.ring.none');
   return (
     <span className="health-ring" title={title}>
       <svg viewBox="0 0 44 44" width="44" height="44" aria-hidden="true">

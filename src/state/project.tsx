@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useLang } from './lang';
 import * as api from '../api';
+import { t } from '../i18n/index.ts';
 import type { LintReport, RecentProject, WikiSnapshot } from '../types/snapshot';
 import type { Decision, HandoffData, ParsedFrontmatter, SchemaConfig, TrackerData } from '../types/wiki';
 import { parseFrontmatter } from '../lib/frontmatter';
@@ -116,7 +118,7 @@ export function readStoredPythonPath(): string {
 function actorProblem(name: string): string | null {
   try {
     validateHumanActor(name);
-    if (!personId(name)) return 'Il nome deve contenere almeno una lettera o una cifra latina (serve per human:<id>).';
+    if (!personId(name)) return t('shell.state.actorLatin');
     return null;
   } catch (e) {
     return message(e);
@@ -196,8 +198,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const openSeq = useRef(0);
   currentRef.current = current;
 
-  const derived = useMemo(() => deriveProject(snapshot, lint), [snapshot, lint]);
-  const compat = useMemo(() => wikiCompat(lint, derived.schema), [lint, derived.schema]);
+  // Texts built here live above the language remount: `lang` in the deps rebuilds them on a switch.
+  const { lang } = useLang();
+  const derived = useMemo(() => deriveProject(snapshot, lint), [snapshot, lint, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+  const compat = useMemo(() => wikiCompat(lint, derived.schema), [lint, derived.schema, lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const clearLint = () => {
     lintSeq.current++;
     setLint(null);
@@ -325,7 +329,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const act = useCallback(
     async (edits: FileEdit[]) => {
       const repo = currentRef.current;
-      if (!repo) throw new Error('Nessun progetto aperto.');
+      if (!repo) throw new Error(t('shell.state.noProject'));
       // Last line of defence: buttons are disabled too, but no write may slip through.
       if (compat.writesBlocked) throw new Error(compat.writesBlocked);
       const logRel = derived.schema?.coreMap.log ?? DEFAULT_CORE_MAP.log;
@@ -420,10 +424,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       compat,
       runLint,
       actor: actor.trim(),
-      nameError: actor.trim() ? actorProblem(actor.trim()) : 'Imposta il tuo nome nelle impostazioni.',
+      nameError: actor.trim() ? actorProblem(actor.trim()) : t('shell.state.setName'),
       actorError:
         compat.writesBlocked ??
-        (actor.trim() ? actorProblem(actor.trim()) : 'Imposta il tuo nome nelle impostazioni.'),
+        (actor.trim() ? actorProblem(actor.trim()) : t('shell.state.setName')),
       setActor,
       loading,
       error,
@@ -454,6 +458,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       forget,
       act,
       setActor,
+      lang,
     ],
   );
 

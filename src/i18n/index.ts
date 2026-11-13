@@ -34,6 +34,11 @@ export function t(key: Key, vars?: Record<string, string | number>): string {
   return vars ? text.replace(/\{(\w+)\}/g, (m, name: string) => (name in vars ? String(vars[name]) : m)) : text;
 }
 
+/** True when `key` exists in the dictionary (for keys built from data, e.g. model ids). */
+export function hasKey(key: string): key is Key {
+  return key in it;
+}
+
 /** Plural text: `key.one` for 1, `key.other` otherwise; `{n}` is the count. */
 export function tn(key: PluralKey, n: number, vars?: Record<string, string | number>): string {
   return t(`${key}.${n === 1 ? 'one' : 'other'}` as Key, { n, ...vars });

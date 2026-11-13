@@ -13,12 +13,13 @@ import { Empty } from '../components/Empty';
 import { PageDrawer, type PageDrawerTarget } from '../components/PageDrawer';
 import { buildWikiCodeGraph, filterWikiGraph } from '../lib/graph-builder';
 import { buildTimeline, visibleAt, type GraphHistory } from '../lib/graph-history';
+import { locale, t } from '../i18n';
 import { useProject } from '../state/project';
 import { useTheme } from '../state/theme';
 import type { GraphEdge, GraphNode, GraphNodeCategory } from '../types/wiki';
 import {
   CATEGORIES,
-  CATEGORY_LABEL,
+  categoryLabel,
   LABEL_ZOOM_THRESHOLD,
   neighborIds,
   nodeRadius,
@@ -38,7 +39,6 @@ const endId = (end: string | FgNode) => (typeof end === 'object' ? end.id : end)
 const LEGEND_KEY = 'grafo.legendOpen';
 /** The whole history plays in about this long, whatever the number of commits. */
 const PLAY_MS = 15_000;
-const dateFmt = new Intl.DateTimeFormat('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
 export default function Grafo() {
   const project = useProject();
   const { theme } = useTheme();
@@ -153,7 +153,7 @@ export default function Grafo() {
 
   useEffect(() => {
     if (timeline && frame !== null && timeline.frames.length === 0) {
-      setHistoryError('Nessun commit in git: la storia del grafo parte dal primo commit.');
+      setHistoryError(t('esplora.grafo.noHistory'));
       exitHistory();
     }
   }, [timeline, frame, exitHistory]);
@@ -165,8 +165,8 @@ export default function Grafo() {
       return;
     }
     const step = Math.min(800, Math.max(80, PLAY_MS / timeline.frames.length));
-    const t = setTimeout(() => setFrame((f) => (f === null ? f : f + 1)), step);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setFrame((f) => (f === null ? f : f + 1)), step);
+    return () => clearTimeout(timer);
   }, [playing, timeline, frame]);
 
   const categoryOf = useMemo(() => new Map(filtered.nodes.map((n) => [n.id, n.category])), [filtered.nodes]);
@@ -246,8 +246,8 @@ export default function Grafo() {
   // After the first fit, a resized stage (window, sidebar, drawer) refits once it stops changing.
   useEffect(() => {
     if (!fitted.current) return;
-    const t = setTimeout(() => fgRef.current?.zoomToFit(300, 40), 200);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => fgRef.current?.zoomToFit(300, 40), 200);
+    return () => clearTimeout(timer);
   }, [size.w, size.h]);
   const [legendOpen, setLegendOpen] = useState(() => {
     try {
@@ -421,27 +421,28 @@ export default function Grafo() {
   if (!snapshot?.wikiRoot || !fullGraph) {
     return (
       <section className="view grafo-view">
-        <Empty title="Nessun grafo da mostrare." />
+        <Empty title={t('esplora.grafo.empty')} />
       </section>
     );
   }
 
   const showEmpty = graphData.nodes.length === 0;
+  const dateFmt = new Intl.DateTimeFormat(locale(), { day: 'numeric', month: 'short', year: 'numeric' });
 
   return (
-    <section className="grafo-view" ref={viewRef} aria-label="Grafo wiki e codice">
+    <section className="grafo-view" ref={viewRef} aria-label={t('esplora.grafo.aria')}>
       <div className="grafo-stage" ref={stageRef}>
         <div className="grafo-toolbar toolbar toolbar-floating">
           <input
             className="input"
-            placeholder="Cerca nodo"
+            placeholder={t('esplora.grafo.searchPlaceholder')}
             value={searchDraft}
             onChange={(e) => setSearchDraft(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-            aria-label="Cerca nel grafo"
+            aria-label={t('esplora.grafo.searchAria')}
           />
           <button type="button" className="btn" onClick={runSearch}>
-            Centra
+            {t('esplora.grafo.center')}
           </button>
           <label className="grafo-toggle">
             <input
@@ -449,36 +450,36 @@ export default function Grafo() {
               checked={includeSources}
               onChange={(e) => setIncludeSources(e.target.checked)}
             />
-            File sorgente
+            {t('esplora.grafo.sourceFiles')}
           </label>
           <label className="grafo-toggle">
             <input type="checkbox" checked={onlyDrift} onChange={(e) => setOnlyDrift(e.target.checked)} />
-            Solo drift
+            {t('esplora.grafo.onlyDrift')}
           </label>
-          <label className="grafo-toggle" title={selectedId ? undefined : 'Seleziona un nodo'}>
+          <label className="grafo-toggle" title={selectedId ? undefined : t('esplora.grafo.selectNode')}>
             <input
               type="checkbox"
               checked={localHop}
               disabled={!selectedId}
               onChange={(e) => setLocalHop(e.target.checked)}
             />
-            Locale (1 salto)
+            {t('esplora.grafo.local')}
           </label>
           <button
             type="button"
             className="btn"
             onClick={() => fgRef.current?.zoomToFit(400, 24)}
           >
-            Adatta
+            {t('esplora.grafo.fit')}
           </button>
           <button
             type="button"
             className="btn"
             onClick={() => (frame === null ? void startHistory() : exitHistory())}
-            title="Riproduce la crescita del grafo commit per commit"
+            title={t('esplora.grafo.historyHint')}
             aria-pressed={frame !== null}
           >
-            {frame === null ? '▶ Storia' : 'Esci dalla storia'}
+            {frame === null ? t('esplora.grafo.history') : t('esplora.grafo.exitHistory')}
           </button>
         </div>
         {historyError && frame === null && (
@@ -489,7 +490,7 @@ export default function Grafo() {
 
         {showEmpty ? (
           <div className="grafo-empty">
-            <Empty title="Nessun nodo con i filtri attuali." />
+            <Empty title={t('esplora.grafo.noNodes')} />
           </div>
         ) : (
           <ForceGraph2D<FgNode>
@@ -552,10 +553,10 @@ export default function Grafo() {
                 aria-hidden="true"
               />
             ))}
-            Legenda
-            {hiddenCats.size > 0 && <span className="grafo-legend-count">{hiddenCats.size} nascosti</span>}
+            {t('esplora.grafo.legend')}
+            {hiddenCats.size > 0 && <span className="grafo-legend-count">{t('esplora.grafo.hidden', { n: hiddenCats.size })}</span>}
           </summary>
-          <div className="grafo-legend-body" role="group" aria-label="Legenda e filtri per tipo">
+          <div className="grafo-legend-body" role="group" aria-label={t('esplora.grafo.legendAria')}>
             {CATEGORIES.filter((c) => counts.has(c)).map((c) => (
               <button key={c} type="button" aria-pressed={!hiddenCats.has(c)} onClick={() => toggleCat(c)}>
                 <span
@@ -563,32 +564,32 @@ export default function Grafo() {
                   style={{ background: colors[c] }}
                   aria-hidden="true"
                 />
-                {CATEGORY_LABEL[c]}
+                {categoryLabel(c)}
                 <span className="grafo-legend-count">{counts.get(c)}</span>
               </button>
             ))}
             <hr />
             <span className="grafo-legend-edge">
               <span className="grafo-swatch grafo-swatch-line" aria-hidden="true" />
-              Link tra pagine (colore della pagina di arrivo)
+              {t('esplora.grafo.legendLink')}
             </span>
             <span className="grafo-legend-edge">
               <span className="grafo-swatch grafo-swatch-line grafo-swatch-dash" aria-hidden="true" />
-              Pagina → file citato
+              {t('esplora.grafo.legendSourceLink')}
             </span>
             <hr />
             <span className="grafo-legend-edge">
               <span className="grafo-swatch" style={{ background: tokenDrift }} aria-hidden="true" />
-              Drift: il codice citato è cambiato
+              {t('esplora.grafo.legendDrift')}
             </span>
             <span className="grafo-legend-edge">
               <span className="grafo-swatch" style={{ background: tokenError }} aria-hidden="true" />
-              Errore di lint
+              {t('esplora.grafo.legendLint')}
             </span>
           </div>
         </details>
         {timeline && current && frame !== null && (
-          <div className="grafo-history" role="group" aria-label="Storia del grafo">
+          <div className="grafo-history" role="group" aria-label={t('esplora.grafo.historyAria')}>
             <button
               type="button"
               className="btn"
@@ -596,7 +597,7 @@ export default function Grafo() {
                 if (!playing && frame >= timeline.frames.length - 1) setFrame(0);
                 setPlaying(!playing);
               }}
-              aria-label={playing ? 'Pausa' : 'Riproduci'}
+              aria-label={playing ? t('esplora.grafo.pause') : t('esplora.grafo.play')}
             >
               {playing ? '⏸' : '▶'}
             </button>
@@ -609,19 +610,19 @@ export default function Grafo() {
                 setPlaying(false);
                 setFrame(Number(e.target.value));
               }}
-              aria-label="Commit"
+              aria-label={t('esplora.grafo.commit')}
             />
             <div className="grafo-history-label">
               <span>
                 {dateFmt.format(new Date(current.date))} · {frame + 1}/{timeline.frames.length}
-                {history?.truncated && frame === 0 ? ' · storia più vecchia omessa' : ''}
+                {history?.truncated && frame === 0 ? t('esplora.grafo.olderOmitted') : ''}
               </span>
               <span className="grafo-history-subject" title={current.subject}>
                 {current.subject}
               </span>
             </div>
             <button type="button" className="btn" onClick={exitHistory}>
-              Esci
+              {t('esplora.grafo.exit')}
             </button>
           </div>
         )}

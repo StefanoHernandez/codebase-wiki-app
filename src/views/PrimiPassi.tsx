@@ -9,19 +9,12 @@ import { useNav } from '../state/nav';
 import { useProject } from '../state/project';
 import { useRag } from '../state/rag';
 import { agentReady, type PluginRow } from '../lib/plugin';
+import { t } from '../i18n';
 import './primi-passi.css';
 
 const DEFAULT_MODEL = 'multilingual-e5-small';
 const PLUGIN_URL = 'https://github.com/StefanoHernandez/codebase-wiki-llm';
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-const TITLES: Record<FirstRunStepId, string> = {
-  nome: 'Il tuo nome',
-  progetto: 'Un progetto con la wiki',
-  struttura: 'Controllo della struttura',
-  ricerca: 'Ricerca nel codice',
-  agente: 'Collega un agente (plugin e ricerca)',
-};
 
 export function markFirstRunDone(done: boolean) {
   try {
@@ -105,23 +98,23 @@ export default function PrimiPassi() {
     if (!project.current) return;
     try {
       await api.copyText(await api.workflowPrompt(project.current, 'wiki-init'));
-      toast('Prompt /wiki-init copiato');
+      toast(t('impostazioni.pp.initCopied'));
     } catch (e) {
-      toast(`Copia non riuscita: ${message(e)}`, 'error');
+      toast(t('impostazioni.pp.copyFailed', { error: message(e) }), 'error');
     }
   };
 
   const body: Record<FirstRunStepId, ReactNode> = {
     nome: (
       <label className="field">
-        <span className="field-hint">Firma le azioni che fai qui: approvato da, chiuso da, rivista da.</span>
+        <span className="field-hint">{t('impostazioni.pp.nameHint')}</span>
         <input
           className="input"
           value={project.actor}
           onChange={(e) => project.setActor(e.target.value)}
           aria-invalid={!!project.actorError}
-          aria-label="Il tuo nome"
-          placeholder="Nome e cognome"
+          aria-label={t('impostazioni.pp.step.nome')}
+          placeholder={t('impostazioni.profile.namePlaceholder')}
         />
         {project.actorError && <span className="field-hint error-text">{project.actorError}</span>}
       </label>
@@ -129,27 +122,26 @@ export default function PrimiPassi() {
     progetto: (
       <>
         <p className="field-hint">
-          La wiki la scrive un agente con il plugin Codebase Wiki LLM installato in Claude Code o Codex (
+          {t('impostazioni.pp.projectHint')}
           <span className="mono">{PLUGIN_URL.replace('https://', '')}</span>).
         </p>
         {state.project === 'no-wiki' && (
           <p className="field-hint">
-            {project.snapshot?.repoPath.split(/[\\/]/).pop()} non ha ancora una wiki: avvia /wiki-init nell'agente. Questa pagina si aggiorna
-            da sola quando la wiki esiste.
+            {t('impostazioni.pp.noWiki', { name: project.snapshot?.repoPath.split(/[\\/]/).pop() ?? '' })}
           </p>
         )}
         {state.project === 'incompatible' && (
-          <p className="field-hint">La wiki usa un formato vecchio: avvia /wiki-init --adopt nell'agente.</p>
+          <p className="field-hint">{t('impostazioni.pp.incompatible')}</p>
         )}
-        {project.loading && <p className="field-hint">Apertura del progetto…</p>}
+        {project.loading && <p className="field-hint">{t('impostazioni.pp.opening')}</p>}
         {project.error && <p className="field-hint error-text">{project.error}</p>}
         <div className="primi-passi-actions">
           <button type="button" className="btn" onClick={() => void openFolder()} disabled={project.loading}>
-            {project.snapshot ? 'Apri un’altra cartella' : 'Apri cartella'}
+            {t(project.snapshot ? 'impostazioni.pp.openOther' : 'impostazioni.pp.openFolder')}
           </button>
           {state.project === 'no-wiki' && (
             <button type="button" className="btn" onClick={() => void copyInit()}>
-              Copia prompt /wiki-init
+              {t('impostazioni.pp.copyInit')}
             </button>
           )}
           {state.project === 'incompatible' && <CopyAdoptButton />}
@@ -161,45 +153,47 @@ export default function PrimiPassi() {
         <p className="field-hint error-text">{project.lint?.error ?? project.lintError}</p>
         <div className="primi-passi-actions">
           <button type="button" className="btn" onClick={() => nav.go('impostazioni')}>
-            Indica il percorso di Python
+            {t('impostazioni.pp.pythonPath')}
           </button>
         </div>
       </>
     ) : (
       <p className="field-hint">
         {!repo
-          ? 'Parte da solo quando apri un progetto con la wiki: serve Python 3.10 o più recente.'
+          ? t('impostazioni.pp.lintAuto')
           : project.lintRunning
-            ? 'Controllo in corso…'
-            : 'Il validatore del plugin controlla che la wiki rispetti il formato.'}
+            ? t('impostazioni.pp.lintRunning')
+            : t('impostazioni.pp.lintIdle')}
       </p>
     ),
     ricerca: (
       <>
         <p className="field-hint">
-          Un modello locale indicizza il codice, così gli agenti trovano dove e come senza leggere tutto. Niente esce dal computer.
+          {t('impostazioni.pp.searchHint')}
         </p>
         <div className="primi-passi-actions">
           {state.search === 'no-model' ? (
             rag.download ? (
               <span className="muted">
-                Scaricamento {rag.download.id}…{' '}
-                {rag.download.total > 0 && `${formatBytes(rag.download.done)} di ${formatBytes(rag.download.total)}`}
+                {t('impostazioni.pp.downloading', { id: rag.download.id })}{' '}
+                {rag.download.total > 0 &&
+                  t('impostazioni.pp.bytesOf', { done: formatBytes(rag.download.done), total: formatBytes(rag.download.total) })}
               </span>
             ) : (
               <button type="button" className="btn" onClick={() => void rag.startPull(model)}>
-                Scarica {model} (~120 MB)
+                {t('impostazioni.pp.downloadModel', { model })}
               </button>
             )
           ) : state.search === 'no-index' ? (
             rag.indexJob(repo).running ? (
               <span className="muted">
-                Indicizzazione…{' '}
-                {rag.indexJob(repo).progress && `${rag.indexJob(repo).progress!.done} di ${rag.indexJob(repo).progress!.total}`}
+                {t('impostazioni.pp.indexing')}{' '}
+                {rag.indexJob(repo).progress &&
+                  t('impostazioni.pp.progressOf', { done: rag.indexJob(repo).progress!.done, total: rag.indexJob(repo).progress!.total })}
               </span>
             ) : (
               <button type="button" className="btn" onClick={() => repo && void rag.startIndex(repo)} disabled={!repo}>
-                Indicizza il progetto
+                {t('impostazioni.pp.indexProject')}
               </button>
             )
           ) : null}
@@ -212,12 +206,11 @@ export default function PrimiPassi() {
     agente: (
       <>
         <p className="field-hint">
-          Installa il plugin, che scrive la wiki, e collega la ricerca nello stesso agente (Claude Code, Codex, Cursor…). Prima di
-          scrivere ti mostra cosa cambia.
+          {t('impostazioni.pp.agentHint')}
         </p>
         <div className="primi-passi-actions">
           <button type="button" className="btn" onClick={() => nav.go('impostazioni')}>
-            Collega dalle Impostazioni
+            {t('impostazioni.pp.connectFromSettings')}
           </button>
         </div>
       </>
@@ -226,8 +219,8 @@ export default function PrimiPassi() {
 
   return (
     <section className="view primi-passi">
-      <h1 className="view-title">Primi passi</h1>
-      <p className="muted">Ogni passo si spunta da solo quando è fatto. Puoi farli in qualsiasi ordine, o saltarli.</p>
+      <h1 className="view-title">{t('impostazioni.pp.title')}</h1>
+      <p className="muted">{t('impostazioni.pp.intro')}</p>
       <ol className="primi-passi-list">
         {steps.map((s) => (
           <li key={s.id} className={`primi-passi-step${s.done ? ' is-done' : ''}${s.id === current ? ' is-current' : ''}`}>
@@ -236,8 +229,8 @@ export default function PrimiPassi() {
             </span>
             <div className="primi-passi-main">
               <h2 className="primi-passi-title">
-                {TITLES[s.id]}
-                {s.done && <span className="visually-hidden"> (fatto)</span>}
+                {t(`impostazioni.pp.step.${s.id}`)}
+                {s.done && <span className="visually-hidden">{t('impostazioni.pp.done')}</span>}
               </h2>
               {(!s.done || s.id === 'nome') && body[s.id]}
             </div>
@@ -246,7 +239,7 @@ export default function PrimiPassi() {
       </ol>
       <div className="primi-passi-actions">
         <button type="button" className={allDone ? 'btn btn-strong' : 'btn'} onClick={finish}>
-          {allDone ? 'Fine' : 'Salta per ora'}
+          {t(allDone ? 'impostazioni.pp.finish' : 'impostazioni.pp.skip')}
         </button>
       </div>
     </section>

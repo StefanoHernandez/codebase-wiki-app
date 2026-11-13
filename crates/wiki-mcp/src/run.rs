@@ -45,7 +45,7 @@ pub fn run_index(repo: Option<&Path>, json: bool) -> i32 {
         None => return err("Modello sconosciuto"),
     };
     if !rag_core::models::is_installed(spec) {
-        return err("Nessun modello installato: apri Codebase Wiki → Ricerca");
+        return err("No model installed: open Codebase Wiki → Search");
     }
     let wiki = wiki_root(&root);
     let wiki_dir = wiki.as_ref().map(|w| root.join(w));
@@ -255,7 +255,7 @@ fn active_spec() -> Result<&'static rag_core::ModelSpec, String> {
     let cfg = read_config().unwrap_or(rag_core::RagConfig { model: rag_core::default_model_id().to_string() });
     let spec = model_by_id(&cfg.model).ok_or_else(|| format!("Modello sconosciuto: {}", cfg.model))?;
     if !rag_core::models::is_installed(spec) {
-        return Err("Nessun modello installato: apri Codebase Wiki → Ricerca".into());
+        return Err("No model installed: open Codebase Wiki → Search".into());
     }
     Ok(spec)
 }

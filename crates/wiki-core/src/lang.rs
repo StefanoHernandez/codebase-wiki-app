@@ -10,7 +10,11 @@ pub fn set_english(on: bool) {
 
 /// `it` or `en` depending on the language the app chose.
 pub fn tr(it: &str, en: &str) -> String {
-    if ENGLISH.load(Ordering::Relaxed) { en } else { it }.to_string()
+    pick(ENGLISH.load(Ordering::Relaxed), it, en)
+}
+
+fn pick(english: bool, it: &str, en: &str) -> String {
+    if english { en } else { it }.to_string()
 }
 
 #[cfg(test)]
@@ -18,10 +22,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tr_follows_the_chosen_language() {
-        set_english(true);
-        assert_eq!(tr("ciao", "hello"), "hello");
-        set_english(false);
-        assert_eq!(tr("ciao", "hello"), "ciao");
+    // Tests `pick`, not `tr`: flipping the global would race with tests asserting Italian messages.
+    fn pick_follows_the_language() {
+        assert_eq!(pick(true, "ciao", "hello"), "hello");
+        assert_eq!(pick(false, "ciao", "hello"), "ciao");
     }
 }

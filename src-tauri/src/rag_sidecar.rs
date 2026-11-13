@@ -21,7 +21,7 @@ pub fn rag_sidecar_path() -> Result<PathBuf, String> {
     if bundled.is_file() {
         return Ok(bundled);
     }
-    Err(format!("Sidecar non trovato: {}", bundled.display()))
+    Err(wiki_core::tr(&format!("Sidecar non trovato: {}", bundled.display()), &format!("Sidecar not found: {}", bundled.display())))
 }
 
 pub fn install_mcp_binary() -> Result<(), String> {

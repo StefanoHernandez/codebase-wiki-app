@@ -1,3 +1,4 @@
+import { locale, t, type Key } from '../i18n';
 import { useEffect, useMemo, useState } from 'react';
 import { Empty } from '../components/Empty';
 import { UpgradeBanner } from '../components/Compat';
@@ -5,7 +6,6 @@ import { Markdown } from '../components/Markdown';
 import { ReviewDialog } from '../components/ReviewDialog';
 import { SidePanel } from '../components/SidePanel';
 import { useStamp } from '../components/stamp';
-import { SIGN_HINT } from '../components/TrackerDialogs';
 import { useToast } from '../components/Toast';
 import { DEFAULT_CORE_MAP, DEFAULT_SCHEMA_BUDGETS, pageTypeFor } from '../lib/schema-parser';
 import { codeChangedSources } from '../lib/attention';
@@ -16,12 +16,8 @@ import { useProject } from '../state/project';
 import { useNav } from '../state/nav';
 import './salute.css';
 
-const TRUST_LABEL: Record<TrustTier, string> = {
-  unverified: 'Non verificata',
-  'machine-confirmed': 'Confermata da agente',
-  'human-reviewed': 'Rivista da persona',
-  'stale-verified': 'Verificata ma superata',
-};
+const TRUST_TIERS: TrustTier[] = ['unverified', 'machine-confirmed', 'human-reviewed', 'stale-verified'];
+const trustLabel = (tier: TrustTier) => t(`revisione.health.trust.${tier}` as Key);
 
 const TRUST_BADGE: Record<TrustTier, string> = {
   unverified: 'badge',
@@ -50,7 +46,7 @@ function recentLogSections(markdown: string): string[] {
 }
 
 function formatLintWhen(d: Date): string {
-  return d.toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
+  return d.toLocaleString(locale(), { dateStyle: 'short', timeStyle: 'short' });
 }
 
 type PanelPage = { path: string; markdown: string };
@@ -114,8 +110,8 @@ export default function Salute() {
   if (!project.snapshot?.wikiRoot) {
     return (
       <section className="view">
-        <h1 className="view-title">Salute</h1>
-        <Empty title="Apri un progetto con wiki per vedere la salute." />
+        <h1 className="view-title">{t('revisione.health.title')}</h1>
+        <Empty title={t('revisione.health.noWiki')} />
       </section>
     );
   }
@@ -126,17 +122,17 @@ export default function Salute() {
   const finishReview = () => {
     const path = review?.path ?? '';
     setReview(null);
-    toast('Pagina segnata come rivista', 'human');
+    toast(t('revisione.health.reviewed'), 'human');
     if (path) stamp(path);
   };
 
   return (
     <section className="view">
-      <h1 className="view-title">Salute</h1>
+      <h1 className="view-title">{t('revisione.health.title')}</h1>
       <UpgradeBanner />
 
       <section className="group">
-        <h2 className="group-title">Struttura</h2>
+        <h2 className="group-title">{t('revisione.health.structure')}</h2>
         <div className="toolbar">
           <button type="button" className="btn btn-strong" disabled={project.lintRunning} onClick={runStructureLint}>
             {project.lintRunning && (
@@ -144,24 +140,24 @@ export default function Salute() {
                 ⟳
               </span>
             )}
-            Esegui controllo
+            {t('revisione.health.runCheck')}
           </button>
-          {lastLintAt && <p className="muted">Ultimo controllo: {formatLintWhen(lastLintAt)}</p>}
+          {lastLintAt && <p className="muted">{t('revisione.health.lastCheck', { when: formatLintWhen(lastLintAt) })}</p>}
         </div>
         {lintError && <p className="error-text">{lintError}</p>}
         {project.compat.validatorUnavailable && (
-          <p className="error-text">Il validatore non è partito: {project.compat.validatorUnavailable}</p>
+          <p className="error-text">{t('revisione.health.validatorFailed', { error: project.compat.validatorUnavailable })}</p>
         )}
         {project.lint && !project.lint.error && findings.length === 0 && !lintError && (
-          <p className="muted">Nessun problema di struttura.</p>
+          <p className="muted">{t('revisione.health.noStructureIssues')}</p>
         )}
         {findings.length > 0 && (
           <table className="table">
             <thead>
               <tr>
-                <th>File</th>
-                <th>Riga</th>
-                <th>Messaggio</th>
+                <th>{t('revisione.health.colFile')}</th>
+                <th>{t('revisione.health.colLine')}</th>
+                <th>{t('revisione.health.colMessage')}</th>
               </tr>
             </thead>
             <tbody>
@@ -187,7 +183,7 @@ export default function Salute() {
       {infos.length > 0 && (
         <section className="group">
           <h2 className="group-title">
-            Note del validatore <span className="group-count">{infos.length}</span>
+            {t('revisione.health.validatorNotes')} <span className="group-count">{infos.length}</span>
           </h2>
           <ul className="rows">
             {infos.map((i, n) => (
@@ -212,38 +208,38 @@ export default function Salute() {
       )}
 
       <section className="group">
-        <h2 className="group-title">Fiducia</h2>
+        <h2 className="group-title">{t('revisione.health.trustTitle')}</h2>
         <div className="toolbar">
           <label className="toolbar-field">
-            <span>Livello</span>
+            <span>{t('revisione.health.level')}</span>
             <select
               className="input"
               value={tierFilter}
               onChange={(e) => setTierFilter((e.target.value || '') as TrustTier | '')}
             >
-              <option value="">Tutti</option>
-              {(Object.keys(TRUST_LABEL) as TrustTier[]).map((t) => (
-                <option key={t} value={t}>
-                  {TRUST_LABEL[t]}
+              <option value="">{t('revisione.health.all')}</option>
+              {TRUST_TIERS.map((tier) => (
+                <option key={tier} value={tier}>
+                  {trustLabel(tier)}
                 </option>
               ))}
             </select>
           </label>
           <label className="toolbar-field">
             <input type="checkbox" checked={driftOnly} onChange={(e) => setDriftOnly(e.target.checked)} />
-            Solo drift
+            {t('revisione.health.driftOnly')}
           </label>
-          {!signable && <p className="muted">{SIGN_HINT}</p>}
+          {!signable && <p className="muted">{t('lavori.dialog.signHint')}</p>}
         </div>
         <table className="table">
           <thead>
             <tr>
-              <th>Percorso</th>
-              <th>Tipo</th>
-              <th>Livello</th>
-              <th>Fonti</th>
-              <th>Drift</th>
-              <th>Dimensione</th>
+              <th>{t('revisione.health.colPath')}</th>
+              <th>{t('revisione.health.colType')}</th>
+              <th>{t('revisione.health.level')}</th>
+              <th>{t('revisione.health.colSources')}</th>
+              <th>{t('revisione.health.colDrift')}</th>
+              <th>{t('revisione.health.colSize')}</th>
               <th />
             </tr>
           </thead>
@@ -257,7 +253,7 @@ export default function Salute() {
                 <td className="salute-table-path">{p.relPath}</td>
                 <td>{p.frontmatter.fields.type || pageTypeFor(p.relPath, project.schema?.pageTypes ?? []) || '—'}</td>
                 <td>
-                  <span className={TRUST_BADGE[p.trust]}>{TRUST_LABEL[p.trust]}</span>
+                  <span className={TRUST_BADGE[p.trust]}>{trustLabel(p.trust)}</span>
                 </td>
                 <td>{p.frontmatter.sources.length}</td>
                 <td>
@@ -273,10 +269,10 @@ export default function Salute() {
                     type="button"
                     className="btn btn-human-outline"
                     aria-disabled={!signable}
-                    title={signable ? undefined : SIGN_HINT}
+                    title={signable ? undefined : t('lavori.dialog.signHint')}
                     onClick={() => signable && setReview({ path: p.relPath, markdown: p.markdown })}
                   >
-                    Segna come rivista
+                    {t('revisione.review.title')}
                   </button>
                 </td>
               </tr>
@@ -286,10 +282,10 @@ export default function Salute() {
       </section>
 
       <section className="group">
-        <h2 className="group-title">Budget</h2>
+        <h2 className="group-title">{t('revisione.health.budget')}</h2>
           {overBudget.length > 0 && (
             <>
-              <p className="muted">Pagine oltre il limite ({formatBytes(budgets.singlePageBytes)})</p>
+              <p className="muted">{t('revisione.health.overLimit', { size: formatBytes(budgets.singlePageBytes) })}</p>
               <ul className="rows">
                 {overBudget.map((p) => (
                   <li key={p.relPath} className="row">
@@ -300,17 +296,17 @@ export default function Salute() {
               </ul>
             </>
           )}
-          {overBudget.length === 0 && <p className="muted">Nessuna pagina supera il limite per pagina.</p>}
+          {overBudget.length === 0 && <p className="muted">{t('revisione.health.noneOverLimit')}</p>}
 
           <div className="salute-budget-row salute-budget-row--spaced">
             <p className="salute-budget-label">
-              Lettura core
+              {t('revisione.health.coreRead')}
               <span
                 className="field-hint"
-                title="Somma dei byte di SCHEMA.md e delle pagine file nella Core map (esclude le cartelle come decisions/ o log/)."
+                title={t('revisione.health.coreReadHint')}
               >
                 {' '}
-                (approssimazione)
+                {t('revisione.health.approx')}
               </span>
             </p>
             <p className="salute-budget-value">
@@ -331,7 +327,7 @@ export default function Salute() {
           </div>
 
           <div className="salute-budget-row">
-            <p className="salute-budget-label">Log</p>
+            <p className="salute-budget-label">{t('revisione.health.log')}</p>
             <p className="salute-budget-value">
               {formatBytes(logBytes)} / {formatBytes(budgets.logBytes)}
             </p>
@@ -351,29 +347,29 @@ export default function Salute() {
       </section>
 
       <section className="group">
-        <h2 className="group-title">Rischi</h2>
+        <h2 className="group-title">{t('revisione.health.risks')}</h2>
         {project.risks && risksPage && (
           <p className="muted">
-            Il registro mostra solo la tabella.{' '}
+            {t('revisione.health.risksOnlyTable')}{' '}
             <button type="button" className="btn" onClick={() => openPage(risksPage.relPath)}>
-              Apri la pagina dei rischi
+              {t('revisione.health.openRisksPage')}
             </button>
           </p>
         )}
         {project.risks ? (
           project.risks.length === 0 ? (
-            <p className="muted">Il registro dei rischi è vuoto.</p>
+            <p className="muted">{t('revisione.health.risksEmpty')}</p>
           ) : (
             <table className="table">
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>Rischio</th>
-                  <th>Gravità</th>
-                  <th>Innesco</th>
-                  <th>Mitigazione</th>
-                  <th>Responsabile</th>
-                  <th>ID collegati</th>
+                  <th>{t('revisione.health.colId')}</th>
+                  <th>{t('revisione.health.colRisk')}</th>
+                  <th>{t('revisione.health.colSeverity')}</th>
+                  <th>{t('revisione.health.colTrigger')}</th>
+                  <th>{t('revisione.health.colMitigation')}</th>
+                  <th>{t('revisione.health.colOwner')}</th>
+                  <th>{t('revisione.health.colLinked')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -389,7 +385,7 @@ export default function Salute() {
                     <td>{renderInlineCode(r.trigger)}</td>
                     <td>{renderInlineCode(r.mitigation)}</td>
                     <td>
-                      {unowned.has(r) ? <span className="badge badge-drift">Nessuno</span> : renderInlineCode(r.owner)}
+                      {unowned.has(r) ? <span className="badge badge-drift">{t('revisione.health.nobody')}</span> : renderInlineCode(r.owner)}
                     </td>
                     <td>{renderInlineCode(r.ids)}</td>
                   </tr>
@@ -402,12 +398,12 @@ export default function Salute() {
             <Markdown markdown={risksPage.markdown} pagePath={risksPage.relPath} onOpenPage={openPage} />
           </div>
         ) : (
-          <p className="muted">Nessun file rischi nella Core map.</p>
+          <p className="muted">{t('revisione.health.noRisksFile')}</p>
         )}
       </section>
 
       <section className="group">
-        <h2 className="group-title">Log recente</h2>
+        <h2 className="group-title">{t('revisione.health.recentLog')}</h2>
         {logPage ? (
           recentLogSections(logPage.markdown).map((block, i) => (
             <pre key={i} className="salute-log-entry mono">
@@ -415,7 +411,7 @@ export default function Salute() {
             </pre>
           ))
         ) : (
-          <p className="muted">Nessun log.</p>
+          <p className="muted">{t('revisione.health.noLog')}</p>
         )}
       </section>
 

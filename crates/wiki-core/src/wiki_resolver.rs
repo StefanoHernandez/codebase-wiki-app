@@ -41,7 +41,7 @@ pub fn ensure_wiki_inside_repo(repo_path: &Path, wiki_root: &str) -> Result<(), 
         .canonicalize()
         .map_err(|e| format!("Wiki directory not found: {}", e))?;
     if !canon_wiki.starts_with(&canon_repo) {
-        return Err(WIKI_OUTSIDE_REPO.to_string());
+        return Err(crate::tr(WIKI_OUTSIDE_REPO, "The wiki folder points outside the repository."));
     }
     Ok(())
 }

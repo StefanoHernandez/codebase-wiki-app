@@ -1,3 +1,5 @@
+import { locale, t } from '../i18n/index.ts';
+
 export type IndexStatus = {
   model?: string;
   indexed?: boolean;
@@ -40,7 +42,7 @@ export function parseIndexStatus(raw: Record<string, unknown>): IndexStatus {
 }
 
 export function formatIndexState(status: IndexStatus | null): string {
-  if (!status) return 'Indice assente';
+  if (!status) return t('esplora.rag.noIndex');
   if (status.indexed === false && status.error) return status.error;
   const ih = shortSha(status.indexedHead);
   const h = shortSha(status.head);
@@ -48,7 +50,7 @@ export function formatIndexState(status: IndexStatus | null): string {
   const model = status.model ?? '—';
   const files = status.files ?? 0;
   const chunks = status.chunks ?? 0;
-  return `${model} · ${files} file · ${chunks} chunk · indicizzato a @${ih} · HEAD @${h} · ${changed} file cambiati`;
+  return t('esplora.rag.state', { model, files, chunks, ih, h, changed });
 }
 
 function shortSha(s?: string | null): string {
@@ -129,5 +131,5 @@ export function formatBytes(n: number): string {
     v /= 1024;
     i++;
   }
-  return `${v.toLocaleString('it-IT', { maximumFractionDigits: 1 })} ${units[i]}`;
+  return `${v.toLocaleString(locale(), { maximumFractionDigits: 1 })} ${units[i]}`;
 }

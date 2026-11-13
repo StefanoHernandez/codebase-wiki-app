@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { fixedValue } from '../lib/labels';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Markdown } from './Markdown';
@@ -14,13 +15,13 @@ export type PageDrawerTarget =
 export function trustTierLabel(tier: TrustTier): string {
   switch (tier) {
     case 'unverified':
-      return 'Non verificata';
+      return t('esplora.drawer.trust.unverified');
     case 'machine-confirmed':
-      return 'Confermata da agente';
+      return t('esplora.drawer.trust.machineConfirmed');
     case 'human-reviewed':
-      return 'Rivista da persona';
+      return t('esplora.drawer.trust.humanReviewed');
     case 'stale-verified':
-      return 'Verifica obsoleta';
+      return t('esplora.drawer.trust.staleVerified');
   }
 }
 
@@ -49,19 +50,19 @@ export function PageDrawer({ open, target, repo, pagesByPath, onClose, onOpenWik
   if (!open || !target) return null;
 
   return (
-    <aside className="page-drawer" role="dialog" aria-label="Dettaglio pagina o sorgente">
+    <aside className="page-drawer" role="dialog" aria-label={t('esplora.drawer.dialog')}>
       <header className="page-drawer-head">
         <div className="page-drawer-title-wrap">
           <h2 className="page-drawer-title">
-            {target.mode === 'wiki' ? 'Pagina wiki' : 'File sorgente'}
+            {target.mode === 'wiki' ? t('esplora.drawer.wikiPage') : t('esplora.drawer.sourceFile')}
             {target.mode === 'wiki' && (
               <span className="page-drawer-path">{target.wikiRelPath}</span>
             )}
             {target.mode === 'source' && <span className="page-drawer-path">{target.relPath}</span>}
           </h2>
         </div>
-        <button type="button" className="btn btn-quiet" onClick={onClose} aria-label="Chiudi pannello">
-          Chiudi
+        <button type="button" className="btn btn-quiet" onClick={onClose} aria-label={t('esplora.drawer.closePanel')}>
+          {t('esplora.drawer.close')}
         </button>
       </header>
       {target.mode === 'wiki' ? (
@@ -93,7 +94,7 @@ function WikiPanel({
   if (!page) {
     return (
       <div className="page-drawer-body">
-        <p className="page-drawer-error">Pagina non trovata nella snapshot.</p>
+        <p className="page-drawer-error">{t('esplora.drawer.notFound')}</p>
       </div>
     );
   }
@@ -111,13 +112,13 @@ function WikiPanel({
           <dl className="page-drawer-facts">
             {fm.confidence && (
               <>
-                <dt>Fiducia</dt>
+                <dt>{t('esplora.drawer.confidence')}</dt>
                 <dd>{fixedValue(fm.confidence)}</dd>
               </>
             )}
             {fm.source_commit && (
               <>
-                <dt>Commit sorgente</dt>
+                <dt>{t('esplora.drawer.sourceCommit')}</dt>
                 <dd>
                   <code>{fm.source_commit}</code>
                 </dd>
@@ -133,7 +134,7 @@ function WikiPanel({
         )}
         {sources.length > 0 && (
           <div className="page-drawer-sources">
-            <span className="page-drawer-sources-label">Sorgenti</span>
+            <span className="page-drawer-sources-label">{t('esplora.drawer.sources')}</span>
             {sources.map((src) => (
               <button
                 key={src}
@@ -193,7 +194,7 @@ function SourcePanel({
           setDiff(diffText);
         } catch (e) {
           if (seq !== loadSeq.current) return;
-          setDiff(`Diff non disponibile: ${e instanceof Error ? e.message : String(e)}`);
+          setDiff(t('esplora.drawer.diffUnavailable', { error: e instanceof Error ? e.message : String(e) }));
         }
       } else {
         setDiff(null);
@@ -221,7 +222,7 @@ function SourcePanel({
         <SourceTabs tab={tab} setTab={setTab} commit={commit} />
       )}
       <div className="page-drawer-body">
-        {loading && <p className="page-drawer-loading">Carico il file…</p>}
+        {loading && <p className="page-drawer-loading">{t('esplora.drawer.loading')}</p>}
         {error && <p className="page-drawer-error">{error}</p>}
         {!loading && !error && tab === 'file' && content !== null && (
           <pre className="page-drawer-code">
@@ -269,10 +270,10 @@ function SourceTabs({
   return (
     <div className="page-drawer-tabs" role="tablist">
       <button type="button" role="tab" aria-selected={tab === 'file'} onClick={() => setTab('file')}>
-        File
+        {t('esplora.drawer.tabFile')}
       </button>
       <button type="button" role="tab" aria-selected={tab === 'diff'} onClick={() => setTab('diff')}>
-        Diff da {short}
+        {t('esplora.drawer.tabDiff', { commit: short })}
       </button>
     </div>
   );
