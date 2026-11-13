@@ -109,3 +109,8 @@ confidence: high
 - What: il Grafo ha il pulsante "▶ Storia" che riproduce la crescita della wiki e dei file di codice commit per commit (circa 15 secondi in tutto), con slider, data e messaggio del commit; le pagine nate hanno un alone, quelle modificate un anello. Un link compare quando esistono entrambe le pagine (non dal commit che l'ha aggiunto). I nodi tengono la posizione tra un fotogramma e l'altro e quando cambiano i filtri. Richiesto da Stefano sul modello del timelapse dei grafi di Obsidian.
 - Evidence: `npm test` → 165 pass (5 in `tests/graph-history.test.ts`); `cargo test --workspace --features wiki-mcp/embed` → 122 pass (2 su `file_history`); provato a mano da Stefano sull'app installata
 - IDs: T11
+
+## 2026-11-13 · Release 0.5.0 · agent
+- What: app 0.5.0 pubblicata come Latest: installazione del plugin per agente, Storia del grafo, grafo a tutta altezza, CLI di Claude Code e Codex trovate su Windows. Stesso flusso della 0.4.0: push del solo tag, poi `main` con `[skip ci]`. Aggiornati anche i conteggi dei test e la versione del validatore in architettura.
+- Evidence: CI del tag https://github.com/StefanoHernandez/codebase-wiki-app/actions/runs/43411334416 verde (test + build macOS, Windows, Linux: il codice `cfg(windows)` compila); release https://github.com/StefanoHernandez/codebase-wiki-app/releases/tag/v0.5.0 con 7 pacchetti
+- IDs: T11

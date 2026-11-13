@@ -20,12 +20,12 @@ confidence: high
 
 | Componente | Dove | Cosa fa |
 | --- | --- | --- |
-| Frontend | `src/` (React 18, TypeScript, Vite) | viste Per te, Lavori, Decisioni, Handoff, Salute, Grafo, Ricerca, Impostazioni; calcola le modifiche alla wiki ([app](modules/app.md)) |
+| Frontend | `src/` (React 18, TypeScript, Vite) | viste Progetti, Primi passi, Per te, Lavori, Decisioni, Handoff, Salute, Grafo (con la Storia), Ricerca, Impostazioni (anche installazione del plugin); calcola le modifiche alla wiki ([app](modules/app.md)) |
 | Backend Tauri | `src-tauri/src/` | comandi invocati dal frontend (`commands.rs`), processi del sidecar di ricerca (`rag_jobs.rs`, `rag_sidecar.rs`) |
 | `wiki-core` | `crates/wiki-core/` | risoluzione della wiki, lettura e scrittura protette, validatore, watcher, git ([wiki-core](modules/wiki-core.md)) |
 | `rag-core` | `crates/rag-core/` | elenco file, chunk, indice SQLite, catalogo e download dei modelli, config degli agenti ([rag](modules/rag-mcp.md)) |
 | `wiki-mcp` | `crates/wiki-mcp/` | eseguibile `codebase-wiki-mcp`: CLI `index`/`search`/`status`/`models` e server MCP `serve` |
-| Validatore | `resources/validate-wiki.py` | copia identica di quello del plugin 0.13.1, lanciata con `--json` |
+| Validatore | `resources/validate-wiki.py` | copia identica di quello del plugin 0.14.0, lanciata con `--json` |
 
 ## Flusso
 

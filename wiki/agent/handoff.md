@@ -8,7 +8,7 @@ sources:
   - wiki/log.md
   - wiki/project/work-tracker.md
   - crates/wiki-mcp/src/serve.rs
-source_commit: 99095c6
+source_commit: c73e9bd
 confidence: high
 ---
 
@@ -17,11 +17,11 @@ confidence: high
 ## Stato del lavoro
 <!-- wiki:state -->
 
-- Tracker IDs: T1, T2, T3, T4, T5, T11, T12
-- Goal: chiudere `feat/plugin-install` (plugin installabile dall'app, grafo a tutta altezza, CLI su Windows) con merge su `main` e release 0.5.0, solo con l'ok di Stefano
-- Last completed step: installazione del plugin provata da Stefano con Codex sul Mac; ricerca delle CLI corretta per Windows
-- Current branch: `feat/plugin-install` (non pushato)
-- Last commit: correzioni Windows (`6eb124a`, CLI del plugin e `claude.cmd` per il collegamento MCP) più questo aggiornamento della wiki
+- Tracker IDs: T1, T2, T3, T4, T5, T12
+- Goal: nessun sottoprogetto aperto; prossimo passo proposto: note del catalogo dei modelli (T12)
+- Last completed step: release app 0.5.0 pubblicata (plugin dall'app, Storia del grafo, CLI su Windows)
+- Current branch: `main`
+- Last commit: `c73e9bd` (release: 0.5.0) più questo aggiornamento della wiki
 - Worktree: clean
 
 ## Baton per il prossimo agente
@@ -29,10 +29,9 @@ confidence: high
 
 | Order | Task | Start files | Done when | Verification command | Notes / blockers |
 | --- | --- | --- | --- | --- | --- |
-| 1 | T11 - merge di `feat/plugin-install` e release 0.5.0 | `wiki/engineering/operations.md` | release pubblicata con i 7 pacchetti | CI del tag | solo con l'ok di Stefano; prima il tag, poi `main` con `[skip ci]` |
-| 2 | T12 - note del catalogo dei modelli | `crates/rag-core/src/catalog.rs` | note brevi in italiano, senza risultati delle prove | `cargo test -p rag-core` | testo proposto in chat, in attesa di sì |
-| 3 | T3 - adopt della copia di prova di Versal e prova delle azioni umane | `resources/validate-wiki.py`, `src/lib/md-edit.ts` | see T3 | `python3 resources/validate-wiki.py --json versal-test/docs` | la copia sta nello scratchpad di una sessione: se non c'è più, rifarla dallo zip in `~/Downloads` senza toccare gli originali |
-| 4 | T4 - osservare lo scarico dei modelli del server MCP | `crates/wiki-mcp/src/serve.rs` | see T4 | Monitoraggio Attività | serve un server avviato dall'eseguibile 0.3.1 |
+| 1 | T12 - note del catalogo dei modelli | `crates/rag-core/src/catalog.rs` | note brevi in italiano, senza risultati delle prove | `cargo test -p rag-core` | testo proposto in chat, in attesa di sì |
+| 2 | T3 - adopt della copia di prova di Versal e prova delle azioni umane | `resources/validate-wiki.py`, `src/lib/md-edit.ts` | see T3 | `python3 resources/validate-wiki.py --json versal-test/docs` | la copia sta nello scratchpad di una sessione: se non c'è più, rifarla dallo zip in `~/Downloads` senza toccare gli originali |
+| 3 | T4 - osservare lo scarico dei modelli del server MCP | `crates/wiki-mcp/src/serve.rs` | see T4 | Monitoraggio Attività | serve un server avviato dall'eseguibile 0.3.1 |
 
 ## Blocchi
 <!-- wiki:blockers -->
@@ -57,7 +56,7 @@ confidence: high
 | `npm test` | repo | pass @47eaee0 | 140 test |
 | `cargo test --workspace` | repo | pass @47eaee0 | tutti verdi; `cargo test -p wiki-mcp --features embed` 2 test |
 | `npm run tauri build -- --bundles app` | repo | pass @9a19fdd | `Codebase Wiki.app` 85 MB, `Signature=adhoc`, `codesign --verify --deep --strict` ok |
-| CI tag `v0.3.1` | GitHub Actions | pass @979d5a7 | run 43117157795 |
+| CI tag `v0.5.0` | GitHub Actions | pass @c73e9bd | run 43411334416 |
 
 ## Da non rifare
 <!-- wiki:do-not-redo -->
@@ -71,5 +70,5 @@ confidence: high
 <!-- wiki:evidence-trail -->
 
 - `log`: [log.md](../log.md), voci fino al 2026-11-13
-- `tracker`: T1–T6, T11, T12 aperti; T9, T10 chiusi
+- `tracker`: T1–T6, T12 aperti; T9, T10, T11 chiusi
 - `decisions`: [0004](../project/decisions/0004-rag-solo-codice.md), [0005](../project/decisions/0005-reranker-facoltativo.md)

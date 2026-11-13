@@ -19,8 +19,8 @@ confidence: high
 
 | Suite | Comando | Ultimo risultato |
 | --- | --- | --- |
-| Frontend (node:test) | `npm test` | 130 pass, 2026-11-11 @fe7bba6 |
-| Rust | `cargo test --workspace` | verde, 2026-11-11 @fe7bba6 |
+| Frontend (node:test) | `npm test` | 165 pass, 2026-11-13 @c73e9bd |
+| Rust | `cargo test --workspace --features wiki-mcp/embed` | 122 pass, 2026-11-13 @c73e9bd |
 | Rust con embedding | `cargo test -p rag-core -F embed,download` | verde, 2026-11-11 @9d32c1c |
 | Tipi | `npx tsc --noEmit` | in CI |
 
