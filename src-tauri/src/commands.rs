@@ -569,6 +569,12 @@ pub async fn read_source_file(
     blocking(move || read_repo_file_safe(&opened_repo(&app, &repo)?, &rel_path, None)).await
 }
 
+/// Language of the messages the backend shows ("it" or "en").
+#[tauri::command]
+pub fn set_language(lang: String) {
+    wiki_core::lang::set_english(lang == "en");
+}
+
 const RELEASE_PAGE: &str = "https://github.com/StefanoHernandez/codebase-wiki-app/releases/latest";
 
 /// False where the updater cannot replace the app: Linux installed from `.deb`/`.rpm`

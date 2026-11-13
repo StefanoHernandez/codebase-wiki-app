@@ -45,6 +45,7 @@ fn main() {
             commands::source_diff,
             commands::graph_history,
             commands::updater_supported,
+            commands::set_language,
             commands::open_release_page,
             commands::run_lint,
             commands::git_user_name,

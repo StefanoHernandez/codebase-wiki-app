@@ -8,6 +8,8 @@ import { PYTHON_KEY, useProject } from '../state/project';
 import { useRag } from '../state/rag';
 import { useNav } from '../state/nav';
 import { useUpdates } from '../state/updates';
+import { useLang } from '../state/lang';
+import { t } from '../i18n';
 import { markFirstRunDone } from './PrimiPassi';
 import { AGENT_LABEL, pluginBlocked, pluginStateText, type PluginRow } from '../lib/plugin';
 import type { ThemeChoice } from '../state/theme';
@@ -118,6 +120,7 @@ function Profilo({ theme, setTheme }: ThemeProps) {
             ))}
           </div>
         </fieldset>
+        <LanguageField />
       </div>
       <button
         type="button"
@@ -592,5 +595,28 @@ function Aggiornamenti() {
         {checking ? 'Controllo in corso…' : 'Controlla aggiornamenti'}
       </button>
     </section>
+  );
+}
+
+/** Interface language; the names of the two languages stay in their own language. */
+function LanguageField() {
+  const { choice, setChoice } = useLang();
+  const options = [
+    { id: 'auto', label: t('common.language.auto') },
+    { id: 'it', label: 'Italiano' },
+    { id: 'en', label: 'English' },
+  ] as const;
+  return (
+    <fieldset className="field">
+      <legend className="field-label">{t('common.language')}</legend>
+      <div className="segmented">
+        {options.map((o) => (
+          <button key={o.id} type="button" aria-pressed={choice === o.id} onClick={() => setChoice(o.id)}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+      <span className="field-hint">{t('common.language.hint')}</span>
+    </fieldset>
   );
 }

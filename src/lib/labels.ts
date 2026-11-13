@@ -1,3 +1,4 @@
+import { getLang } from '../i18n/index.ts';
 // Italian copy for the fixed English vocabulary of the plugin format. Content written by agents stays as is.
 
 const FIELDS: Record<string, string> = {
@@ -52,11 +53,13 @@ const MARKERS: [string, string][] = [
 
 /** Column or bullet key from the plugin format, in Italian; unknown keys are returned unchanged. */
 export function fieldLabel(key: string): string {
+  if (getLang() === 'en') return key;
   return FIELDS[key.trim().toLowerCase()] ?? key;
 }
 
 /** A cell that is exactly one of the format's fixed values, in Italian; a marker keeps its reason. */
 export function fixedValue(text: string): string {
+  if (getLang() === 'en') return text;
   const t = text.trim();
   const v = VALUES[t.toLowerCase()];
   if (v) return v;

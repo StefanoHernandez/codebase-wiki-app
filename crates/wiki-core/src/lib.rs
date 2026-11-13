@@ -1,4 +1,5 @@
 pub mod git_ops;
+pub mod lang;
 pub mod prompts;
 pub mod validator;
 pub mod watcher;
@@ -6,6 +7,7 @@ pub mod wiki_fs;
 pub mod wiki_resolver;
 pub mod wiki_schema;
 
+pub use lang::tr;
 pub use prompts::build_workflow_prompt;
 pub use git_ops::{
     changed_files_since_commit, file_diff_since_commit, file_history, git_user_name, inspect_git_state,
