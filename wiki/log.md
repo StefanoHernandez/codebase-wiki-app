@@ -153,3 +153,8 @@ confidence: high
 - What: su richiesta di Stefano l'app parla italiano o inglese (Impostazioni → Lingua, automatica dalla lingua del Mac), senza riavvio. Circa 610 testi spostati in `src/i18n/` per sei aree, date con `locale()`, messaggi del backend con `tr`, note del catalogo dei modelli tradotte per id; il testo scritto nella wiki resta invariato. Regola 3 di `CLAUDE.md` aggiornata. Branch `feat/notte`, non ancora rilasciato.
 - Evidence: `npm test` → 177 pass (compreso `no-italian.test.ts`); `cargo test --workspace --features wiki-mcp/embed` → verde; Primi passi e Impostazioni viste nel browser in inglese e in italiano, cambio lingua dal vivo; viste con un progetto aperto e revisione dei testi inglesi da fare a mano
 - IDs: none
+
+## 2026-11-13 · Release 0.7.0 · agent
+- What: versione 0.7.0 (barra laterale "Notte", contenuto morbido, icona "00_modern" di Alessandro Cianfaglione, interfaccia in inglese), tag `v0.7.0`, release pubblicata come `latest` con 7 pacchetti e `latest.json` firmato. README riscritto in inglese e aggiunto il file `LICENSE` (MIT).
+- Evidence: run GitHub Actions 43442705225 → test e tre build success; `latest.json` con `darwin-aarch64`, `windows-x86_64`, `linux-x86_64`; aggiornamento da 0.6.0 non ancora provato (T13)
+- IDs: T13
