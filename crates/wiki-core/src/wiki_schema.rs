@@ -26,7 +26,7 @@ pub fn glob_match(glob: &str, rel_path: &str) -> bool {
                 } else {
                     re.push('[');
                 }
-                while let Some(ch) = chars.next() {
+                for ch in chars.by_ref() {
                     if ch == ']' {
                         re.push(']');
                         break;

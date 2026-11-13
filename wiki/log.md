@@ -84,3 +84,8 @@ confidence: high
 - What: dei 38 problemi minori rimandati durante la riscrittura, 26 erano già risolti e 1 superato; corretti ora: frontmatter (virgole tra virgolette e `}` dentro i valori, `generated` come testo o a blocco), errori del watcher mostrati come banner invece che solo su stderr, `:` nei nomi dei file accettato fuori da Windows (`.private-terms::$DATA` resta rifiutato), test del validatore più stretti e test sulle colonne Phase/Priority/Depends on dopo promuovi e chiudi ⚫. Lasciati: versioni `^` in package.json, percorso `../..` in un test, confronto ASCII sul nome `.private-terms`, percorsi `\\?\` del watcher su Windows (non verificabile su macOS).
 - Evidence: `npm test` → 157 pass; `cargo test --workspace --features wiki-mcp/embed` → 105 pass; `npm run build` ok; banner del watcher non provato con un errore reale
 - IDs: none
+
+## 2026-11-13 · Ultimi problemi a basso rischio · agent
+- What: dipendenze npm fissate alla versione esatta del lockfile (come le crate Rust); test del validatore senza `../..`; il nome `.private-terms` confrontato in minuscolo Unicode; tolti i tre avvisi di clippy (contatore di ciclo, `while let` → `for`, campo `tool_router` mai letto). Resta non verificabile qui solo il prefisso `\\?\` del watcher su Windows.
+- Evidence: `npm ci --dry-run` ok; `npm test` → 157 pass; `cargo test --workspace --features wiki-mcp/embed` → 105 pass; `cargo clippy --workspace` → 0 avvisi; `codebase-wiki-mcp serve` elenca ancora `search_code`, `index_status`, `list_repos`
+- IDs: none

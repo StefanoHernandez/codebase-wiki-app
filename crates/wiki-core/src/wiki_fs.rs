@@ -48,7 +48,8 @@ pub fn is_private_terms_name(name: &std::ffi::OsStr) -> bool {
         .next()
         .unwrap_or_default()
         .trim_end_matches(['.', ' '])
-        .eq_ignore_ascii_case(".private-terms")
+        .to_lowercase()
+        == ".private-terms"
 }
 
 fn is_safe_relative_path(path_str: &str) -> bool {
@@ -281,8 +282,7 @@ pub fn write_wiki_files_safe(
         }
     }
 
-    let mut renamed = 0usize;
-    for p in &pending {
+    for (renamed, p) in pending.iter().enumerate() {
         if let Err(e) = fs::rename(&p.tmp_path, &p.target_path) {
             for rest in &pending[renamed..] {
                 let _ = fs::remove_file(&rest.tmp_path);
@@ -293,7 +293,6 @@ pub fn write_wiki_files_safe(
                 e
             ));
         }
-        renamed += 1;
     }
 
     Ok(())

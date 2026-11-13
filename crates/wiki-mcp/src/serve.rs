@@ -4,7 +4,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use rmcp::{
-    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
+    handler::server::wrapper::Parameters,
     model::{CallToolResult, ContentBlock as Content, Implementation, ServerCapabilities, ServerConfig},
     schemars, service::RequestContext, tool, tool_handler, tool_router, ErrorData as McpError, RoleServer,
     ServerHandler, ServiceExt,
@@ -32,9 +32,7 @@ static LAST_SEARCH: Mutex<Option<Instant>> = Mutex::new(None);
 const IDLE: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Clone)]
-pub struct WikiMcp {
-    tool_router: ToolRouter<Self>,
-}
+pub struct WikiMcp;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct SearchParams {
@@ -71,7 +69,7 @@ fn active_spec() -> Result<&'static rag_core::ModelSpec, String> {
 
 impl WikiMcp {
     pub fn new() -> Self {
-        Self { tool_router: Self::tool_router() }
+        Self
     }
 
     fn search_inner(&self, repo: Option<&str>, query: &str, k: usize, path_glob: Option<&str>) -> Result<String, String> {

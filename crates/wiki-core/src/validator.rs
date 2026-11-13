@@ -178,7 +178,9 @@ mod tests {
 
     #[test]
     fn test_run_structural_lint_parses_report() {
-        let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/validate-wiki.py");
+        // The workspace root holds the validator copy the app bundles.
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).unwrap();
+        let script = workspace.join("resources/validate-wiki.py");
         let python = ["/opt/homebrew/bin/python3", "python3"].into_iter().find(|p| {
             Command::new(p)
                 .args(["-c", "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)"])
