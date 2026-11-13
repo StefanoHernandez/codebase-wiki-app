@@ -228,6 +228,155 @@ pub fn plugin_state(dirs: &AgentDirs, runner: &dyn Runner, latest: Option<&str>)
         .collect()
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginPreview {
+    pub commands: Vec<String>,
+    /// Folders created or replaced.
+    pub folders: Vec<String>,
+}
+
+/// Claude: `Some(true)` when `stefano-wiki` follows `main`, `Some(false)` when it follows another ref.
+fn claude_marketplace(runner: &dyn Runner) -> Option<bool> {
+    let out = runner.run(&["claude", "plugin", "marketplace", "list", "--json"]).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&out).ok()?;
+    let list = v.as_array().or_else(|| v.get("marketplaces").and_then(|m| m.as_array()))?;
+    let m = list.iter().find(|m| m.get("name").and_then(|n| n.as_str()) == Some(CLAUDE_MARKETPLACE))?;
+    Some(m.get("ref").and_then(|r| r.as_str()).is_none_or(|r| r == "main"))
+}
+
+fn codex_marketplace(runner: &dyn Runner) -> bool {
+    runner
+        .run(&["codex", "plugin", "marketplace", "list"])
+        .is_ok_and(|out| out.lines().any(|l| l.split_whitespace().next() == Some(CODEX_MARKETPLACE)))
+}
+
+fn folder_targets(id: &str, dirs: &AgentDirs) -> Vec<PathBuf> {
+    match id {
+        "antigravity" => vec![dirs.antigravity_plugin()],
+        _ => dirs.skills_root(id).map(|root| SKILLS.iter().map(|s| root.join(s)).collect()).unwrap_or_default(),
+    }
+}
+
+/// Source folder inside the plugin checkout for each target folder.
+fn folder_sources(id: &str, source: &Path) -> Vec<PathBuf> {
+    match id {
+        "antigravity" => vec![source.join("plugins/antigravity-codebase-wiki-llm")],
+        _ => SKILLS.iter().map(|s| source.join("skills").join(s)).collect(),
+    }
+}
+
+/// What installing or updating the plugin for `id` will do.
+pub fn plugin_preview(id: &str, dirs: &AgentDirs, runner: &dyn Runner) -> Result<PluginPreview, String> {
+    let commands = match id {
+        "claude" => match claude_marketplace(runner) {
+            Some(true) => cli_commands("claude", true),
+            Some(false) => {
+                let mut c = vec![format!("claude plugin marketplace remove {CLAUDE_MARKETPLACE}")];
+                c.extend(cli_commands("claude", false));
+                c
+            }
+            None => cli_commands("claude", false),
+        },
+        "codex" => cli_commands("codex", codex_marketplace(runner)),
+        "antigravity" | "cursor" | "opencode" => Vec::new(),
+        other => return Err(format!("Agente sconosciuto: {other}")),
+    };
+    let folders = folder_targets(id, dirs).iter().map(|p| p.display().to_string()).collect();
+    Ok(PluginPreview { commands, folders })
+}
+
+fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
+}
+
+fn bak(path: &Path) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".bak");
+    path.with_file_name(name)
+}
+
+/// Replaces each target with its source; on any failure every target goes back to what it was.
+fn replace_folders(pairs: &[(PathBuf, PathBuf)]) -> Result<(), String> {
+    for (src, _) in pairs {
+        if !src.is_dir() {
+            return Err(format!("Cartella del plugin mancante: {}", src.display()));
+        }
+    }
+    let mut moved: Vec<&PathBuf> = Vec::new();
+    let result = (|| {
+        for (src, dst) in pairs {
+            let b = bak(dst);
+            if b.exists() {
+                std::fs::remove_dir_all(&b).map_err(|e| format!("{}: {e}", b.display()))?;
+            }
+            if dst.exists() {
+                std::fs::rename(dst, &b).map_err(|e| format!("{}: {e}", dst.display()))?;
+                moved.push(dst);
+            }
+            copy_dir(src, dst).map_err(|e| format!("{}: {e}", dst.display()))?;
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => {
+            for dst in moved {
+                let _ = std::fs::remove_dir_all(bak(dst));
+            }
+            Ok(())
+        }
+        Err(e) => {
+            for (_, dst) in pairs {
+                let b = bak(dst);
+                if moved.contains(&dst) {
+                    let _ = std::fs::remove_dir_all(dst);
+                    let _ = std::fs::rename(&b, dst);
+                } else if !b.exists() {
+                    let _ = std::fs::remove_dir_all(dst);
+                }
+            }
+            Err(e)
+        }
+    }
+}
+
+/// Installs or updates the plugin for `id`. `source` is the plugin checkout (folder agents);
+/// `version` is written next to the skills so the state can be read back.
+pub fn plugin_apply(
+    id: &str,
+    dirs: &AgentDirs,
+    runner: &dyn Runner,
+    source: Option<&Path>,
+    version: Option<&str>,
+) -> Result<(), String> {
+    let preview = plugin_preview(id, dirs, runner)?;
+    for cmd in &preview.commands {
+        let args: Vec<&str> = cmd.split_whitespace().collect();
+        runner.run(&args).map_err(|e| format!("{cmd}: {e}"))?;
+    }
+    let targets = folder_targets(id, dirs);
+    if targets.is_empty() {
+        return Ok(());
+    }
+    let source = source.ok_or("Copia del plugin non disponibile: controlla la connessione e riprova.")?;
+    let pairs: Vec<(PathBuf, PathBuf)> = folder_sources(id, source).into_iter().zip(targets).collect();
+    replace_folders(&pairs)?;
+    if let (Some(root), Some(v)) = (dirs.skills_root(id), version) {
+        std::fs::write(root.join(PLUGIN).join(MARKER), format!("{v}\n")).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,6 +393,157 @@ mod tests {
 
     fn row<'a>(rows: &'a [PluginRow], id: &str) -> &'a PluginRow {
         rows.iter().find(|r| r.id == id).unwrap()
+    }
+
+    /// Records every command; answers `marketplace list` from `markets`.
+    struct Rec {
+        calls: std::cell::RefCell<Vec<String>>,
+        markets: HashMap<&'static str, String>,
+        fail_on: Option<&'static str>,
+    }
+    impl Runner for Rec {
+        fn run(&self, args: &[&str]) -> Result<String, String> {
+            let line = args.join(" ");
+            self.calls.borrow_mut().push(line.clone());
+            if self.fail_on.is_some_and(|f| line.contains(f)) {
+                return Err("boom".into());
+            }
+            if line.contains("marketplace list") {
+                return Ok(self.markets.get(args[0]).cloned().unwrap_or_default());
+            }
+            Ok(String::new())
+        }
+    }
+    fn rec(markets: &[(&'static str, &str)], fail_on: Option<&'static str>) -> Rec {
+        Rec { calls: Default::default(), markets: markets.iter().map(|(k, v)| (*k, v.to_string())).collect(), fail_on }
+    }
+
+    fn fake_source() -> tempfile::TempDir {
+        let src = tempfile::tempdir().unwrap();
+        for s in SKILLS {
+            let d = src.path().join("skills").join(s);
+            fs::create_dir_all(d.join("references")).unwrap();
+            fs::write(d.join("SKILL.md"), format!("---\nname: {s}\n---\n")).unwrap();
+            fs::write(d.join("references/x.md"), "x").unwrap();
+        }
+        let ag = src.path().join("plugins/antigravity-codebase-wiki-llm");
+        fs::create_dir_all(&ag).unwrap();
+        fs::write(ag.join("plugin.json"), r#"{"version":"0.14.0"}"#).unwrap();
+        src
+    }
+
+    #[test]
+    fn claude_preview_follows_the_marketplace() {
+        let home = tempfile::tempdir().unwrap();
+        let d = AgentDirs::from_home(home.path());
+        let none = plugin_preview("claude", &d, &rec(&[("claude", "[]")], None)).unwrap();
+        assert_eq!(none.commands, vec![
+            "claude plugin marketplace add https://github.com/StefanoHernandez/codebase-wiki-llm.git#main".to_string(),
+            "claude plugin install codebase-wiki-llm@stefano-wiki".to_string(),
+        ]);
+        let main = r#"[{"name":"stefano-wiki","ref":"main"}]"#;
+        let on_main = plugin_preview("claude", &d, &rec(&[("claude", main)], None)).unwrap();
+        assert_eq!(on_main.commands[0], "claude plugin marketplace update stefano-wiki");
+        let dev = r#"[{"name":"stefano-wiki","ref":"dev"}]"#;
+        let on_dev = plugin_preview("claude", &d, &rec(&[("claude", dev)], None)).unwrap();
+        assert_eq!(on_dev.commands[0], "claude plugin marketplace remove stefano-wiki");
+        assert_eq!(on_dev.commands.len(), 3);
+    }
+
+    #[test]
+    fn codex_preview_uses_its_marketplace_name() {
+        let home = tempfile::tempdir().unwrap();
+        let d = AgentDirs::from_home(home.path());
+        let fresh = plugin_preview("codex", &d, &rec(&[("codex", "MARKETPLACE ROOT\nponytail /x\n")], None)).unwrap();
+        assert_eq!(fresh.commands[0], "codex plugin marketplace add StefanoHernandez/codebase-wiki-llm --ref main");
+        let there = plugin_preview("codex", &d, &rec(&[("codex", "MARKETPLACE ROOT\ncodebase-wiki-llm /y\n")], None)).unwrap();
+        assert_eq!(there.commands, vec![
+            "codex plugin marketplace upgrade codebase-wiki-llm".to_string(),
+            "codex plugin add codebase-wiki-llm@codebase-wiki-llm".to_string(),
+        ]);
+    }
+
+    #[test]
+    fn cursor_apply_copies_skills_and_spares_others() {
+        let home = tempfile::tempdir().unwrap();
+        let d = AgentDirs::from_home(home.path());
+        let other = d.cursor.join("skills/other");
+        fs::create_dir_all(&other).unwrap();
+        fs::write(other.join("SKILL.md"), "mine").unwrap();
+        let stale = d.cursor.join("skills/codebase-wiki-sync.bak");
+        fs::create_dir_all(&stale).unwrap();
+        let src = fake_source();
+        let r = rec(&[], None);
+        plugin_apply("cursor", &d, &r, Some(src.path()), Some("0.14.0")).unwrap();
+        plugin_apply("cursor", &d, &r, Some(src.path()), Some("0.14.0")).unwrap();
+        for s in SKILLS {
+            assert!(d.cursor.join("skills").join(s).join("references/x.md").is_file(), "{s}");
+            assert!(!d.cursor.join("skills").join(format!("{s}.bak")).exists(), "{s}.bak");
+        }
+        assert_eq!(fs::read_to_string(other.join("SKILL.md")).unwrap(), "mine");
+        assert_eq!(read_trimmed(&d.cursor.join("skills/codebase-wiki-llm/.installed-version")).as_deref(), Some("0.14.0"));
+        assert!(r.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn missing_source_folder_leaves_install_untouched() {
+        let home = tempfile::tempdir().unwrap();
+        let d = AgentDirs::from_home(home.path());
+        let src = fake_source();
+        plugin_apply("opencode", &d, &rec(&[], None), Some(src.path()), Some("0.13.0")).unwrap();
+        fs::remove_dir_all(src.path().join("skills/codebase-wiki-lint")).unwrap();
+        let err = plugin_apply("opencode", &d, &rec(&[], None), Some(src.path()), Some("0.14.0")).unwrap_err();
+        assert!(err.contains("codebase-wiki-lint"), "{err}");
+        for s in SKILLS {
+            assert!(d.opencode.join("skills").join(s).join("SKILL.md").is_file(), "{s}");
+        }
+        assert_eq!(read_trimmed(&d.opencode.join("skills/codebase-wiki-llm/.installed-version")).as_deref(), Some("0.13.0"));
+    }
+
+    #[test]
+    fn failed_copy_restores_previous_folders() {
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let (a_src, b_src) = (src.path().join("a"), src.path().join("b"));
+        fs::create_dir_all(&a_src).unwrap();
+        fs::write(a_src.join("f"), "new").unwrap();
+        fs::create_dir_all(&b_src).unwrap();
+        let (a, b) = (dst.path().join("a"), dst.path().join("b"));
+        fs::create_dir_all(&a).unwrap();
+        fs::write(a.join("f"), "old").unwrap();
+        // `b`'s parent is a file: creating it fails after `a` was already replaced.
+        fs::write(dst.path().join("blocker"), "").unwrap();
+        let bad = dst.path().join("blocker/b");
+        let err = replace_folders(&[(a_src, a.clone()), (b_src, bad)]);
+        assert!(err.is_err());
+        assert_eq!(fs::read_to_string(a.join("f")).unwrap(), "old");
+        assert!(!dst.path().join("a.bak").exists());
+        let _ = b;
+    }
+
+    #[test]
+    fn antigravity_apply_copies_the_plugin_folder() {
+        let home = tempfile::tempdir().unwrap();
+        let d = AgentDirs::from_home(home.path());
+        let src = fake_source();
+        plugin_apply("antigravity", &d, &rec(&[], None), Some(src.path()), Some("0.14.0")).unwrap();
+        assert!(d.gemini.join("config/plugins/codebase-wiki-llm/plugin.json").is_file());
+    }
+
+    #[test]
+    fn cli_apply_runs_the_preview_and_stops_at_first_error() {
+        let home = tempfile::tempdir().unwrap();
+        let d = AgentDirs::from_home(home.path());
+        let ok = rec(&[("claude", "[]")], None);
+        plugin_apply("claude", &d, &ok, None, None).unwrap();
+        assert_eq!(ok.calls.borrow()[1..], [
+            "claude plugin marketplace add https://github.com/StefanoHernandez/codebase-wiki-llm.git#main".to_string(),
+            "claude plugin install codebase-wiki-llm@stefano-wiki".to_string(),
+        ]);
+        let failing = rec(&[("claude", "[]")], Some("marketplace add"));
+        let err = plugin_apply("claude", &d, &failing, None, None).unwrap_err();
+        assert!(err.contains("boom"));
+        assert!(!failing.calls.borrow().iter().any(|c| c.contains("plugin install")));
     }
 
     #[test]
