@@ -882,8 +882,11 @@ pub fn load_wiki_snapshot(repo_path: &Path, wiki_root: &str) -> Result<WikiSnaps
     repo_files.dedup();
 
     let mut changed_files_by_page = BTreeMap::new();
-    // Pages share a few commits: check each commit once. A git process can cost ~0.25 s on Windows.
+    // Pages share a few commits, and a git process can cost ~0.4 s on Windows: each commit is
+    // checked and diffed once, then filtered per page. Both maps live for this load only.
+    // Sources git would read as globs keep their own `git diff -- <sources>`.
     let mut resolved: BTreeMap<String, Option<String>> = BTreeMap::new();
+    let mut changed_since: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for page in &pages {
         let (source_commit, sources) = extract_frontmatter_sources_and_commit(&page.content);
         if let Some(commit) = source_commit {
@@ -891,10 +894,16 @@ pub fn load_wiki_snapshot(repo_path: &Path, wiki_root: &str) -> Result<WikiSnaps
                 let base = resolved
                     .entry(commit.clone())
                     .or_insert_with(|| git_ops::resolve_source_commit(repo_path, &commit));
-                let changed = base
-                    .as_deref()
-                    .map(|b| git_ops::changed_files_since_resolved(repo_path, b, &sources))
-                    .unwrap_or_default();
+                let changed = match base.as_deref() {
+                    None => Vec::new(),
+                    Some(b) if sources.iter().all(|s| git_ops::is_plain_pathspec(s)) => {
+                        let all = changed_since
+                            .entry(b.to_string())
+                            .or_insert_with(|| git_ops::changed_files_since_resolved(repo_path, b, &[]));
+                        git_ops::filter_changed(all, &sources)
+                    }
+                    Some(b) => git_ops::changed_files_since_resolved(repo_path, b, &sources),
+                };
                 changed_files_by_page.insert(page.wiki_rel_path.clone(), changed);
             }
         }

@@ -184,11 +184,12 @@ pub fn changed_files_since_commit(
 }
 
 /// As [`changed_files_since_commit`], for a commit already checked by [`resolve_source_commit`].
+/// No renames: a moved file is listed under its old and its new path, with or without `sources`.
 pub(crate) fn changed_files_since_resolved(repo_path: &Path, resolved: &str, sources: &[String]) -> Vec<String> {
     let mut cmd = no_window_command("git");
     cmd.args(["-C"])
         .arg(repo_path)
-        .args(["diff", "--name-only", "-z", resolved]);
+        .args(["diff", "--no-renames", "--name-only", "-z", resolved]);
 
     if !sources.is_empty() {
         cmd.arg("--");
@@ -212,6 +213,30 @@ pub(crate) fn changed_files_since_resolved(repo_path: &Path, resolved: &str, sou
     files.sort();
     files.dedup();
     files
+}
+
+/// True when git reads `spec` as a plain repo-relative path (no glob, no `:(magic)`, no `.` or
+/// `..` parts): then [`filter_changed`] answers like `git diff -- <spec>`.
+pub(crate) fn is_plain_pathspec(spec: &str) -> bool {
+    !spec.is_empty()
+        && !spec.starts_with([':', '/'])
+        && !spec.contains(['*', '?', '[', '\\'])
+        && !spec.contains("//")
+        && !spec.split('/').any(|part| part == "." || part == "..")
+}
+
+/// The paths of `all` (one [`changed_files_since_resolved`] without sources) that plain
+/// pathspecs in `sources` select, as git does: the path itself or anything under it.
+pub(crate) fn filter_changed(all: &[String], sources: &[String]) -> Vec<String> {
+    all.iter()
+        .filter(|path| {
+            sources.iter().any(|s| {
+                let s = s.trim_end_matches('/');
+                path.as_str() == s || path.strip_prefix(s).is_some_and(|rest| rest.starts_with('/'))
+            })
+        })
+        .cloned()
+        .collect()
 }
 
 /// Diff of `rel_path` from `source_commit` (or HEAD when empty/"unknown") to the
@@ -360,6 +385,51 @@ mod news_tests {
         git(repo, &["add", file]);
         git(repo, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", msg]);
         head_commit(repo).unwrap()
+    }
+
+    #[test]
+    fn one_full_diff_filtered_matches_git_pathspecs() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = d.path();
+        git(repo, &["init", "-q"]);
+        for f in ["a.rs", "dir/x.rs", "dir/y.rs", "dir/sub/w.rs", "dir2/z.rs", "keep.rs"] {
+            let p = repo.join(f);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, f).unwrap();
+        }
+        git(repo, &["add", "."]);
+        git(repo, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "base"]);
+        let base = head_commit(repo).unwrap();
+        commit(repo, "a.rs", "changed and committed");
+        std::fs::write(repo.join("dir/sub/w.rs"), "changed, not committed").unwrap();
+        std::fs::remove_file(repo.join("dir/y.rs")).unwrap();
+        git(repo, &["mv", "dir/x.rs", "dir/x2.rs"]);
+        git(repo, &["mv", "dir2/z.rs", "moved.rs"]);
+        std::fs::write(repo.join("dir/a b \u{e8}.rs"), "new").unwrap();
+        git(repo, &["add", "dir/a b \u{e8}.rs"]);
+
+        let all = changed_files_since_resolved(repo, &base, &[]);
+        assert!(all.contains(&"dir/x.rs".to_string()) && all.contains(&"dir/x2.rs".to_string()), "{all:?}");
+        let cases: [&[&str]; 9] = [
+            &["a.rs"], &["dir"], &["dir/"], &["dir/sub", "a.rs"], &["dir2"], &["moved.rs"], &["di"], &["keep.rs"],
+            &["missing.rs"],
+        ];
+        for case in cases {
+            let sources: Vec<String> = case.iter().map(|s| s.to_string()).collect();
+            assert!(sources.iter().all(|s| is_plain_pathspec(s)), "{sources:?}");
+            let by_git = changed_files_since_resolved(repo, &base, &sources);
+            assert_eq!(filter_changed(&all, &sources), by_git, "{sources:?}");
+        }
+    }
+
+    #[test]
+    fn globs_magic_and_dot_parts_are_left_to_git() {
+        for s in ["src/*.rs", "a?.rs", "[ab].rs", ":(glob)**", "/abs", "./a.rs", "dir/../a.rs", "dir//a.rs", "", "C:\\x"] {
+            assert!(!is_plain_pathspec(s), "{s:?}");
+        }
+        for s in ["a.rs", "dir/", ".github/workflows/build.yml", "src-tauri/src/main.rs"] {
+            assert!(is_plain_pathspec(s), "{s:?}");
+        }
     }
 
     #[test]
