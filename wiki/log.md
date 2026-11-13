@@ -99,3 +99,8 @@ confidence: high
 - What: Impostazioni ha la sezione "Plugin Codebase Wiki LLM": per Claude Code, Codex, Antigravity, Cursor e OpenCode mostra la versione installata contro l'ultimo tag del plugin e la installa o aggiorna dopo un'anteprima (comandi delle CLI; copia di cartelle da un checkout del tag in `<data>/plugin-src`). Cursor e OpenCode ricevono solo le skill, senza hook. Primi passi chiede plugin e ricerca sullo stesso agente. CLI Codex del Mac di Stefano riparata (reinstallata la 0.169.0 con npm), comandi verificati su quella.
 - Evidence: `cargo test --workspace --features wiki-mcp/embed` → 118 pass (13 nuovi in `plugin_install`); `npm test` → 159 pass; `npm run build` ok; installazione reale non ancora provata a mano
 - IDs: none
+
+## 2026-11-13 · Plugin dall'app: prova reale e CLI su Windows · agent
+- What: Stefano ha provato sul suo Mac l'installazione da Impostazioni con Codex: plugin aggiornato da 0.11.0 e ricerca (MCP) collegata. Su Windows l'app ora trova `claude` e `codex` anche come `.exe`/`.cmd`/`.bat`, usa la cartella utente di sistema (`USERPROFILE`) al posto di `HOME` e cerca in `%APPDATA%\npm`; anche "Collega Claude Code" (MCP) prova `claude.cmd`; i comandi delle CLI non aprono più una finestra di console.
+- Evidence: prova a mano di Stefano (Codex, macOS); `cargo test -p codebase-wiki-app program_names` → pass; `cargo test -p rag-core plugin_install` → 14 pass; `cargo clippy --workspace --features wiki-mcp/embed` → 0 avvisi; codice `cfg(windows)` non compilato qui, comportamento su Windows non provato (T2)
+- IDs: T2, T11, T12

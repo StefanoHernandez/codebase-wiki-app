@@ -21,12 +21,13 @@ aperti sotto sono stati aperti da Stefano il 2026-11-11, nella sessione con Clau
 ## Prossimi passi
 <!-- wiki:next -->
 
-**In una riga:** 0.3.1 pubblicata il 2026-11-12 con CI verde; vista Progetti con l'attività degli agenti unita a `main` il 2026-11-12 (T10). Manca ancora la prova a mano dell'app installata e su Windows.
+**In una riga:** 0.4.0 pubblicata il 2026-11-13; su `feat/plugin-install` l'app installa e aggiorna il plugin per agente (provato da Stefano con Codex sul Mac) e trova le CLI anche su Windows. Manca l'ok per merge e release 0.5.0.
 
-1. Provare l'app 0.3.1 installata dal `.dmg` (T1)
-2. Provare un agente vero collegato via MCP (T5) e lo scarico della memoria (T4)
-3. Adopt della copia di prova di Versal e azioni umane su una wiki 0.13 (T3)
-4. Test su Windows (T2)
+1. Merge di `feat/plugin-install` e release 0.5.0 (T11)
+2. Note del catalogo dei modelli (T12)
+3. Provare l'app installata e un agente vero collegato via MCP (T1, T5) e lo scarico della memoria (T4)
+4. Adopt della copia di prova di Versal e azioni umane su una wiki 0.13 (T3)
+5. Test su Windows (T2)
 
 ## Aperti
 <!-- wiki:open -->
@@ -34,11 +35,13 @@ aperti sotto sono stati aperti da Stefano il 2026-11-11, nella sessione con Clau
 | ID | Status | Goal | Done when | Owner | Next verification | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | T1 | ⚪ | Prova a mano della 0.3.1 installata dal `.dmg` | aperta dal Finder: trova Python ≥3.10 (o lo dice in Salute); Ricerca indicizza e cerca; "Collega" scrive la config; con la firma ad-hoc Gatekeeper propone "Apri comunque" e non "danneggiata" | Stefano | prova a mano | ⚠️ NOT VERIFIED - non ancora fatta |
-| T2 | ⚪ | Prova su Windows | installer `.exe` funziona; azioni umane e ricerca vanno; "Collega Claude Code" trova `claude.cmd` o mostra il comando | Stefano | prova a mano su Windows | ⚠️ NOT VERIFIED - nessuna macchina Windows disponibile |
+| T2 | ⚪ | Prova su Windows | installer `.exe` funziona; azioni umane e ricerca vanno; "Collega Claude Code" e "Installa plugin" trovano `claude.cmd`/`codex.cmd` o mostrano il comando | Stefano | prova a mano su Windows | ⚠️ NOT VERIFIED - nessuna macchina Windows disponibile |
 | T3 | ⚪ | Adopt della copia di prova di Versal alla 0.13.1 e prova delle azioni umane | copia adottata con `50-benchmark/results/**` in Excluded paths; promuovi, chiudi ⚫, accetta decisione, firma; `validate-wiki.py --json` senza finding nuovi e `git diff` solo righe attese + log | Claude (agente) | `python3 resources/validate-wiki.py --json versal-test/docs` | ⚠️ NOT VERIFIED - copia pronta, adopt non fatto |
 | T4 | ⚪ | Verificare che il server MCP liberi i modelli dopo 5 minuti senza ricerche | in Monitoraggio Attività `codebase-wiki-mcp serve` scende da ~1–2 GB a pochi MB | unknown | Monitoraggio Attività dopo una ricerca + 6 minuti | ⚠️ NOT VERIFIED - codice in `crates/wiki-mcp/src/serve.rs` (`unload_when_idle`), mai osservato |
 | T5 | ⚪ | Prova di un agente reale collegato alla 0.3.1 | una domanda dove/come usa `search_code` con una query in inglese; una su stato o rischi apre la wiki da `index.md` | Stefano | sessione Claude Code o Codex dopo il riavvio | ⚠️ NOT VERIFIED - provato solo con il server 0.2.0 |
 | T6 | ⚪ | Prova di privacy del RAG | un termine di `.private-terms` messo in un file di codice non compare mai nei risultati di `search_code` | unknown | `codebase-wiki-mcp search` su repo di prova | ⚠️ NOT VERIFIED - coperto solo da test unitari (`filter_private_chunks`) |
+| T11 | ⚪ | Merge di `feat/plugin-install` su `main` e release 0.5.0 | branch unito; tag `v0.5.0` con CI verde su test e tre build; release con 7 pacchetti | Stefano | CI del tag | ⚠️ NOT VERIFIED - in attesa dell'ok di Stefano |
+| T12 | ⚪ | Note del catalogo dei modelli scritte per chi sceglie | ogni modello in Impostazioni ha una nota breve in italiano (lingua, velocità), senza risultati delle prove | Claude (agente) | `cargo test -p rag-core` | ⚠️ NOT VERIFIED - testo proposto in chat, non approvato |
 
 ## Proposte
 <!-- wiki:proposals -->
@@ -50,7 +53,6 @@ Idee e lavori suggeriti che nessuno ha ancora approvato: senza ID né icona.
 | Firma e notarizzazione Apple dell'app macOS | claude-code/claude-opus-5-5 | 2026-11-11 | senza firma Gatekeeper avvisa o blocca chi scarica il `.dmg` |
 | Plugin 0.14: controllo dei simboli citati dalla wiki che non esistono più (symbol drift) | claude-code/claude-opus-5-5 | 2026-11-11 | con tree-sitter l'app conosce già i simboli del codice |
 | Ampliare le domande di valutazione del RAG oltre le 18 sul codice | claude-code/claude-opus-5-5 | 2026-11-11 | decidere sul reranker con più dati ([0005](decisions/0005-reranker-facoltativo.md)) |
-| Su Windows cercare `claude.cmd` prima di `claude` | claude-code/claude-opus-5-5 | 2026-11-11 | `Command::new("claude")` può non trovare lo shim di npm (R1) |
 
 ## Chiusi
 <!-- wiki:done -->
