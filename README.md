@@ -141,6 +141,9 @@ Linux packages. Tag builds sign the update artifacts.
 
 Issues and pull requests are welcome. Contributors are listed in [CONTRIBUTORS.md](CONTRIBUTORS.md).
 
+Special thanks to [Alessandro Cianfaglione](https://github.com/cianf4), a friend before a
+contributor, for listening, for the advice, and for the ideas that shaped this project.
+
 ## License
 
 [MIT](LICENSE) © 2026 Stefano Hernandez

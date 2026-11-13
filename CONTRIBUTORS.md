@@ -18,7 +18,9 @@ Grazie a chi ha dedicato tempo a Codebase Wiki.
 
 ## Ringraziamenti
 
-Ad Alessandro, che ha usato la wiki fin dalle prime versioni del plugin e ha portato l'app sul
-primo PC Windows: senza quella prova i problemi di Windows sarebbero arrivati a chi la scarica.
+Ad Alessandro, amico prima che contributore: per tutte le volte che mi ha ascoltato parlare di
+questo progetto, per i consigli, le idee e gli spunti che lo hanno fatto crescere. Ha usato la
+wiki fin dalle prime versioni del plugin e ha portato l'app sul primo PC Windows: senza quella
+prova i problemi di Windows sarebbero arrivati a chi la scarica.
 
 Vuoi contribuire? Apri una issue o una pull request: chi contribuisce viene aggiunto qui.
