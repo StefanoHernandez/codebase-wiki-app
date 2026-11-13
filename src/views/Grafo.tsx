@@ -8,9 +8,11 @@ import {
   type MutableRefObject,
 } from 'react';
 import ForceGraph2D, { type ForceGraphMethods, type NodeObject } from 'react-force-graph-2d';
+import { graphHistory } from '../api';
 import { Empty } from '../components/Empty';
 import { PageDrawer, type PageDrawerTarget } from '../components/PageDrawer';
 import { buildWikiCodeGraph, filterWikiGraph } from '../lib/graph-builder';
+import { buildTimeline, visibleAt, type GraphHistory } from '../lib/graph-history';
 import { useProject } from '../state/project';
 import { useTheme } from '../state/theme';
 import type { GraphEdge, GraphNode, GraphNodeCategory } from '../types/wiki';
@@ -34,6 +36,9 @@ const endId = (end: string | FgNode) => (typeof end === 'object' ? end.id : end)
 
 
 const LEGEND_KEY = 'grafo.legendOpen';
+/** The whole history plays in about this long, whatever the number of commits. */
+const PLAY_MS = 15_000;
+const dateFmt = new Intl.DateTimeFormat('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
 export default function Grafo() {
   const project = useProject();
   const { theme } = useTheme();
@@ -62,6 +67,11 @@ export default function Grafo() {
   const [zoomK, setZoomK] = useState(1);
   const [drawer, setDrawer] = useState<PageDrawerTarget | null>(null);
   const [hiddenCats, setHiddenCats] = useState<Set<GraphNodeCategory>>(() => new Set());
+  // Storia: the graph replayed commit by commit. `frame` null = today's graph.
+  const [history, setHistory] = useState<GraphHistory | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [frame, setFrame] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
 
   const pagesByPath = useMemo(
     () => new Map(project.pages.map((p) => [p.relPath, p])),
@@ -92,14 +102,72 @@ export default function Grafo() {
     });
   }, [fullGraph, includeSources, onlyDrift, localHop, selectedId]);
 
+  const timeline = useMemo(
+    () => (history && fullGraph && snapshot?.wikiRoot ? buildTimeline(history, fullGraph.nodes, snapshot.wikiRoot) : null),
+    [history, fullGraph, snapshot?.wikiRoot]
+  );
+  const current = timeline && frame !== null ? timeline.frames[frame] : null;
+
+  // Node objects are kept across renders so positions survive filter changes and each
+  // timeline frame: the graph grows in place instead of re-laying out from scratch.
+  const nodeCache = useRef(new Map<string, FgNode>());
   const graphData = useMemo(() => {
-    const nodes = filtered.nodes.filter((n) => !hiddenCats.has(n.category));
+    const shown = timeline && frame !== null ? visibleAt(filtered, timeline.birth, frame) : filtered;
+    const nodes = shown.nodes.filter((n) => !hiddenCats.has(n.category));
     const ids = new Set(nodes.map((n) => n.id));
-    return {
-      nodes: nodes.map((n) => ({ ...n })),
-      links: filtered.edges.filter((e) => ids.has(e.source) && ids.has(e.target)).map((e) => ({ ...e })),
-    };
-  }, [filtered, hiddenCats]);
+    const links = shown.edges.filter((e) => ids.has(e.source) && ids.has(e.target));
+    const cache = nodeCache.current;
+    const out = nodes.map((n) => {
+      const prev = cache.get(n.id);
+      if (prev) return Object.assign(prev, n);
+      // A new node starts next to a neighbour already on screen.
+      const link = links.find((l) => (l.source === n.id && cache.has(l.target)) || (l.target === n.id && cache.has(l.source)));
+      const near = link ? cache.get(link.source === n.id ? link.target : link.source) : undefined;
+      const node: FgNode = { ...n };
+      if (near?.x != null && near.y != null) {
+        node.x = near.x + (Math.random() - 0.5) * 20;
+        node.y = near.y + (Math.random() - 0.5) * 20;
+      }
+      cache.set(n.id, node);
+      return node;
+    });
+    return { nodes: out, links: links.map((e) => ({ ...e })) };
+  }, [filtered, hiddenCats, timeline, frame]);
+
+  const startHistory = useCallback(async () => {
+    if (!snapshot) return;
+    setHistoryError(null);
+    try {
+      const h = history ?? (await graphHistory(snapshot.repoPath));
+      setHistory(h);
+      setFrame(0);
+      setPlaying(true);
+    } catch (e) {
+      setHistoryError(String(e));
+    }
+  }, [snapshot, history]);
+  const exitHistory = useCallback(() => {
+    setPlaying(false);
+    setFrame(null);
+  }, []);
+
+  useEffect(() => {
+    if (timeline && frame !== null && timeline.frames.length === 0) {
+      setHistoryError('Nessun commit in git: la storia del grafo parte dal primo commit.');
+      exitHistory();
+    }
+  }, [timeline, frame, exitHistory]);
+
+  useEffect(() => {
+    if (!playing || !timeline || frame === null) return;
+    if (frame >= timeline.frames.length - 1) {
+      setPlaying(false);
+      return;
+    }
+    const step = Math.min(800, Math.max(80, PLAY_MS / timeline.frames.length));
+    const t = setTimeout(() => setFrame((f) => (f === null ? f : f + 1)), step);
+    return () => clearTimeout(t);
+  }, [playing, timeline, frame]);
 
   const categoryOf = useMemo(() => new Map(filtered.nodes.map((n) => [n.id, n.category])), [filtered.nodes]);
 
@@ -227,10 +295,14 @@ export default function Grafo() {
   }, []);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !drawer && clearFocus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || drawer) return;
+      if (frame !== null) exitHistory();
+      else clearFocus();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [drawer, clearFocus]);
+  }, [drawer, clearFocus, frame, exitHistory]);
 
   const openDrawerForNode = useCallback((node: GraphNode) => {
     if (node.kind === 'wiki') {
@@ -276,6 +348,17 @@ export default function Grafo() {
         ctx.lineWidth = 1.5 / globalScale;
         ctx.stroke();
       }
+      // Storia: a halo for pages born in this commit, a ring for pages it changed.
+      if (current && (current.born.has(node.id) || current.touched.has(node.id))) {
+        const born = current.born.has(node.id);
+        ctx.beginPath();
+        ctx.arc(x, y, r + (born ? 5 : 3) / globalScale + r * 0.4, 0, 2 * Math.PI);
+        ctx.strokeStyle = born ? fill : tokenInk;
+        ctx.globalAlpha = born ? 0.55 : 0.8;
+        ctx.lineWidth = (born ? 3 : 1.4) / globalScale;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
 
       // Drift / lint: a small badge at the top-right, so status never paints over the category fill.
       const badge = (color: string, dx: number) => {
@@ -303,7 +386,7 @@ export default function Grafo() {
         ctx.globalAlpha = 1;
       }
     },
-    [colors, tokenInk, tokenDrift, tokenError, highlight, selectedId, hoverId, labelFont]
+    [colors, tokenInk, tokenDrift, tokenError, highlight, selectedId, hoverId, labelFont, current]
   );
 
   /** A link's state: highlighted (touches the hovered/selected node), dimmed, or normal. */
@@ -388,7 +471,21 @@ export default function Grafo() {
           >
             Adatta
           </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => (frame === null ? void startHistory() : exitHistory())}
+            title="Riproduce la crescita del grafo commit per commit"
+            aria-pressed={frame !== null}
+          >
+            {frame === null ? '▶ Storia' : 'Esci dalla storia'}
+          </button>
         </div>
+        {historyError && frame === null && (
+          <p className="grafo-history-error" role="status">
+            {historyError}
+          </p>
+        )}
 
         {showEmpty ? (
           <div className="grafo-empty">
@@ -490,6 +587,44 @@ export default function Grafo() {
             </span>
           </div>
         </details>
+        {timeline && current && frame !== null && (
+          <div className="grafo-history" role="group" aria-label="Storia del grafo">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                if (!playing && frame >= timeline.frames.length - 1) setFrame(0);
+                setPlaying(!playing);
+              }}
+              aria-label={playing ? 'Pausa' : 'Riproduci'}
+            >
+              {playing ? '⏸' : '▶'}
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={timeline.frames.length - 1}
+              value={frame}
+              onChange={(e) => {
+                setPlaying(false);
+                setFrame(Number(e.target.value));
+              }}
+              aria-label="Commit"
+            />
+            <div className="grafo-history-label">
+              <span>
+                {dateFmt.format(new Date(current.date))} · {frame + 1}/{timeline.frames.length}
+                {history?.truncated && frame === 0 ? ' · storia più vecchia omessa' : ''}
+              </span>
+              <span className="grafo-history-subject" title={current.subject}>
+                {current.subject}
+              </span>
+            </div>
+            <button type="button" className="btn" onClick={exitHistory}>
+              Esci
+            </button>
+          </div>
+        )}
       </div>
 
       <PageDrawer

@@ -41,6 +41,7 @@ fn main() {
             commands::read_wiki_file,
             commands::read_source_file,
             commands::source_diff,
+            commands::graph_history,
             commands::run_lint,
             commands::git_user_name,
             commands::workflow_prompt,

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 use wiki_core::{
-    build_workflow_prompt, collect_repo_files_recursive, file_diff_since_commit, inspect_git_state,
+    build_workflow_prompt, collect_repo_files_recursive, file_diff_since_commit, file_history, FileHistory, inspect_git_state,
     is_git_repo, load_wiki_snapshot, read_repo_file_safe, resolve_wiki_root,
     read_wiki_file_safe, run_structural_lint_with, watch_repo_reporting,
     write_wiki_file_safe, write_wiki_files_safe, LintReport, RepoFilePayload, WatchHandle,
@@ -568,6 +568,12 @@ pub async fn read_source_file(
     rel_path: String,
 ) -> Result<RepoFilePayload, String> {
     blocking(move || read_repo_file_safe(&opened_repo(&app, &repo)?, &rel_path, None)).await
+}
+
+/// Commits for the graph timeline (Grafo → Storia), oldest first.
+#[tauri::command]
+pub async fn graph_history(app: AppHandle, repo: String) -> Result<FileHistory, String> {
+    blocking(move || Ok(file_history(&opened_repo(&app, &repo)?, 2000))).await
 }
 
 #[tauri::command]

@@ -67,7 +67,7 @@ function normalizeSourcePath(raw: string): string {
   return s;
 }
 
-function matchesSource(repoFile: string, source: string): boolean {
+export function matchesSource(repoFile: string, source: string): boolean {
   if (repoFile === source) return true;
   if (source.endsWith('/')) {
     return repoFile.startsWith(source);

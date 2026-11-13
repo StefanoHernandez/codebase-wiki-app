@@ -168,3 +168,52 @@
 .grafo-swatch-dash {
   border-top-style: dashed;
 }
+
+/* Storia: playback bar at the bottom right, clear of the legend at the bottom left. */
+.grafo-history {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(520px, calc(100% - 32px));
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-overlay);
+  font-size: var(--text-sm);
+}
+.grafo-history input[type='range'] {
+  flex: 1;
+  min-width: 80px;
+  accent-color: var(--ink);
+}
+.grafo-history-label {
+  display: grid;
+  min-width: 0;
+  max-width: 45%;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.grafo-history-subject {
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grafo-history-error {
+  position: absolute;
+  top: 64px;
+  left: 16px;
+  z-index: 1;
+  margin: 0;
+  padding: 4px 8px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}

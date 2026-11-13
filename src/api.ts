@@ -11,6 +11,7 @@ import type {
   RepoFilePayload,
   WikiSnapshot,
 } from './types/snapshot';
+import type { GraphHistory } from './lib/graph-history';
 
 export type { UnlistenFn };
 
@@ -41,6 +42,10 @@ export function projectNews(repo: string): Promise<ProjectNews> {
 
 export function agentActivity(limit: number): Promise<ActivityLine[]> {
   return invoke('agent_activity', { limit });
+}
+
+export function graphHistory(repo: string): Promise<GraphHistory> {
+  return invoke('graph_history', { repo });
 }
 
 export function loadSnapshot(repo: string): Promise<WikiSnapshot> {
