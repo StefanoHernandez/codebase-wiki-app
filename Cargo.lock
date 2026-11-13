@@ -449,7 +449,7 @@ dependencies = [
 
 [[package]]
 name = "codebase-wiki-app"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "dunce",
  "rag-core",
@@ -3573,7 +3573,7 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "rag-core"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "dirs 6.0.0",
  "fastembed",
@@ -6281,7 +6281,7 @@ checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
 
 [[package]]
 name = "wiki-core"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "notify",
  "regex",
@@ -6293,7 +6293,7 @@ dependencies = [
 
 [[package]]
 name = "wiki-mcp"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "rag-core",
  "rmcp",

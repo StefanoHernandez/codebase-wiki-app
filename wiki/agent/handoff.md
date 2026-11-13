@@ -19,9 +19,9 @@ confidence: high
 
 - Tracker IDs: T1, T2, T3, T4, T5, T13
 - Goal: nessun sottoprogetto aperto; restano le prove a mano (T1–T5; T13 ora provabile: una 0.6.0 installata deve proporre la 0.7.0)
-- Last completed step: release 0.7.0 (barra laterale "Notte", contenuto morbido, icona "00_modern", interfaccia in inglese); da rivedere a mano le viste con un progetto aperto e i testi inglesi
+- Last completed step: release 0.7.1 (aggiornamento del plugin per Claude Code con `plugin update`; Antigravity con cartella collegata reinstallata come copia; validatore del plugin 0.15.0)
 - Current branch: `main`
-- Last commit: `release: 0.7.0` dopo il merge di `feat/notte` (`5be5d53`)
+- Last commit: `release: 0.7.1`
 - Worktree: clean
 
 ## Baton per il prossimo agente
