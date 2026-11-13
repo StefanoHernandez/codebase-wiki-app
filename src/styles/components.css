@@ -250,7 +250,11 @@ kbd {
   max-width: none;
   padding: 0;
   flex: 1;
+  min-height: 0;
   position: relative;
+  /* Full-bleed views (Grafo) fill the remaining height. */
+  display: flex;
+  flex-direction: column;
 }
 .welcome {
   padding-top: 18vh;
