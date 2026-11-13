@@ -8,7 +8,7 @@ sources:
   - wiki/log.md
   - wiki/project/work-tracker.md
   - crates/wiki-mcp/src/serve.rs
-source_commit: 0eba9e4
+source_commit: 02a2ab8
 confidence: high
 ---
 
@@ -17,11 +17,11 @@ confidence: high
 ## Stato del lavoro
 <!-- wiki:state -->
 
-- Tracker IDs: T1, T2, T3, T4, T5
-- Goal: nessun sottoprogetto aperto; restano le prove a mano (T1–T5)
-- Last completed step: release app 0.5.1 (note dei modelli) e plugin 0.14.1 (regola di contesto senza `search_wiki`)
+- Tracker IDs: T1, T2, T3, T4, T5, T13
+- Goal: release 0.6.0 (aggiornamenti dell'app e del plugin, PR #5 e #6 di Alessandro Cianfaglione); poi le prove a mano (T1–T5, T13)
+- Last completed step: unite su `main` le PR #5 e #6 e il branch `feat/updates`; test verdi
 - Current branch: `main`
-- Last commit: `release: 0.5.1` (CI del tag verde, run 43415453676)
+- Last commit: `release: 0.6.0`
 - Worktree: clean
 
 ## Baton per il prossimo agente
@@ -69,5 +69,5 @@ confidence: high
 <!-- wiki:evidence-trail -->
 
 - `log`: [log.md](../log.md), voci fino al 2026-11-13
-- `tracker`: T1–T6 aperti; T9–T12 chiusi
+- `tracker`: T1–T6, T13 aperti; T9–T12 chiusi
 - `decisions`: [0004](../project/decisions/0004-rag-solo-codice.md), [0005](../project/decisions/0005-reranker-facoltativo.md)

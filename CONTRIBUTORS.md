@@ -10,8 +10,10 @@ Grazie a chi ha dedicato tempo a Codebase Wiki.
 ## Contributori
 
 - **Alessandro Cianfaglione** ([@cianf4](https://github.com/cianf4)) — prima prova dell'app su
-  Windows e correzione delle finestre di console e dell'apertura lenta dei progetti
-  ([#5](https://github.com/StefanoHernandez/codebase-wiki-app/pull/5), 0.6.0).
+  Windows; niente finestre di console per i processi dell'app
+  ([#5](https://github.com/StefanoHernandez/codebase-wiki-app/pull/5)) e apertura dei progetti
+  con meno della metà dei processi `git`
+  ([#6](https://github.com/StefanoHernandez/codebase-wiki-app/pull/6)), nella 0.6.0.
 
 ## Ringraziamenti
 
