@@ -28,6 +28,12 @@ export function pluginStateText(r: PluginRow): string {
   return r.installed ?? '';
 }
 
+/** Why the install button is off, or null. Folder agents copy from the latest release, so they need it. */
+export function pluginBlocked(r: PluginRow): string | null {
+  const copies = r.skillsOnly || r.id === 'antigravity';
+  return copies && !r.latest ? 'serve la connessione per scaricare il plugin' : null;
+}
+
 /** True when one agent has both the plugin (any version) and the search server connected. */
 export function agentReady(mcp: Array<{ id: string; status: string }>, plugins: PluginRow[]): boolean {
   return plugins.some((p) => p.installed && mcp.some((m) => m.id === p.id && m.status !== 'absent'));

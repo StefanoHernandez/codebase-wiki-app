@@ -8,7 +8,7 @@ import { PYTHON_KEY, useProject } from '../state/project';
 import { useRag } from '../state/rag';
 import { useNav } from '../state/nav';
 import { markFirstRunDone } from './PrimiPassi';
-import { AGENT_LABEL, pluginStateText, type PluginRow } from '../lib/plugin';
+import { AGENT_LABEL, pluginBlocked, pluginStateText, type PluginRow } from '../lib/plugin';
 import type { ThemeChoice } from '../state/theme';
 import './ricerca.css';
 
@@ -460,6 +460,7 @@ function PluginAgenti() {
       setRows(await invoke<PluginRow[]>('plugin_state'));
     } catch (e) {
       setError(message(e));
+      setRows([]);
     }
   }, []);
   useEffect(() => {
@@ -467,12 +468,16 @@ function PluginAgenti() {
   }, [refresh]);
 
   const open = async (row: PluginRow) => {
+    if (busy) return;
     setError(null);
+    setBusy(true);
     try {
       const p = await invoke<{ commands: string[]; folders: string[] }>('plugin_preview', { agent: row.id });
       setDlg({ id: row.id, label: AGENT_LABEL[row.id] ?? row.id, update: row.status === 'outdated', ...p });
     } catch (e) {
       setError(message(e));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -487,6 +492,8 @@ function PluginAgenti() {
     } catch (e) {
       setError(message(e));
       setDlg(null);
+      // A CLI may have done part of the work: show what is there now.
+      void refresh();
     } finally {
       setBusy(false);
     }
@@ -511,7 +518,8 @@ function PluginAgenti() {
                 <td>{AGENT_LABEL[row.id] ?? row.id}</td>
                 <td className={row.status === 'current' ? undefined : 'muted'}>{pluginStateText(row)}</td>
                 <td className="muted">
-                  {row.error ?? (row.skillsOnly && row.agentFound ? 'solo skill, senza gli avvisi automatici' : '')}
+                  {row.error ??
+                    (row.agentFound ? (pluginBlocked(row) ?? (row.skillsOnly ? 'solo skill, senza gli avvisi automatici' : '')) : '')}
                 </td>
                 <td className="ricerca-actions">
                   {row.agentFound && row.error ? (
@@ -523,7 +531,7 @@ function PluginAgenti() {
                       Copia comandi
                     </button>
                   ) : row.agentFound && (row.status === 'missing' || row.status === 'outdated') ? (
-                    <button type="button" className="btn" onClick={() => void open(row)} disabled={busy}>
+                    <button type="button" className="btn" onClick={() => void open(row)} disabled={busy || !!pluginBlocked(row)}>
                       {row.status === 'missing' ? 'Installa plugin' : 'Aggiorna plugin'}
                     </button>
                   ) : null}

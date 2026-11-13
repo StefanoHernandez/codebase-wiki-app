@@ -1103,8 +1103,21 @@ impl CliRunner {
         for extra in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"] {
             dirs_list.push(PathBuf::from(extra));
         }
-        for extra in [".local/bin", ".npm-global/bin", ".bun/bin", ".cargo/bin"] {
+        for extra in [
+            ".local/bin",
+            ".claude/local",
+            ".npm-global/bin",
+            ".volta/bin",
+            ".asdf/shims",
+            ".local/share/mise/shims",
+            ".bun/bin",
+            ".cargo/bin",
+        ] {
             dirs_list.push(home.join(extra));
+        }
+        // nvm keeps one bin folder per node version; any of them serves `env node`.
+        if let Ok(versions) = std::fs::read_dir(home.join(".nvm/versions/node")) {
+            dirs_list.extend(versions.flatten().map(|v| v.path().join("bin")));
         }
         Self { path: std::env::join_paths(dirs_list).unwrap_or_default() }
     }
@@ -1118,31 +1131,69 @@ impl Runner for CliRunner {
     fn run(&self, args: &[&str]) -> Result<String, String> {
         let (program, rest) = args.split_first().ok_or("comando vuoto")?;
         let exe = self.resolve(program).ok_or_else(|| format!("{program}: comando non trovato"))?;
-        let out = Command::new(exe)
+        let mut child = Command::new(exe)
             .args(rest)
             .env("PATH", &self.path)
-            .output()
+            // Never wait for a person: no stdin, no git credential prompt.
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
             .map_err(|e| format!("{program}: {e}"))?;
-        if out.status.success() {
-            Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+        let read = |pipe: Option<Box<dyn std::io::Read + Send>>| {
+            std::thread::spawn(move || {
+                let mut buf = Vec::new();
+                if let Some(mut p) = pipe {
+                    let _ = p.read_to_end(&mut buf);
+                }
+                buf
+            })
+        };
+        let stdout = read(child.stdout.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>));
+        let stderr = read(child.stderr.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>));
+        let deadline = std::time::Instant::now() + CLI_TIMEOUT;
+        let status = loop {
+            if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+                break status;
+            }
+            if std::time::Instant::now() > deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("{program}: nessuna risposta dopo {} s", CLI_TIMEOUT.as_secs()));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        };
+        let out = stdout.join().unwrap_or_default();
+        let err = String::from_utf8_lossy(&stderr.join().unwrap_or_default()).trim().to_string();
+        if status.success() {
+            Ok(String::from_utf8_lossy(&out).into_owned())
         } else {
-            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-            Err(if err.is_empty() { format!("{program}: uscita {}", out.status) } else { err })
+            Err(if err.is_empty() { format!("{program}: uscita {status}") } else { err })
         }
     }
 }
 
-/// Newest released plugin version, remembered once known (offline → `None`, retried next time).
+const CLI_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+const LATEST_RETRY: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Newest released plugin version, remembered once known. A failed lookup (offline) is retried
+/// after a minute; the network call runs without holding the lock.
 fn latest_plugin_version(runner: &dyn Runner) -> Option<String> {
-    static LATEST: Mutex<Option<String>> = Mutex::new(None);
-    let mut cached = LATEST.lock().unwrap_or_else(|e| e.into_inner());
-    if cached.is_none() {
-        *cached = runner
-            .run(&["git", "ls-remote", "--tags", REPO_URL])
-            .ok()
-            .and_then(|out| plugin_install::latest_tag(&out));
+    static LATEST: Mutex<(Option<String>, Option<std::time::Instant>)> = Mutex::new((None, None));
+    {
+        let cached = LATEST.lock().unwrap_or_else(|e| e.into_inner());
+        if cached.0.is_some() || cached.1.is_some_and(|t| t.elapsed() < LATEST_RETRY) {
+            return cached.0.clone();
+        }
     }
-    cached.clone()
+    let found = runner
+        .run(&["git", "ls-remote", "--tags", REPO_URL])
+        .ok()
+        .and_then(|out| plugin_install::latest_tag(&out));
+    let mut cached = LATEST.lock().unwrap_or_else(|e| e.into_inner());
+    *cached = (found.clone(), found.is_none().then(std::time::Instant::now));
+    found
 }
 
 /// Shallow checkout of the plugin repo at `v<version>` under the data dir.
@@ -1153,6 +1204,8 @@ fn plugin_source(runner: &dyn Runner, version: &str) -> Result<PathBuf, String> 
     if dir.join(".git").is_dir() {
         runner.run(&["git", "-C", &d, "fetch", "--depth", "1", "origin", "tag", &tag])?;
         runner.run(&["git", "-C", &d, "checkout", "--force", &tag])?;
+        // Files of older versions must not be copied into the agents.
+        runner.run(&["git", "-C", &d, "clean", "-fdx"])?;
     } else {
         if dir.exists() {
             std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;

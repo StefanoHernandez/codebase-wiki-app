@@ -207,7 +207,10 @@ pub fn plugin_state(dirs: &AgentDirs, runner: &dyn Runner, latest: Option<&str>)
                             row.agent_found = dir.is_dir();
                             if row.agent_found {
                                 row.error = Some(e);
-                                row.manual = cli_commands(id, false);
+                                // One line per step, valid in any shell: add the marketplace, or update it
+                                // when it is already there; then install.
+                                let (add, update) = (cli_commands(id, false), cli_commands(id, true));
+                                row.manual = vec![format!("{} || {}", add[0], update[0]), add[1].clone()];
                             }
                         }
                     }
@@ -291,7 +294,8 @@ fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
     for entry in std::fs::read_dir(from)? {
         let entry = entry?;
         let target = to.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
+        // `metadata` follows symlinks: a linked folder is copied as a folder.
+        if std::fs::metadata(entry.path())?.is_dir() {
             copy_dir(&entry.path(), &target)?;
         } else {
             std::fs::copy(entry.path(), target)?;
@@ -306,43 +310,45 @@ fn bak(path: &Path) -> PathBuf {
     path.with_file_name(name)
 }
 
-/// Replaces each target with its source; on any failure every target goes back to what it was.
-fn replace_folders(pairs: &[(PathBuf, PathBuf)]) -> Result<(), String> {
+/// Replaces each target with its source, then runs `finish` (e.g. the version marker); on any
+/// failure only the targets this call touched go back to what they were.
+fn replace_folders(pairs: &[(PathBuf, PathBuf)], finish: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
     for (src, _) in pairs {
         if !src.is_dir() {
             return Err(format!("Cartella del plugin mancante: {}", src.display()));
         }
     }
-    let mut moved: Vec<&PathBuf> = Vec::new();
+    // (target, had a previous version moved to `.bak`)
+    let mut touched: Vec<(&PathBuf, bool)> = Vec::new();
     let result = (|| {
         for (src, dst) in pairs {
             let b = bak(dst);
             if b.exists() {
                 std::fs::remove_dir_all(&b).map_err(|e| format!("{}: {e}", b.display()))?;
             }
-            if dst.exists() {
+            let existed = dst.exists();
+            if existed {
                 std::fs::rename(dst, &b).map_err(|e| format!("{}: {e}", dst.display()))?;
-                moved.push(dst);
             }
+            touched.push((dst, existed));
             copy_dir(src, dst).map_err(|e| format!("{}: {e}", dst.display()))?;
         }
-        Ok(())
+        finish()
     })();
     match result {
         Ok(()) => {
-            for dst in moved {
-                let _ = std::fs::remove_dir_all(bak(dst));
+            for (dst, existed) in touched {
+                if existed {
+                    let _ = std::fs::remove_dir_all(bak(dst));
+                }
             }
             Ok(())
         }
         Err(e) => {
-            for (_, dst) in pairs {
-                let b = bak(dst);
-                if moved.contains(&dst) {
-                    let _ = std::fs::remove_dir_all(dst);
-                    let _ = std::fs::rename(&b, dst);
-                } else if !b.exists() {
-                    let _ = std::fs::remove_dir_all(dst);
+            for (dst, existed) in touched {
+                let _ = std::fs::remove_dir_all(dst);
+                if existed {
+                    let _ = std::fs::rename(bak(dst), dst);
                 }
             }
             Err(e)
@@ -370,11 +376,11 @@ pub fn plugin_apply(
     }
     let source = source.ok_or("Copia del plugin non disponibile: controlla la connessione e riprova.")?;
     let pairs: Vec<(PathBuf, PathBuf)> = folder_sources(id, source).into_iter().zip(targets).collect();
-    replace_folders(&pairs)?;
-    if let (Some(root), Some(v)) = (dirs.skills_root(id), version) {
-        std::fs::write(root.join(PLUGIN).join(MARKER), format!("{v}\n")).map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    let marker = dirs.skills_root(id).map(|root| root.join(PLUGIN).join(MARKER));
+    replace_folders(&pairs, || match (marker, version) {
+        (Some(path), Some(v)) => std::fs::write(&path, format!("{v}\n")).map_err(|e| format!("{}: {e}", path.display())),
+        _ => Ok(()),
+    })
 }
 
 #[cfg(test)]
@@ -514,11 +520,46 @@ mod tests {
         // `b`'s parent is a file: creating it fails after `a` was already replaced.
         fs::write(dst.path().join("blocker"), "").unwrap();
         let bad = dst.path().join("blocker/b");
-        let err = replace_folders(&[(a_src, a.clone()), (b_src, bad)]);
+        let err = replace_folders(&[(a_src, a.clone()), (b_src, bad)], || Ok(()));
         assert!(err.is_err());
         assert_eq!(fs::read_to_string(a.join("f")).unwrap(), "old");
         assert!(!dst.path().join("a.bak").exists());
         let _ = b;
+    }
+
+    #[test]
+    fn failure_in_the_middle_keeps_later_folders() {
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let mut pairs = Vec::new();
+        for name in ["a", "b", "c"] {
+            let s = src.path().join(name);
+            fs::create_dir_all(&s).unwrap();
+            fs::write(s.join("f"), "new").unwrap();
+            let d = dst.path().join(name);
+            fs::create_dir_all(&d).unwrap();
+            fs::write(d.join("f"), "old").unwrap();
+            pairs.push((s, d));
+        }
+        // `b`'s source holds an unreadable file: the copy fails on the second pair.
+        let locked = src.path().join("b/locked");
+        fs::write(&locked, "x").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        }
+        let err = replace_folders(&pairs, || Ok(()));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&locked, fs::Permissions::from_mode(0o644)).unwrap();
+        }
+        assert!(err.is_err());
+        for name in ["a", "b", "c"] {
+            assert_eq!(fs::read_to_string(dst.path().join(name).join("f")).unwrap(), "old", "{name}");
+            assert!(!dst.path().join(format!("{name}.bak")).exists(), "{name}.bak");
+        }
     }
 
     #[test]
@@ -590,7 +631,7 @@ mod tests {
         assert!(r.agent_found);
         assert_eq!(r.error.as_deref(), Some("spawn codex ENOENT"));
         assert_eq!(r.manual, vec![
-            "codex plugin marketplace add StefanoHernandez/codebase-wiki-llm --ref main".to_string(),
+            "codex plugin marketplace add StefanoHernandez/codebase-wiki-llm --ref main || codex plugin marketplace upgrade codebase-wiki-llm".to_string(),
             "codex plugin add codebase-wiki-llm@codebase-wiki-llm".to_string(),
         ]);
     }
