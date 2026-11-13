@@ -156,6 +156,11 @@ fn read_trimmed(path: &Path) -> Option<String> {
 }
 
 fn antigravity_installed(dirs: &AgentDirs) -> Option<String> {
+    // Antigravity skips a linked plugin folder (`agy plugin list` leaves it out): count it as missing,
+    // so installing replaces the link with a copy it loads.
+    if std::fs::symlink_metadata(dirs.antigravity_plugin()).is_ok_and(|m| m.file_type().is_symlink()) {
+        return None;
+    }
     let text = std::fs::read_to_string(dirs.antigravity_plugin().join("plugin.json")).ok()?;
     let v: serde_json::Value = serde_json::from_str(&text).ok()?;
     v.get("version")?.as_str().map(String::from)
@@ -214,7 +219,13 @@ pub fn plugin_state(dirs: &AgentDirs, runner: &dyn Runner, latest: Option<&str>)
                                 // One line per step, valid in any shell: add the marketplace, or update it
                                 // when it is already there; then install.
                                 let (add, update) = (cli_commands(id, false), cli_commands(id, true));
-                                row.manual = vec![format!("{} || {}", add[0], update[0]), add[1].clone()];
+                                let install = if id == "claude" {
+                                    // `install` leaves an installed plugin as it is: try `update` first.
+                                    format!("claude plugin update {CLAUDE_ID} || {}", add[1])
+                                } else {
+                                    add[1].clone()
+                                };
+                                row.manual = vec![format!("{} || {}", add[0], update[0]), install];
                             }
                         }
                     }
@@ -252,6 +263,10 @@ fn claude_marketplace(runner: &dyn Runner) -> Option<bool> {
     Some(m.get("ref").and_then(|r| r.as_str()).is_none_or(|r| r == "main"))
 }
 
+fn claude_has_plugin(runner: &dyn Runner) -> bool {
+    runner.run(&["claude", "plugin", "list", "--json"]).ok().and_then(|out| claude_installed(&out)).is_some()
+}
+
 fn codex_marketplace(runner: &dyn Runner) -> bool {
     runner
         .run(&["codex", "plugin", "marketplace", "list"])
@@ -277,6 +292,11 @@ fn folder_sources(id: &str, source: &Path) -> Vec<PathBuf> {
 pub fn plugin_preview(id: &str, dirs: &AgentDirs, runner: &dyn Runner) -> Result<PluginPreview, String> {
     let commands = match id {
         "claude" => match claude_marketplace(runner) {
+            // `claude plugin install` on an installed plugin keeps the old version; `update` moves it.
+            Some(true) if claude_has_plugin(runner) => vec![
+                format!("claude plugin marketplace update {CLAUDE_MARKETPLACE}"),
+                format!("claude plugin update {CLAUDE_ID}"),
+            ],
             Some(true) => cli_commands("claude", true),
             Some(false) => {
                 let mut c = vec![format!("claude plugin marketplace remove {CLAUDE_MARKETPLACE}")];
@@ -421,6 +441,9 @@ mod tests {
             if line.contains("marketplace list") {
                 return Ok(self.markets.get(args[0]).cloned().unwrap_or_default());
             }
+            if line.contains("plugin list") && args[0] == "claude" {
+                return Ok(self.markets.get("claude-plugins").cloned().unwrap_or_default());
+            }
             Ok(String::new())
         }
     }
@@ -453,7 +476,16 @@ mod tests {
         ]);
         let main = r#"[{"name":"stefano-wiki","ref":"main"}]"#;
         let on_main = plugin_preview("claude", &d, &rec(&[("claude", main)], None)).unwrap();
-        assert_eq!(on_main.commands[0], "claude plugin marketplace update stefano-wiki");
+        assert_eq!(on_main.commands, vec![
+            "claude plugin marketplace update stefano-wiki".to_string(),
+            "claude plugin install codebase-wiki-llm@stefano-wiki".to_string(),
+        ]);
+        let installed = r#"[{"id":"codebase-wiki-llm@stefano-wiki","version":"0.14.0"}]"#;
+        let update = plugin_preview("claude", &d, &rec(&[("claude", main), ("claude-plugins", installed)], None)).unwrap();
+        assert_eq!(update.commands, vec![
+            "claude plugin marketplace update stefano-wiki".to_string(),
+            "claude plugin update codebase-wiki-llm@stefano-wiki".to_string(),
+        ]);
         let dev = r#"[{"name":"stefano-wiki","ref":"dev"}]"#;
         let on_dev = plugin_preview("claude", &d, &rec(&[("claude", dev)], None)).unwrap();
         assert_eq!(on_dev.commands[0], "claude plugin marketplace remove stefano-wiki");
@@ -575,6 +607,25 @@ mod tests {
         assert!(d.gemini.join("config/plugins/codebase-wiki-llm/plugin.json").is_file());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn antigravity_link_counts_as_missing_and_install_replaces_only_the_link() {
+        let home = tempfile::tempdir().unwrap();
+        let d = AgentDirs::from_home(home.path());
+        let linked = tempfile::tempdir().unwrap();
+        fs::write(linked.path().join("plugin.json"), r#"{"version":"0.14.0"}"#).unwrap();
+        fs::create_dir_all(d.gemini.join("config/plugins")).unwrap();
+        let plugin = d.gemini.join("config/plugins/codebase-wiki-llm");
+        std::os::unix::fs::symlink(linked.path(), &plugin).unwrap();
+        assert_eq!(row(&plugin_state(&d, &rec(&[], None), Some("0.14.0")), "antigravity").status, PluginStatus::Missing);
+
+        let src = fake_source();
+        plugin_apply("antigravity", &d, &rec(&[], None), Some(src.path()), Some("0.14.0")).unwrap();
+        assert!(!fs::symlink_metadata(&plugin).unwrap().file_type().is_symlink());
+        assert!(linked.path().join("plugin.json").is_file(), "the linked folder is left alone");
+        assert_eq!(row(&plugin_state(&d, &rec(&[], None), Some("0.14.0")), "antigravity").status, PluginStatus::Current);
+    }
+
     #[test]
     fn cli_apply_runs_the_preview_and_stops_at_first_error() {
         let home = tempfile::tempdir().unwrap();
@@ -638,6 +689,11 @@ mod tests {
             "codex plugin marketplace add StefanoHernandez/codebase-wiki-llm --ref main || codex plugin marketplace upgrade codebase-wiki-llm".to_string(),
             "codex plugin add codebase-wiki-llm@codebase-wiki-llm".to_string(),
         ]);
+
+        fs::create_dir_all(&dirs.claude).unwrap();
+        let broken = Fake(HashMap::from([("claude", Err("spawn claude ENOENT".to_string()))]));
+        let r = row(&plugin_state(&dirs, &broken, Some("0.14.0")), "claude").clone();
+        assert_eq!(r.manual[1], "claude plugin update codebase-wiki-llm@stefano-wiki || claude plugin install codebase-wiki-llm@stefano-wiki");
     }
 
     #[test]

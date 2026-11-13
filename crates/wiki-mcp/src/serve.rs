@@ -230,7 +230,7 @@ fn agent_name(ctx: &RequestContext<RoleServer>) -> String {
 /// Records one tool call. Never fails: a log that cannot be written is skipped.
 /// Error text for the global log: a repo that could not be resolved is not echoed, since the
 /// requested name may contain a private term and `_global` has no wiki to check it against.
-const UNRESOLVED_REPO: &str = "repo non risolto";
+const UNRESOLVED_REPO: &str = "repository not resolved";
 
 fn logged_error(repo: Option<&std::path::Path>, result: &Result<String, String>) -> Option<String> {
     let err = result.as_ref().err()?;

@@ -158,3 +158,8 @@ confidence: high
 - What: versione 0.7.0 (barra laterale "Notte", contenuto morbido, icona "00_modern" di Alessandro Cianfaglione, interfaccia in inglese), tag `v0.7.0`, release pubblicata come `latest` con 7 pacchetti e `latest.json` firmato. README riscritto in inglese e aggiunto il file `LICENSE` (MIT).
 - Evidence: run GitHub Actions 43442705225 → test e tre build success; `latest.json` con `darwin-aarch64`, `windows-x86_64`, `linux-x86_64`; aggiornamento da 0.6.0 non ancora provato (T13)
 - IDs: T13
+
+## 2026-11-13 · Aggiornamento del plugin per Claude Code e Antigravity · agent
+- What: con il plugin già installato l'app lanciava `claude plugin install`, che risponde "already installed" e lascia la versione vecchia: ora lancia `claude plugin update` (anche nel comando da copiare a mano). Antigravity ignora una cartella del plugin collegata con un symlink (`agy plugin list` non la mostra): l'app la conta come non installata e l'installazione la sostituisce con una copia, senza toccare la cartella collegata. Codex (`plugin add`) e OpenCode/Cursor (copia delle skill) aggiornavano già. Messaggio del server MCP "repo non risolto" ora in inglese.
+- Evidence: prove con configurazioni isolate nello scratchpad: Claude 0.14.0 → resta 0.14.0 con `install`, 0.14.1 con `update`; Codex 0.14.0 → 0.14.1 con `plugin add`; `agy plugin list` vuoto con symlink, 0.14.1 con copia; `cargo test --workspace --features wiki-mcp/embed` → 127 pass; `npm test` → 177 pass
+- IDs: none
