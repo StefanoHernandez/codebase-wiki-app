@@ -24,8 +24,12 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
   const [checking, setChecking] = useState(false);
   const [progress, setProgress] = useState<number | null | undefined>(undefined);
   const update = useRef<Update | null>(null);
+  const busy = useRef(false);
 
   const run = useCallback(async (manual: boolean) => {
+    // One check at a time: a timer firing during a manual check would overwrite its answer.
+    if (busy.current) return;
+    busy.current = true;
     setChecking(true);
     let app: AppCheck;
     try {
@@ -44,6 +48,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
     const canInstall = await updaterSupported().catch(() => false);
     setBanner(updateBanner(app, plugins, { manual, canInstall }));
     setChecking(false);
+    busy.current = false;
   }, []);
 
   useEffect(() => {

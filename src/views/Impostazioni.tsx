@@ -576,7 +576,7 @@ function PluginAgenti() {
 
 /** App version and a manual update check; the answer shows in the banner on top. */
 function Aggiornamenti() {
-  const { checking, checkNow } = useUpdates();
+  const { checking, progress, checkNow } = useUpdates();
   const [version, setVersion] = useState('');
   useEffect(() => {
     appVersion().then(setVersion, () => setVersion(''));
@@ -588,7 +588,7 @@ function Aggiornamenti() {
         {version ? `Codebase Wiki ${version}. ` : ''}L’app controlla da sola all’avvio e una volta al giorno; non
         installa niente senza il tuo clic.
       </p>
-      <button type="button" className="btn" onClick={() => void checkNow()} disabled={checking}>
+      <button type="button" className="btn" onClick={() => void checkNow()} disabled={checking || progress !== undefined}>
         {checking ? 'Controllo in corso…' : 'Controlla aggiornamenti'}
       </button>
     </section>

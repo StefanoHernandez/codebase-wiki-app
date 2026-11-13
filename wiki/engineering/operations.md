@@ -33,7 +33,11 @@ confidence: high
    `TAURI_SIGNING_PRIVATE_KEY` e `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; la chiave privata sta solo
    lì e sul Mac di Stefano (`~/.tauri/codebase-wiki.key`), la pubblica in `tauri.conf.json`. Le
    build dei branch e `npm run build:app` usano `src-tauri/tauri.no-updater.conf.json`.
-4. Scrivere le note e pubblicarla (`gh release edit vX.Y.Z --draft=false --latest`).
+4. Prima di pubblicare, controllare che `latest.json` della bozza abbia `darwin-aarch64`,
+   `windows-x86_64` e `linux-x86_64`: i tre job lo aggiornano in parallelo e uno può perdere la
+   propria voce (`gh release download vX.Y.Z -p latest.json -O - | python3 -m json.tool`). Se ne
+   manca una, rilanciare quel job.
+5. Scrivere le note e pubblicarla (`gh release edit vX.Y.Z --draft=false --latest`).
 
 Merge su `main`, tag e pubblicazione solo con l'ok di Stefano.
 
