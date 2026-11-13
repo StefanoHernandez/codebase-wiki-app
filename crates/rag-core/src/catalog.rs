@@ -50,7 +50,7 @@ pub fn catalog() -> &'static [ModelSpec] {
             max_tokens: 512,
             size_mb: 118,
             languages: "multilingue (IT, EN, …)",
-            note: "Default; adatto a wiki in italiano",
+            note: "Consigliato: domande in italiano e inglese, veloce",
             tested: true,
         },
         ModelSpec {
@@ -65,7 +65,7 @@ pub fn catalog() -> &'static [ModelSpec] {
             max_tokens: 512,
             size_mb: 34,
             languages: "EN",
-            note: "Provato: buono sul codice in inglese, debole con domande in italiano",
+            note: "Solo inglese, veloce",
             tested: true,
         },
         ModelSpec {
@@ -80,7 +80,7 @@ pub fn catalog() -> &'static [ModelSpec] {
             max_tokens: 256,
             size_mb: 23,
             languages: "EN",
-            note: "Il più piccolo",
+            note: "Solo inglese, il più leggero",
             tested: false,
         },
         ModelSpec {
@@ -95,7 +95,7 @@ pub fn catalog() -> &'static [ModelSpec] {
             max_tokens: 512,
             size_mb: 279,
             languages: "multilingue",
-            note: "Provato: non supera e5-small e indicizza 2,5 volte più lento",
+            note: "Italiano e inglese, più pesante e più lento da indicizzare",
             tested: true,
         },
         ModelSpec {
@@ -110,7 +110,7 @@ pub fn catalog() -> &'static [ModelSpec] {
             max_tokens: 8192,
             size_mb: 137,
             languages: "EN",
-            note: "Contesto lungo",
+            note: "Solo inglese, adatto a file lunghi",
             tested: false,
         },
         ModelSpec {
@@ -125,7 +125,7 @@ pub fn catalog() -> &'static [ModelSpec] {
             max_tokens: 8192,
             size_mb: 162,
             languages: "code",
-            note: "Provato: simile a e5-small, indicizza 3 volte più lento",
+            note: "Pensato per il codice, più lento da indicizzare",
             tested: true,
         },
     ];
