@@ -28,7 +28,7 @@ Tutto ciò che tocca i file della wiki e il repo git, usato dal backend Tauri e 
 | `wiki_schema.rs` | lettura di SCHEMA (Core map, Excluded paths) |
 | `validator.rs` | lancia `resources/validate-wiki.py --json` e legge il report con serde |
 | `watcher.rs` | watcher ricorsivo (`notify`) con debounce di ~300 ms; `watch_repo_reporting` passa anche gli errori, che l'app mostra come banner |
-| `git_ops.rs` | comandi git con validazione degli argomenti contro l'injection |
+| `git_ops.rs` | comandi git con validazione degli argomenti contro l'injection; `file_history` (file aggiunti e modificati per commit, per la Storia del Grafo) |
 | `prompts.rs` | prompt dei workflow del plugin, solo da allow-list |
 
 ## Invarianti

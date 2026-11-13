@@ -104,3 +104,8 @@ confidence: high
 - What: Stefano ha provato sul suo Mac l'installazione da Impostazioni con Codex: plugin aggiornato da 0.11.0 e ricerca (MCP) collegata. Su Windows l'app ora trova `claude` e `codex` anche come `.exe`/`.cmd`/`.bat`, usa la cartella utente di sistema (`USERPROFILE`) al posto di `HOME` e cerca in `%APPDATA%\npm`; anche "Collega Claude Code" (MCP) prova `claude.cmd`; i comandi delle CLI non aprono più una finestra di console.
 - Evidence: prova a mano di Stefano (Codex, macOS); `cargo test -p codebase-wiki-app program_names` → pass; `cargo test -p rag-core plugin_install` → 14 pass; `cargo clippy --workspace --features wiki-mcp/embed` → 0 avvisi; codice `cfg(windows)` non compilato qui, comportamento su Windows non provato (T2)
 - IDs: T2, T11, T12
+
+## 2026-11-13 · Storia del grafo · agent
+- What: il Grafo ha il pulsante "▶ Storia" che riproduce la crescita della wiki e dei file di codice commit per commit (circa 15 secondi in tutto), con slider, data e messaggio del commit; le pagine nate hanno un alone, quelle modificate un anello. Un link compare quando esistono entrambe le pagine (non dal commit che l'ha aggiunto). I nodi tengono la posizione tra un fotogramma e l'altro e quando cambiano i filtri. Richiesto da Stefano sul modello del timelapse dei grafi di Obsidian.
+- Evidence: `npm test` → 165 pass (5 in `tests/graph-history.test.ts`); `cargo test --workspace --features wiki-mcp/embed` → 122 pass (2 su `file_history`); provato a mano da Stefano sull'app installata
+- IDs: T11

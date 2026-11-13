@@ -16,6 +16,8 @@ sources:
   - src/lib/first-run.ts
   - src/lib/dependencies.ts
   - src/lib/plugin.ts
+  - src/lib/graph-history.ts
+  - src/views/Grafo.tsx
   - src/api.ts
   - src-tauri/src/commands.rs
 source_commit: 206cc3c
@@ -35,7 +37,7 @@ confidence: high
 | Decisioni | ADR `proposed` da accettare o rifiutare |
 | Handoff | il baton per il prossimo agente, sola lettura, con avvisi di ritardo |
 | Salute | validatore, livelli di fiducia, budget, rischi, log |
-| Grafo | wiki ↔ codice, filtri e drift |
+| Grafo | wiki ↔ codice, filtri e drift; **Storia** riproduce la crescita commit per commit (`lib/graph-history.ts`: un nodo nasce al primo commit che tocca il suo file e pulsa a ogni modifica; un link compare quando esistono i due capi, approssimazione; storia dal comando `graph_history`, ultimi 2000 commit) |
 | Ricerca | stato dell'indice, Indicizza/Annulla, prova di `search_code` |
 | Impostazioni | profilo, tema, modelli, collegamento degli agenti (MCP), plugin per agente (installa / aggiorna, `lib/plugin.ts`) |
 
