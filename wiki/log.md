@@ -173,3 +173,8 @@ confidence: high
 - What: Stefano ha aggiornato la sua app dalla 0.7.0 alla 0.7.1 dal banner (T13 chiuso). Due difetti trovati nella prova: il pulsante "Aggiorna e riavvia" era senza testo, perché la regola `.btn` del contenuto morbido copriva lo sfondo di `.btn-strong` e `.btn-human` lasciando il testo chiaro; e il banner restava in cima mentre il pulsante "Controlla aggiornamenti" è in fondo alle Impostazioni. Corretti: sfondi ripristinati e banner principale fisso in alto. Non ancora rilasciati.
 - Evidence: Info.plist dell'app installata → 0.7.1; nel browser con backend finto `getComputedStyle` → "Aggiorna e riavvia" testo `rgb(228,232,241)` su `rgb(22,25,34)` (chiaro) e `rgb(29,33,48)` su `rgb(232,234,240)` (scuro), "Firma la chiusura" bianco su `rgb(35,56,159)`; banner a 12 px dall'alto dopo lo scorrimento
 - IDs: T13
+
+## 2026-11-13 · Suggerimenti alla prima apertura · agent
+- What: su richiesta di Stefano, dopo il mockup approvato: benvenuto alla prima apertura, un suggerimento per sezione la prima volta, un evidenziatore sul primo pulsante di firma, su "Collega" e su ⌘K; uno alla volta, chiusi non tornano, "Rivedi i suggerimenti" in Impostazioni. Testi in italiano e inglese. Non ancora rilasciati.
+- Evidence: `npm test` → 182 pass (5 in `tests/hints.test.ts`); nel browser con backend finto: benvenuto, suggerimento di Impostazioni, anello su "Collega" e su ⌘K (nota rivolta in su vicino al bordo), ripristino e benvenuto in inglese; viste con un progetto aperto (firma blu in Lavori) da provare a mano
+- IDs: none

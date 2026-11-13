@@ -987,3 +987,139 @@ html .primi-passi-step.is-current {
   border-radius: 12px;
 }
 
+
+/* ---------- First-run guidance (Guide.tsx) ---------- */
+html .guide-welcome {
+  width: min(520px, calc(100vw - 48px));
+  border: 0;
+  border-radius: 18px;
+  background: var(--ground);
+  box-shadow: var(--raise), 0 24px 60px rgb(0 0 0 / 0.25);
+}
+.guide-welcome-body {
+  padding: 26px 28px 22px;
+}
+.guide-welcome-title {
+  font-family: var(--font-read);
+  font-weight: 500;
+  font-size: 24px;
+  line-height: 1.2;
+  margin: 0 0 6px;
+}
+.guide-ideas {
+  list-style: none;
+  margin: 16px 0 20px;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.guide-ideas li {
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+.guide-ideas b {
+  display: block;
+}
+.guide-ideas span:not(.guide-ic) {
+  color: var(--ink-muted);
+}
+.guide-ic {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: var(--ground);
+  box-shadow: var(--raise-sm);
+}
+.guide-ic-human {
+  background: var(--human);
+  color: var(--on-human);
+  box-shadow: none;
+  font-size: 11px;
+  font-weight: 600;
+}
+.guide-welcome-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.guide-tip {
+  margin: 12px 28px 0;
+  max-width: var(--content-max);
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--ground);
+  box-shadow: var(--press);
+}
+.guide-tip p {
+  margin: 2px 0 0;
+  color: var(--ink-muted);
+}
+.guide-tip-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--human-wash);
+  color: var(--human);
+  font-family: var(--font-read);
+  font-weight: 600;
+}
+.guide-ring {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  border-radius: 12px;
+  box-shadow: 0 0 0 3px var(--human);
+  animation: guide-pulse 1.8s ease-in-out infinite;
+}
+/* On the night-blue sidebar the blue ring would vanish. */
+.guide-ring-light {
+  box-shadow: 0 0 0 2px #ffffff;
+}
+@keyframes guide-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.05); opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .guide-ring { animation: none; }
+}
+.guide-note {
+  position: fixed;
+  z-index: 41;
+  width: 260px;
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--ink);
+  color: var(--ground);
+  font-size: 12.5px;
+  box-shadow: 0 12px 28px rgb(0 0 0 / 0.25);
+}
+.guide-note-ok {
+  justify-self: end;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 7px;
+  padding: 4px 9px;
+  background: var(--ground);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}

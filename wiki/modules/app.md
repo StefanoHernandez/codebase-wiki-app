@@ -55,6 +55,12 @@ confidence: high
 - Non cambia con la lingua: il testo scritto nella wiki (log, `human:<id>`, `closed by …`).
 - `tests/no-italian.test.ts` segnala testo italiano rimasto fuori da `src/i18n/`.
 
+## Suggerimenti alla prima apertura
+
+- `src/components/Guide.tsx` mostra un pezzo alla volta: il benvenuto alla prima apertura (saltato da chi aveva già finito i Primi passi prima della 0.7.2), poi il suggerimento della sezione aperta, poi un evidenziatore (anello e nota) sul primo pulsante presente fra firma blu, "Collega" in Impostazioni e ⌘K (dalla terza apertura).
+- Cosa è stato visto e quante volte l'app si è aperta stanno in `localStorage` (`cw.hints`), regole in `src/lib/hints.ts` (test `tests/hints.test.ts`). Impostazioni → "Rivedi i suggerimenti" li riattiva.
+- Testi in `shell.guide.*`, italiano e inglese. Mockup: `docs/design/mockup-onboarding-2026-11-13.html`.
+
 ## Etichette del formato
 - `lib/labels.ts` traduce solo il vocabolario fisso del plugin: chiavi note (`fieldLabel`) e
   valori che occupano tutta la cella (`fixedValue`: `medium`, `none`, `⚠️ NOT VERIFIED - <motivo>`).

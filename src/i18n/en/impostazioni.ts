@@ -13,6 +13,7 @@ export const impostazioni: Record<keyof typeof it, string> = {
   'impostazioni.theme.light': 'Light',
   'impostazioni.theme.dark': 'Dark',
   'impostazioni.profile.review': 'Review getting started',
+  'impostazioni.profile.hintsAgain': 'Show hints again',
   'impostazioni.link.connected': 'Connected',
   'impostazioni.link.outdated': 'Needs update',
   'impostazioni.link.absent': 'Not connected',

@@ -12,6 +12,7 @@ import { Empty } from "./Empty";
 import { IncompatibleWiki } from "./Compat";
 import { useToast } from "./Toast";
 import { UpdateBanner } from "./UpdateBanner";
+import { Guide } from "./Guide";
 import { sectionCounts } from "../lib/attention";
 import { verifiedShare } from "../lib/trust";
 import PrimiPassi, { firstRunDone } from "../views/PrimiPassi";
@@ -137,6 +138,15 @@ export function Shell() {
 
       <main className="content">
         <UpdateBanner />
+        <Guide
+          section={nav.section}
+          showTip={
+            nav.section === "progetti" ||
+            nav.section === "impostazioni" ||
+            (!!project.snapshot && hasWiki && !project.compat.incompatible)
+          }
+          onStart={() => nav.go("primi-passi")}
+        />
         {nav.section === "primi-passi" ? (
           <div className="content-body">
             <PrimiPassi />
@@ -350,7 +360,7 @@ function Sidebar({
               <span>{t('shell.section.primi-passi')}</span>
             </button>
           )}
-          <button type="button" className="section-link" onClick={onPalette}>
+          <button type="button" className="section-link" onClick={onPalette} data-hint="palette">
             <Icon name="comandi" />
             <span>{t('shell.commands')}</span>
             <kbd>{MOD}K</kbd>

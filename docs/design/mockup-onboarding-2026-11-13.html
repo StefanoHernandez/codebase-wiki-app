@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup primi passi guidati</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&family=Newsreader:opsz,wght@6..72,500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ground: #e4e8f1; --ink: #161922; --ink-muted: #565d6e; --ink-faint: #8a90a0; --rule: #dcdfe6;
+  --human: #23389f; --human-wash: #e6e9fb; --on-human: #ffffff;
+  --side-bg: linear-gradient(180deg, #1b2c8f 0%, #0c1650 100%); --side-ink: #fff;
+  --side-muted: rgb(255 255 255 / .74); --side-faint: rgb(255 255 255 / .5); --side-current: rgb(255 255 255 / .14);
+  --neu-hi: #ffffff; --neu-lo: #b9c1d4;
+  --raise: 5px 5px 12px var(--neu-lo), -5px -5px 12px var(--neu-hi);
+  --raise-sm: 3px 3px 7px var(--neu-lo), -3px -3px 7px var(--neu-hi);
+  --press: inset 3px 3px 7px var(--neu-lo), inset -3px -3px 7px var(--neu-hi);
+  --scrim: rgb(14 20 48 / .38);
+  --page: #d5dae6;
+}
+:root[data-theme="dark"] {
+  --ground: #1d2130; --ink: #e8eaf0; --ink-muted: #9aa1b1; --ink-faint: #6c7383; --rule: #2a2e3a;
+  --human: #8c9cff; --human-wash: #222a52; --on-human: #0b1030;
+  --side-bg: linear-gradient(180deg, #16247a 0%, #0a1240 100%);
+  --neu-hi: #283046; --neu-lo: #11141e; --scrim: rgb(4 6 14 / .55); --page: #141724;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.5 'IBM Plex Sans', system-ui, sans-serif; }
+.page { max-width: 1120px; margin: 0 auto; padding: 32px 16px 64px; }
+.page > header { display: flex; justify-content: space-between; align-items: end; gap: 16px; flex-wrap: wrap; margin-bottom: 28px; }
+h1 { font: 500 30px/1.15 'Newsreader', Georgia, serif; margin: 0 0 6px; }
+.lede { margin: 0; color: var(--ink-muted); max-width: 62ch; }
+.toggle { display: flex; gap: 4px; padding: 4px; border-radius: 10px; background: var(--ground); box-shadow: var(--press); }
+.toggle button { border: 0; background: transparent; color: var(--ink-muted); font: inherit; padding: 6px 12px; border-radius: 7px; cursor: pointer; }
+.toggle button[aria-pressed="true"] { background: var(--ground); color: var(--ink); box-shadow: var(--raise-sm); }
+section.frame { margin-top: 40px; }
+.frame h2 { font: 600 15px/1.3 'IBM Plex Sans'; margin: 0 0 4px; }
+.frame > p { margin: 0 0 14px; color: var(--ink-muted); max-width: 70ch; }
+
+/* App window */
+.app { position: relative; display: grid; grid-template-columns: 196px 1fr; height: 470px; border-radius: 12px; overflow: hidden; background: var(--ground); box-shadow: 0 18px 40px rgb(0 0 0 / .18); }
+.side { background: var(--side-bg); color: var(--side-ink); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; }
+.proj { display: flex; gap: 10px; align-items: center; padding: 8px; border-radius: 10px; background: var(--side-current); margin-bottom: 10px; }
+.ring { width: 30px; height: 30px; border-radius: 50%; background: conic-gradient(#fff 0 72%, rgb(255 255 255 / .2) 0); display: grid; place-items: center; }
+.ring span { width: 22px; height: 22px; border-radius: 50%; background: #16247a; display: grid; place-items: center; font: 600 9px 'IBM Plex Mono'; }
+.proj b { font-weight: 600; font-size: 13px; display: block; }
+.proj small { color: var(--side-faint); font-size: 11px; }
+.nav { padding: 6px 10px; border-radius: 8px; color: var(--side-muted); font-size: 13px; display: flex; justify-content: space-between; }
+.nav.on { background: var(--side-current); color: #fff; }
+.nav .n { font: 600 11px 'IBM Plex Mono'; background: #fff; color: #142477; border-radius: 99px; padding: 0 6px; }
+.side .spacer { flex: 1; }
+.kbd { font: 11px 'IBM Plex Mono'; border: 1px solid var(--side-faint); border-radius: 4px; padding: 0 4px; color: var(--side-muted); }
+.main { padding: 22px 26px; overflow: hidden; }
+.main h3 { font: 500 22px/1.2 'Newsreader', Georgia, serif; margin: 0 0 14px; }
+.cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.col h4 { margin: 0 0 8px; font: 600 12px 'IBM Plex Sans'; color: var(--ink-muted); }
+.card { background: var(--ground); box-shadow: var(--raise); border-radius: 14px; padding: 12px; margin-bottom: 12px; font-size: 13px; }
+.card .id { font: 11px 'IBM Plex Mono'; color: var(--ink-faint); }
+.card .row { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.btn { border: 0; font: 500 12px 'IBM Plex Sans'; padding: 6px 10px; border-radius: 8px; background: var(--ground); color: var(--ink); box-shadow: var(--raise-sm); }
+.btn-human { background: var(--human); color: var(--on-human); }
+.btn-human-outline { background: var(--ground); color: var(--human); box-shadow: inset 0 0 0 1.5px var(--human), var(--raise-sm); }
+.btn-strong { background: var(--ink); color: var(--ground); }
+
+/* 1. Welcome */
+.scrim { position: absolute; inset: 0; background: var(--scrim); display: grid; place-items: center; backdrop-filter: blur(2px); }
+.welcome { width: min(520px, 92%); background: var(--ground); border-radius: 18px; box-shadow: var(--raise), 0 24px 60px rgb(0 0 0 / .25); padding: 26px 28px 22px; }
+.welcome .mark { width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #3a56e8, #16247a); display: grid; place-items: center; margin-bottom: 14px; }
+.welcome .mark i { width: 22px; height: 22px; border-radius: 50%; border: 3px solid #fff; }
+.welcome h3 { font: 500 24px/1.2 'Newsreader', Georgia, serif; margin: 0 0 6px; }
+.welcome > p { margin: 0 0 16px; color: var(--ink-muted); }
+.ideas { display: grid; gap: 10px; margin: 0 0 20px; padding: 0; list-style: none; }
+.ideas li { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start; }
+.ideas .ic { width: 30px; height: 30px; border-radius: 9px; box-shadow: var(--raise-sm); display: grid; place-items: center; font-size: 14px; }
+.ideas .ic.blue { background: var(--human); color: var(--on-human); box-shadow: none; font: 600 11px 'IBM Plex Sans'; }
+.ideas b { display: block; font-size: 13.5px; }
+.ideas span { color: var(--ink-muted); font-size: 13px; }
+.welcome footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.welcome footer small { color: var(--ink-faint); }
+
+/* 2. View tip */
+.tip { display: grid; grid-template-columns: 28px 1fr auto; gap: 12px; align-items: start; background: var(--ground); box-shadow: var(--press); border-radius: 14px; padding: 12px 14px; margin: 0 0 18px; }
+.tip .bulb { width: 28px; height: 28px; border-radius: 50%; background: var(--human-wash); color: var(--human); display: grid; place-items: center; font: 600 13px 'Newsreader', serif; }
+.tip b { display: block; font-size: 13.5px; }
+.tip p { margin: 2px 0 0; color: var(--ink-muted); font-size: 13px; }
+.tip .actions { display: flex; gap: 6px; align-items: center; }
+.linkish { background: none; border: 0; color: var(--ink-muted); font: 12px 'IBM Plex Sans'; text-decoration: underline; padding: 6px; }
+
+/* 3. Spotlight */
+.spot { position: relative; }
+.spot .btn-human-outline { position: relative; z-index: 2; }
+.spot::before { content: ''; position: absolute; inset: -6px; border-radius: 12px; box-shadow: 0 0 0 3px var(--human); opacity: .9; animation: pulse 1.8s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { transform: scale(1); opacity: .9; } 50% { transform: scale(1.06); opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .spot::before { animation: none; } }
+.callout { position: absolute; z-index: 3; width: 250px; background: var(--ink); color: var(--ground); border-radius: 12px; padding: 10px 12px; font-size: 12.5px; box-shadow: 0 12px 28px rgb(0 0 0 / .25); }
+.callout b { display: block; margin-bottom: 2px; }
+.callout .row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+.callout .row small { opacity: .7; }
+.callout .ok { background: var(--ground); color: var(--ink); border: 0; border-radius: 7px; font: 600 11.5px 'IBM Plex Sans'; padding: 4px 9px; }
+.callout::after { content: ''; position: absolute; width: 12px; height: 12px; background: var(--ink); transform: rotate(45deg); }
+.callout.up::after { top: -5px; left: 26px; }
+.callout.left::after { left: -5px; top: 18px; }
+.kspot { position: relative; }
+.kspot::before { content: ''; position: absolute; inset: -4px -6px; border-radius: 9px; box-shadow: 0 0 0 2px #fff; animation: pulse 1.8s ease-in-out infinite; }
+
+.notes { margin-top: 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.note { background: var(--ground); box-shadow: var(--raise); border-radius: 14px; padding: 16px; }
+.note h3 { margin: 0 0 6px; font: 600 14px 'IBM Plex Sans'; }
+.note ul { margin: 0; padding-left: 18px; color: var(--ink-muted); font-size: 13px; }
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; height: auto; min-height: 470px; }
+  .side { display: none; }
+  .cols { grid-template-columns: 1fr; }
+  .callout { position: static; width: auto; margin-top: 10px; }
+  .callout::after { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div>
+      <h1>Primi passi guidati</h1>
+      <p class="lede">Tre pezzi, nello stile "Notte" e contenuto morbido: un benvenuto alla prima apertura, un suggerimento per schermata la prima volta, un evidenziatore sui pulsanti che contano. Ognuno si chiude e non torna; Impostazioni → "Rivedi suggerimenti" li riattiva.</p>
+    </div>
+    <div class="toggle" role="group" aria-label="Tema">
+      <button type="button" data-t="light" aria-pressed="true">Chiaro</button>
+      <button type="button" data-t="dark" aria-pressed="false">Scuro</button>
+    </div>
+  </header>
+
+  <section class="frame">
+    <h2>1 · Benvenuto, solo alla prima apertura</h2>
+    <p>Una schermata, non un tour. Tre idee che servono per capire tutto il resto, poi "Inizia" porta a Primi passi.</p>
+    <div class="app">
+      <aside class="side">
+        <div class="proj"><div class="ring"><span>–</span></div><div><b>Nessun progetto</b><small>Apri una repository</small></div></div>
+        <div class="nav">Progetti</div><div class="nav">Per te</div><div class="nav">Lavori</div><div class="nav">Decisioni</div>
+        <div class="spacer"></div><div class="nav on">Primi passi</div><div class="nav">Impostazioni</div>
+      </aside>
+      <div class="main"><h3>Primi passi</h3></div>
+      <div class="scrim">
+        <div class="welcome" role="dialog" aria-labelledby="w-t">
+          <div class="mark"><i></i></div>
+          <h3 id="w-t">Benvenuto in Codebase Wiki</h3>
+          <p>Il pannello di controllo della wiki che i tuoi agenti tengono nel repository.</p>
+          <ul class="ideas">
+            <li><div class="ic">✎</div><div><b>Gli agenti scrivono</b><span>Claude Code, Codex o Antigravity aggiornano tracker, log e decisioni mentre lavorano.</span></div></li>
+            <li><div class="ic blue">Tu</div><div><b>Tu decidi e firmi</b><span>Il blu è la tua firma: promuovere una proposta, accettare una decisione, chiudere un lavoro senza prova.</span></div></li>
+            <li><div class="ic">⟲</div><div><b>Tutto resta nei file</b><span>Ogni azione cambia una riga del Markdown nel tuo repo e lascia una voce nel log.</span></div></li>
+          </ul>
+          <footer><small>Puoi rivederlo da Impostazioni.</small><button class="btn btn-strong" type="button">Inizia</button></footer>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="frame">
+    <h2>2 · Un suggerimento per schermata, la prima volta</h2>
+    <p>In cima alla vista, incassato come un campo: non copre niente. Due frasi al massimo, poi "Ho capito".</p>
+    <div class="app">
+      <aside class="side">
+        <div class="proj"><div class="ring"><span>72</span></div><div><b>codebase-wiki-app</b><small>main</small></div></div>
+        <div class="nav">Progetti</div><div class="nav">Per te <span class="n">3</span></div><div class="nav on">Lavori</div><div class="nav">Decisioni</div><div class="nav">Handoff</div><div class="nav">Salute</div>
+        <div class="spacer"></div><div class="nav">Comandi <span class="kbd">⌘K</span></div>
+      </aside>
+      <div class="main">
+        <h3>Lavori</h3>
+        <div class="tip" role="note">
+          <div class="bulb">i</div>
+          <div><b>Il tracker del progetto</b><p>Gli agenti propongono, tu promuovi le proposte che vuoi fare. Un lavoro si chiude 🟢 con le prove; ⚫ lo chiudi tu, firmando, quando le prove mancano.</p></div>
+          <div class="actions"><button class="btn" type="button">Ho capito</button></div>
+        </div>
+        <div class="cols">
+          <div class="col"><h4>Da fare</h4><div class="card"><span class="id">T3</span><br>Adopt della copia di prova</div></div>
+          <div class="col"><h4>In corso</h4><div class="card"><span class="id">T1</span><br>Prova con un agente vero</div></div>
+          <div class="col"><h4>Proposte</h4><div class="card"><span class="id">proposta</span><br>Tutorial alla prima apertura<div class="row"><button class="btn btn-human-outline" type="button">Promuovi</button></div></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="frame">
+    <h2>3 · L'evidenziatore, sul primo pulsante che conta</h2>
+    <p>Un anello che pulsa piano (fermo con "riduci movimento") e una nota di una riga. Sparisce al primo clic sul pulsante o con "Ho capito"; uno alla volta.</p>
+    <div class="app">
+      <aside class="side">
+        <div class="proj"><div class="ring"><span>72</span></div><div><b>codebase-wiki-app</b><small>main</small></div></div>
+        <div class="nav">Progetti</div><div class="nav">Per te <span class="n">3</span></div><div class="nav on">Lavori</div><div class="nav">Decisioni</div><div class="nav">Handoff</div><div class="nav">Salute</div>
+        <div class="spacer"></div><div class="nav">Comandi <span class="kbd kspot">⌘K</span></div>
+      </aside>
+      <div class="main">
+        <h3>Lavori</h3>
+        <div class="cols">
+          <div class="col"><h4>Da fare</h4><div class="card"><span class="id">T3</span><br>Adopt della copia di prova</div></div>
+          <div class="col"><h4>In corso</h4><div class="card"><span class="id">T1</span><br>Prova con un agente vero<div class="row"><span class="spot"><button class="btn btn-human-outline" type="button">Chiudi senza prova</button></span></div></div>
+            <div class="callout up" style="position:relative;margin-top:4px">
+              <b>Il blu è la tua firma</b>Scrive nel tracker "closed by" con il tuo nome e cosa manca. Ti chiede conferma prima.
+              <div class="row"><small>1 di 3 suggerimenti</small><button class="ok" type="button">Ho capito</button></div>
+            </div>
+          </div>
+          <div class="col"><h4>Proposte</h4><div class="card"><span class="id">proposta</span><br>Tutorial alla prima apertura</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="notes">
+    <div class="note"><h3>Dove compaiono gli evidenziatori</h3><ul><li>la prima firma blu (Lavori, Decisioni, Per te)</li><li>"Collega agli agenti" in Impostazioni, se nessun agente è collegato</li><li>⌘K, dopo qualche apertura dell'app</li></ul></div>
+    <div class="note"><h3>Regole</h3><ul><li>uno alla volta, mai sopra un dialogo</li><li>chiuso = non torna; salvato su questo computer</li><li>testi in italiano e inglese nei file delle traduzioni</li></ul></div>
+    <div class="note"><h3>Fuori</h3><ul><li>tour a tappe e frecce "Avanti"</li><li>video e animazioni lunghe</li><li>suggerimenti che si ripresentano</li></ul></div>
+  </div>
+</div>
+<script>
+document.querySelectorAll('.toggle button').forEach(b => b.addEventListener('click', () => {
+  document.documentElement.dataset.theme = b.dataset.t;
+  document.querySelectorAll('.toggle button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+}));
+</script>
+</body>
+</html>

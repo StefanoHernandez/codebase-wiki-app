@@ -11,6 +11,7 @@ export const impostazioni = {
   'impostazioni.theme.light': 'Chiaro',
   'impostazioni.theme.dark': 'Scuro',
   'impostazioni.profile.review': 'Rivedi i primi passi',
+  'impostazioni.profile.hintsAgain': 'Rivedi i suggerimenti',
   'impostazioni.link.connected': 'Collegato',
   'impostazioni.link.outdated': 'Da aggiornare',
   'impostazioni.link.absent': 'Non collegato',

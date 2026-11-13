@@ -10,6 +10,8 @@ import { useNav } from '../state/nav';
 import { useUpdates } from '../state/updates';
 import { useLang } from '../state/lang';
 import { hasKey, locale, t } from '../i18n';
+import { resetHints } from '../lib/hints';
+import { HINTS_CHANGED } from '../components/Guide';
 import { markFirstRunDone } from './PrimiPassi';
 import { AGENT_LABEL, pluginBlocked, pluginStateText, type PluginRow } from '../lib/plugin';
 import type { ThemeChoice } from '../state/theme';
@@ -119,6 +121,7 @@ function Profilo({ theme, setTheme }: ThemeProps) {
         </fieldset>
         <LanguageField />
       </div>
+      <div className="link-row">
       <button
         type="button"
         className="btn btn-link"
@@ -129,6 +132,17 @@ function Profilo({ theme, setTheme }: ThemeProps) {
       >
         {t('impostazioni.profile.review')}
       </button>
+      <button
+        type="button"
+        className="btn btn-link"
+        onClick={() => {
+          resetHints();
+          window.dispatchEvent(new Event(HINTS_CHANGED));
+        }}
+      >
+        {t('impostazioni.profile.hintsAgain')}
+      </button>
+      </div>
     </section>
   );
 }
@@ -406,7 +420,7 @@ function Agenti() {
               <td className={row.status === 'connected' ? undefined : 'muted'}>{linkLabel(row.status)}</td>
               <td className="muted">{row.hint}</td>
               <td className="ricerca-actions">
-                <button type="button" className="btn" onClick={() => void open(row)}>
+                <button type="button" className="btn" onClick={() => void open(row)} data-hint={row.status === 'connected' ? undefined : 'connect'}>
                   {t(`impostazioni.agents.${row.status === 'connected' ? 'disconnect' : row.status === 'outdated' ? 'update' : 'connect'}`)}
                 </button>
               </td>

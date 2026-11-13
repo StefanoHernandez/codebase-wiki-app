@@ -200,8 +200,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   // Texts built here live above the language remount: `lang` in the deps rebuilds them on a switch.
   const { lang } = useLang();
-  const derived = useMemo(() => deriveProject(snapshot, lint), [snapshot, lint, lang]); // eslint-disable-line react-hooks/exhaustive-deps
-  const compat = useMemo(() => wikiCompat(lint, derived.schema), [lint, derived.schema, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+  const derived = useMemo(() => deriveProject(snapshot, lint), [snapshot, lint, lang]);
+  const compat = useMemo(() => wikiCompat(lint, derived.schema), [lint, derived.schema, lang]);
   const clearLint = () => {
     lintSeq.current++;
     setLint(null);
