@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use wiki_core::no_window_command;
 
 use serde::{Deserialize, Serialize};
 use wiki_core::is_private_terms_name;
@@ -26,7 +26,7 @@ const MAX_BYTES: u64 = 512 * 1024;
 /// (Markdown, text) and data. Only code is searched; the wiki is read through its Core map,
 /// where an old plan or a template cannot outrank the page that is current.
 pub fn list_files(root: &Path, wiki_root: Option<&str>) -> Result<Vec<FileEntry>, String> {
-    let out = Command::new("git")
+    let out = no_window_command("git")
         .arg("-C")
         .arg(root)
         .args(["ls-files", "-z", "--cached", "--others", "--exclude-standard"])

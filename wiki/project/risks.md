@@ -23,7 +23,7 @@ scritto la pagina il 2026-11-11: le decide una persona.
 
 | ID | Risk | Severity | Trigger | Mitigation | Owner | IDs |
 | --- | --- | --- | --- | --- | --- | --- |
-| R1 | L'app non è mai stata provata su Windows | high | si assume che i percorsi e i processi funzionino come su macOS; lo smentirebbe un errore in "Collega Claude Code" (`Command::new("claude")` senza `claude.cmd`) o nelle scritture | prova manuale | Stefano | T2 |
+| R1 | L'app non è mai stata provata su Windows | high | si assume che i percorsi e i processi funzionino come su macOS; lo smentirebbe un errore in "Collega Claude Code" (`Command::new("claude")` senza `claude.cmd`) o nelle scritture; la prima prova (2026-11-13) l'ha smentita: ogni `git`/Python apriva una console | `wiki_core::no_window_command` per ogni processo figlio (no-op fuori da Windows); prova manuale | Stefano | T2 |
 | R2 | L'app macOS non è firmata né notarizzata | medium | si assume che chi scarica sappia aprirla con tasto destro → Apri; lo smentirebbe un utente bloccato da Gatekeeper | firma ad-hoc nella build (0.3.1): Gatekeeper chiede "Apri comunque" invece di "app danneggiata"; notarizzazione esclusa perché a pagamento | Stefano | T1 |
 | R3 | Il server MCP occupa 1–2 GB con i modelli caricati | medium | si assume che lo scarico dopo 5 minuti funzioni; lo smentirebbe un processo `serve` ancora sopra 1 GB dopo 6 minuti senza ricerche | `unload_when_idle` in `crates/wiki-mcp/src/serve.rs` | unknown | T4 |
 | R4 | Un termine riservato finisce nei risultati della ricerca | high | si assume che il filtro fail-closed su `.private-terms` copra indice e risultati; lo smentirebbe un termine visibile in `search_code` | filtro in indicizzazione e alla ricerca; `.private-terms` illeggibile blocca tutto | unknown | T6 |

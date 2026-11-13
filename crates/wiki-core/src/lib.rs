@@ -9,7 +9,8 @@ pub mod wiki_schema;
 pub use prompts::build_workflow_prompt;
 pub use git_ops::{
     changed_files_since_commit, file_diff_since_commit, file_history, git_user_name, inspect_git_state,
-    head_commit, is_git_repo, is_ignored, wiki_commits_since, FileHistory, GitState, HistoryCommit,
+    head_commit, is_git_repo, is_ignored, no_window_command, wiki_commits_since, FileHistory, GitState,
+    HistoryCommit,
 };
 pub use validator::{
     parse_lint_output, run_structural_lint, run_structural_lint_with, run_structural_lint_with_args,
@@ -390,6 +391,28 @@ sources:
 
         let changed = changed_files_since_commit(repo, &base, &["dir".to_string()]);
         assert_eq!(changed, vec![name.to_string()]);
+    }
+
+    #[test]
+    fn test_snapshot_pages_sharing_a_commit_keep_their_own_sources() {
+        let td = TestDir::new("shared_commit");
+        let repo = td.path();
+        let base = init_repo(repo);
+        fs::write(repo.join("b.txt"), "one\n").unwrap();
+        git(repo, &["add", "."]);
+        git(repo, &["commit", "-qm", "b"]);
+        fs::write(repo.join("a.txt"), "two\n").unwrap();
+        fs::create_dir_all(repo.join("wiki")).unwrap();
+        fs::write(repo.join("wiki/SCHEMA.md"), "# Schema\n").unwrap();
+        let page = |src: &str, commit: &str| format!("---\ntitle: P\nsource_commit: {commit}\nsources:\n  - {src}\n---\n# P\n");
+        fs::write(repo.join("wiki/a.md"), page("a.txt", &base)).unwrap();
+        fs::write(repo.join("wiki/b.md"), page("b.txt", &base)).unwrap();
+        fs::write(repo.join("wiki/x.md"), page("a.txt", "deadbeef")).unwrap();
+
+        let snap = load_wiki_snapshot(repo, "wiki").unwrap();
+        assert_eq!(snap.changed_files_by_page["a.md"], vec!["a.txt".to_string()]);
+        assert_eq!(snap.changed_files_by_page["b.md"], vec!["b.txt".to_string()]);
+        assert!(snap.changed_files_by_page["x.md"].is_empty());
     }
 
     #[test]

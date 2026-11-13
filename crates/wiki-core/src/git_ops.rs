@@ -1,6 +1,22 @@
+use std::ffi::OsStr;
 use std::path::Path;
 use std::process::Command;
 use serde::{Deserialize, Serialize};
+
+/// `Command::new` for every child the app or the sidecar starts. On Windows a GUI app (and a
+/// sidecar started without a console) gets a visible console window for each console child
+/// (git, python, claude) unless `CREATE_NO_WINDOW` is set. A no-op on macOS and Linux.
+pub fn no_window_command(program: impl AsRef<OsStr>) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -14,7 +30,7 @@ pub struct GitState {
 
 /// True when `repo_path` is a directory inside a git work tree.
 pub fn is_git_repo(repo_path: &Path) -> bool {
-    Command::new("git")
+    no_window_command("git")
         .arg("-C")
         .arg(repo_path)
         .args(["rev-parse", "--is-inside-work-tree"])
@@ -25,7 +41,7 @@ pub fn is_git_repo(repo_path: &Path) -> bool {
 
 /// `git config user.name` of the repo, if set.
 pub fn git_user_name(repo_path: &Path) -> Option<String> {
-    let out = Command::new("git")
+    let out = no_window_command("git")
         .arg("-C")
         .arg(repo_path)
         .args(["config", "user.name"])
@@ -36,7 +52,7 @@ pub fn git_user_name(repo_path: &Path) -> Option<String> {
 }
 
 pub fn inspect_git_state(repo_path: &Path, handoff_rel_path: Option<&str>) -> GitState {
-    let head_sha = Command::new("git")
+    let head_sha = no_window_command("git")
         .args(["-C"])
         .arg(repo_path)
         .args(["rev-parse", "--short", "HEAD"])
@@ -47,7 +63,7 @@ pub fn inspect_git_state(repo_path: &Path, handoff_rel_path: Option<&str>) -> Gi
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "unknown".into());
 
-    let branch = Command::new("git")
+    let branch = no_window_command("git")
         .args(["-C"])
         .arg(repo_path)
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
@@ -60,7 +76,7 @@ pub fn inspect_git_state(repo_path: &Path, handoff_rel_path: Option<&str>) -> Gi
 
     // `-z`: NUL-separated, never quoted. Renames/copies are `XY new\0old\0`.
     let mut dirty_files = Vec::new();
-    if let Ok(output) = Command::new("git")
+    if let Ok(output) = no_window_command("git")
         .args(["-C"])
         .arg(repo_path)
         .args(["status", "--porcelain", "-z"])
@@ -84,7 +100,7 @@ pub fn inspect_git_state(repo_path: &Path, handoff_rel_path: Option<&str>) -> Gi
     let mut handoff_commits_behind = 0;
     if let Some(hpath) = handoff_rel_path {
         if repo_path.join(hpath).exists() {
-            let log_out = Command::new("git")
+            let log_out = no_window_command("git")
                 .args(["-C"])
                 .arg(repo_path)
                 .args(["log", "-1", "--format=%H", "--", hpath])
@@ -95,7 +111,7 @@ pub fn inspect_git_state(repo_path: &Path, handoff_rel_path: Option<&str>) -> Gi
                 if lo.status.success() {
                     let last_commit = String::from_utf8_lossy(&lo.stdout).trim().to_string();
                     if !last_commit.is_empty() {
-                        let count_out = Command::new("git")
+                        let count_out = no_window_command("git")
                             .args(["-C"])
                             .arg(repo_path)
                             .args(["rev-list", "--count", &format!("{}..HEAD", last_commit)])
@@ -126,7 +142,7 @@ pub fn inspect_git_state(repo_path: &Path, handoff_rel_path: Option<&str>) -> Gi
 /// Resolves `commit` to a full sha if it names a commit that is an ancestor of
 /// HEAD. Option-like input is never parsed as a git option.
 fn resolve_ancestor_commit(repo_path: &Path, commit: &str) -> Option<String> {
-    let out = Command::new("git")
+    let out = no_window_command("git")
         .args(["-C"])
         .arg(repo_path)
         .args(["rev-parse", "--verify", "--end-of-options", &format!("{}^{{commit}}", commit)])
@@ -137,7 +153,7 @@ fn resolve_ancestor_commit(repo_path: &Path, commit: &str) -> Option<String> {
     if resolved.is_empty() {
         return None;
     }
-    Command::new("git")
+    no_window_command("git")
         .args(["-C"])
         .arg(repo_path)
         .args(["merge-base", "--is-ancestor", &resolved, "HEAD"])
@@ -147,24 +163,32 @@ fn resolve_ancestor_commit(repo_path: &Path, commit: &str) -> Option<String> {
         .map(|_| resolved)
 }
 
+/// `source_commit` as a full sha when it is an ancestor of HEAD; `None` when empty,
+/// "unknown" or not an ancestor.
+pub(crate) fn resolve_source_commit(repo_path: &Path, source_commit: &str) -> Option<String> {
+    let commit = source_commit.trim();
+    if commit.is_empty() || commit.eq_ignore_ascii_case("unknown") {
+        return None;
+    }
+    resolve_ancestor_commit(repo_path, commit)
+}
+
 pub fn changed_files_since_commit(
     repo_path: &Path,
     source_commit: &str,
     sources: &[String],
 ) -> Vec<String> {
-    let commit = source_commit.trim();
-    if commit.is_empty() || commit.eq_ignore_ascii_case("unknown") {
-        return Vec::new();
-    }
+    resolve_source_commit(repo_path, source_commit)
+        .map(|resolved| changed_files_since_resolved(repo_path, &resolved, sources))
+        .unwrap_or_default()
+}
 
-    let Some(resolved) = resolve_ancestor_commit(repo_path, commit) else {
-        return Vec::new();
-    };
-
-    let mut cmd = Command::new("git");
+/// As [`changed_files_since_commit`], for a commit already checked by [`resolve_source_commit`].
+pub(crate) fn changed_files_since_resolved(repo_path: &Path, resolved: &str, sources: &[String]) -> Vec<String> {
+    let mut cmd = no_window_command("git");
     cmd.args(["-C"])
         .arg(repo_path)
-        .args(["diff", "--name-only", "-z", &resolved]);
+        .args(["diff", "--name-only", "-z", resolved]);
 
     if !sources.is_empty() {
         cmd.arg("--");
@@ -204,7 +228,7 @@ pub fn file_diff_since_commit(repo_path: &Path, source_commit: &str, rel_path: &
         }
     };
 
-    match Command::new("git")
+    match no_window_command("git")
         .args(["-C"])
         .arg(repo_path)
         .args(["diff", &base, "--", rel_path])
@@ -219,7 +243,7 @@ pub fn file_diff_since_commit(repo_path: &Path, source_commit: &str, rel_path: &
 /// at most 20. `None` when `since` is not an ancestor of HEAD (unknown, rebased away, other
 /// branch) or git fails: then git cannot tell what is new.
 pub fn wiki_commits_since(repo: &Path, since: &str, wiki_rel: &str) -> Option<Vec<String>> {
-    let ancestor = Command::new("git")
+    let ancestor = no_window_command("git")
         .arg("-C")
         .arg(repo)
         .args(["merge-base", "--is-ancestor", since, "HEAD"])
@@ -228,7 +252,7 @@ pub fn wiki_commits_since(repo: &Path, since: &str, wiki_rel: &str) -> Option<Ve
     if !ancestor.success() {
         return None;
     }
-    let out = Command::new("git")
+    let out = no_window_command("git")
         .arg("-C")
         .arg(repo)
         .args(["log", "--format=%s", "-n", "20", &format!("{since}..HEAD"), "--", wiki_rel])
@@ -242,7 +266,7 @@ pub fn wiki_commits_since(repo: &Path, since: &str, wiki_rel: &str) -> Option<Ve
 
 /// True when git ignores the directory `rel_dir` (a local-only wiki).
 pub fn is_ignored(repo: &Path, rel_dir: &str) -> bool {
-    Command::new("git")
+    no_window_command("git")
         .arg("-C")
         .arg(repo)
         .args(["check-ignore", "-q", &format!("{rel_dir}/")])
@@ -252,7 +276,7 @@ pub fn is_ignored(repo: &Path, rel_dir: &str) -> bool {
 
 /// HEAD commit sha, if any.
 pub fn head_commit(repo: &Path) -> Option<String> {
-    let out = Command::new("git").arg("-C").arg(repo).args(["rev-parse", "HEAD"]).output().ok()?;
+    let out = no_window_command("git").arg("-C").arg(repo).args(["rev-parse", "HEAD"]).output().ok()?;
     let sha = String::from_utf8_lossy(&out.stdout).trim().to_string();
     (out.status.success() && !sha.is_empty()).then_some(sha)
 }
@@ -280,7 +304,7 @@ pub struct FileHistory {
 /// The last `max` commits of HEAD with their added and modified files, oldest first.
 /// Renames count as delete + add; deletions and merge commits carry no files.
 pub fn file_history(repo: &Path, max: usize) -> FileHistory {
-    let out = Command::new("git")
+    let out = no_window_command("git")
         .arg("-C")
         .arg(repo)
         .args(["-c", "core.quotePath=false", "log", "--no-renames", "--name-status"])

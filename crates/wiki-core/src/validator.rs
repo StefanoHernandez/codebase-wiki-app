@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::process::Command;
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// `null` in the validator JSON becomes the type's default (empty path, line 0).
@@ -121,7 +120,7 @@ pub fn run_structural_lint_with_args(
     wiki_root: &str,
     validator_script: &Path,
 ) -> LintReport {
-    let output = Command::new(python)
+    let output = crate::git_ops::no_window_command(python)
         .args(python_args)
         .arg(validator_script)
         .arg("--json")
@@ -145,6 +144,7 @@ pub fn run_structural_lint_with_args(
 mod tests {
     use super::*;
     use std::fs;
+    use std::process::Command;
 
     #[test]
     fn parses_captured_json_fixture() {

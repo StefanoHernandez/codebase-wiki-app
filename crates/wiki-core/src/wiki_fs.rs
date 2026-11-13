@@ -882,11 +882,19 @@ pub fn load_wiki_snapshot(repo_path: &Path, wiki_root: &str) -> Result<WikiSnaps
     repo_files.dedup();
 
     let mut changed_files_by_page = BTreeMap::new();
+    // Pages share a few commits: check each commit once. A git process can cost ~0.25 s on Windows.
+    let mut resolved: BTreeMap<String, Option<String>> = BTreeMap::new();
     for page in &pages {
         let (source_commit, sources) = extract_frontmatter_sources_and_commit(&page.content);
         if let Some(commit) = source_commit {
             if !sources.is_empty() {
-                let changed = git_ops::changed_files_since_commit(repo_path, &commit, &sources);
+                let base = resolved
+                    .entry(commit.clone())
+                    .or_insert_with(|| git_ops::resolve_source_commit(repo_path, &commit));
+                let changed = base
+                    .as_deref()
+                    .map(|b| git_ops::changed_files_since_resolved(repo_path, b, &sources))
+                    .unwrap_or_default();
                 changed_files_by_page.insert(page.wiki_rel_path.clone(), changed);
             }
         }

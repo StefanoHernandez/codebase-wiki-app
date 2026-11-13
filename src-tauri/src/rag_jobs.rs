@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
@@ -107,14 +107,8 @@ enum JobKind {
 }
 
 fn spawn_sidecar(bin: &std::path::Path, args: &[&str]) -> Result<Child, String> {
-    let mut cmd = Command::new(bin);
+    let mut cmd = wiki_core::no_window_command(bin);
     cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::inherit());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
     cmd.spawn().map_err(|e| e.to_string())
 }
 
@@ -182,6 +176,7 @@ fn enrich_line((job, field): (&str, &str), key: &str, line: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
 
     fn sleeper() -> Child {
         Command::new("sleep").arg("30").stdout(Stdio::null()).spawn().expect("sleep")

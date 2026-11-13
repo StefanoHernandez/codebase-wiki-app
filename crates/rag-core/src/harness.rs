@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -236,7 +235,7 @@ pub fn claude_remove_command() -> &'static str {
 fn claude_program() -> Option<&'static str> {
     let names: &[&'static str] = if cfg!(windows) { &["claude", "claude.cmd"] } else { &["claude"] };
     names.iter().copied().find(|name| {
-        Command::new(name).arg("--version").output().is_ok_and(|o| o.status.success())
+        wiki_core::no_window_command(name).arg("--version").output().is_ok_and(|o| o.status.success())
     })
 }
 
@@ -447,7 +446,7 @@ pub fn harness_apply(harness: &str, action: HarnessAction) -> Result<(), String>
         let Some(claude) = claude_program() else {
             return Err("claude non è nel PATH".into());
         };
-        let status = Command::new(claude)
+        let status = wiki_core::no_window_command(claude)
             .args(["mcp", "remove", "--scope", "user", SERVER_KEY])
             .status()
             .map_err(|e| e.to_string())?;
@@ -459,7 +458,7 @@ pub fn harness_apply(harness: &str, action: HarnessAction) -> Result<(), String>
     } else if let Some(claude) = claude_program() {
         let bin = bin_path();
         let json = claude_mcp_json(&bin);
-        let status = Command::new(claude)
+        let status = wiki_core::no_window_command(claude)
             .args(["mcp", "add-json", "--scope", "user", SERVER_KEY, &json])
             .status()
             .map_err(|e| e.to_string())?;
