@@ -311,6 +311,12 @@ kbd {
 .banner > * {
   color: var(--ink);
 }
+.content > .banner {
+  /* The update banner answers a button at the bottom of Settings: keep it in view while scrolled. */
+  position: sticky;
+  top: 12px;
+  z-index: 5;
+}
 .banner-error {
   color: var(--error);
 }
@@ -936,6 +942,15 @@ html .primi-passi-step.is-current {
 .btn-strong,
 .btn-human {
   box-shadow: var(--raise-sm);
+}
+/* The `.btn` ground above must not reach filled buttons: their text is light. */
+.btn-strong,
+.btn-strong:hover:not(:disabled):not([aria-disabled='true']) {
+  background: var(--ink);
+}
+.btn-human,
+.btn-human:hover:not(:disabled):not([aria-disabled='true']) {
+  background: var(--human);
 }
 .btn-human-outline {
   background: var(--ground);

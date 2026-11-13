@@ -168,3 +168,8 @@ confidence: high
 - What: versione 0.7.1 con l'aggiornamento del plugin per Claude Code (`plugin update`) e per Antigravity (cartella collegata sostituita da una copia), validatore del plugin 0.15.0 e il messaggio MCP in inglese; tag `v0.7.1`, release pubblicata come `latest`. Ringraziamento ad Alessandro Cianfaglione per ascolto, consigli e idee in `CONTRIBUTORS.md` e nel README.
 - Evidence: run GitHub Actions 43449986524 → test e tre build success; `latest.json` con `darwin-aarch64`, `windows-x86_64`, `linux-x86_64`
 - IDs: none
+
+## 2026-11-13 · Aggiornamento automatico provato; pulsanti pieni leggibili · agent
+- What: Stefano ha aggiornato la sua app dalla 0.7.0 alla 0.7.1 dal banner (T13 chiuso). Due difetti trovati nella prova: il pulsante "Aggiorna e riavvia" era senza testo, perché la regola `.btn` del contenuto morbido copriva lo sfondo di `.btn-strong` e `.btn-human` lasciando il testo chiaro; e il banner restava in cima mentre il pulsante "Controlla aggiornamenti" è in fondo alle Impostazioni. Corretti: sfondi ripristinati e banner principale fisso in alto. Non ancora rilasciati.
+- Evidence: Info.plist dell'app installata → 0.7.1; nel browser con backend finto `getComputedStyle` → "Aggiorna e riavvia" testo `rgb(228,232,241)` su `rgb(22,25,34)` (chiaro) e `rgb(29,33,48)` su `rgb(232,234,240)` (scuro), "Firma la chiusura" bianco su `rgb(35,56,159)`; banner a 12 px dall'alto dopo lo scorrimento
+- IDs: T13

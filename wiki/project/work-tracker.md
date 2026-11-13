@@ -26,7 +26,6 @@ aperti sotto sono stati aperti da Stefano il 2026-11-11, nella sessione con Clau
 1. Provare l'app installata e un agente vero collegato via MCP (T1, T5) e lo scarico della memoria (T4)
 2. Adopt della copia di prova di Versal e azioni umane su una wiki 0.13 (T3)
 3. Test su Windows, anche "Installa plugin" (T2)
-4. Aggiornamento automatico dalla 0.6.0 alla release successiva (T13)
 
 ## Aperti
 <!-- wiki:open -->
@@ -39,7 +38,6 @@ aperti sotto sono stati aperti da Stefano il 2026-11-11, nella sessione con Clau
 | T4 | ⚪ | Verificare che il server MCP liberi i modelli dopo 5 minuti senza ricerche | in Monitoraggio Attività `codebase-wiki-mcp serve` scende da ~1–2 GB a pochi MB | unknown | Monitoraggio Attività dopo una ricerca + 6 minuti | ⚠️ NOT VERIFIED - codice in `crates/wiki-mcp/src/serve.rs` (`unload_when_idle`), mai osservato |
 | T5 | ⚪ | Prova di un agente reale collegato alla 0.3.1 | una domanda dove/come usa `search_code` con una query in inglese; una su stato o rischi apre la wiki da `index.md` | Stefano | sessione Claude Code o Codex dopo il riavvio | ⚠️ NOT VERIFIED - provato solo con il server 0.2.0 |
 | T6 | ⚪ | Prova di privacy del RAG | un termine di `.private-terms` messo in un file di codice non compare mai nei risultati di `search_code` | unknown | `codebase-wiki-mcp search` su repo di prova | ⚠️ NOT VERIFIED - coperto solo da test unitari (`filter_private_chunks`) |
-| T13 | ⚪ | Provare l'aggiornamento automatico dell'app | con la 0.6.0 installata dal `.dmg`, pubblicata una release successiva: al riavvio compare il banner, "Aggiorna e riavvia" installa e l'app riparte con la versione nuova; annotare se Gatekeeper chiede di nuovo "Apri comunque" | Stefano | prova a mano alla prossima release | ⚠️ NOT VERIFIED - serve una release dopo la 0.6.0 |
 
 ## Proposte
 <!-- wiki:proposals -->
@@ -57,6 +55,7 @@ Idee e lavori suggeriti che nessuno ha ancora approvato: senza ID né icona.
 
 | ID | Status | Goal | Closed | Criteria met | Evidence |
 | --- | --- | --- | --- | --- | --- |
+| T13 | 🟢 | Provare l'aggiornamento automatico dell'app | 2026-11-13 | da 0.7.0 il banner ha proposto la 0.7.1, "Aggiorna e riavvia" l'ha installata e l'app è ripartita aggiornata; Gatekeeper non osservato; trovato e corretto il pulsante senza testo (dopo la 0.7.1) | `/Applications/Codebase Wiki.app` Info.plist `CFBundleShortVersionString` → 0.7.1 (modificato 16:19); prova di Stefano; [log](../log.md) |
 | T10 | 🟢 | Vista Progetti e registro delle chiamate MCP | 2026-11-12 | test Rust e TS verdi; una chiamata `search_code` reale registrata con `agent: claude-code`; Stefano ha provato l'app con `npm run tauri dev` e ha approvato il merge su `main` | commit `6648f9f`; `npm test` 140 pass; [log](../log.md) |
 | T7 | 🟢 | Release 0.3.0 con pacchetti per Windows, macOS e Linux | 2026-11-11 | CI del tag verde su test e tre build; release pubblicata con 7 pacchetti | run GitHub Actions 43073107982; [release v0.3.0](https://github.com/StefanoHernandez/codebase-wiki-app/releases/tag/v0.3.0) |
 | T9 | 🟢 | Release 0.3.1 con pacchetti per Windows, macOS e Linux | 2026-11-12 | CI del tag verde su test e tre build; release pubblicata con 7 pacchetti; build macOS firmata ad-hoc | run GitHub Actions 43117157795; [release v0.3.1](https://github.com/StefanoHernandez/codebase-wiki-app/releases/tag/v0.3.1) |
