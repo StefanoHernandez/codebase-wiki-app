@@ -21,7 +21,7 @@ aperti sotto sono stati aperti da Stefano il 2026-11-11, nella sessione con Clau
 ## Prossimi passi
 <!-- wiki:next -->
 
-**In una riga:** 0.6.0 pubblicata il 2026-11-13: l'app controlla e installa i propri aggiornamenti e segnala i plugin indietro; correzioni Windows di Alessandro Cianfaglione (PR #5). Mancano le prove a mano (Windows, aggiornamento automatico, agente vero).
+**In una riga:** 0.7.1 pubblicata il 2026-11-13 (interfaccia in inglese, aspetto "Notte", aggiornamento del plugin per Claude Code e Antigravity); l'aggiornamento automatico funziona (T13). Mancano le prove a mano su Windows e con un agente vero; due correzioni di stile non ancora rilasciate.
 
 1. Provare l'app installata e un agente vero collegato via MCP (T1, T5) e lo scarico della memoria (T4)
 2. Adopt della copia di prova di Versal e azioni umane su una wiki 0.13 (T3)
