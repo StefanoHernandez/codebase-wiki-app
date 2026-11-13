@@ -1154,7 +1154,13 @@ impl Runner for CliRunner {
     fn run(&self, args: &[&str]) -> Result<String, String> {
         let (program, rest) = args.split_first().ok_or("comando vuoto")?;
         let exe = self.resolve(program).ok_or_else(|| format!("{program}: comando non trovato"))?;
-        let mut child = Command::new(exe)
+        let mut cmd = Command::new(exe);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW: no console flash per CLI call
+        }
+        let mut child = cmd
             .args(rest)
             .env("PATH", &self.path)
             // Never wait for a person: no stdin, no git credential prompt.

@@ -231,12 +231,17 @@ pub fn claude_remove_command() -> &'static str {
     "claude mcp remove --scope user codebase-wiki"
 }
 
+/// The Claude Code CLI name that answers. On Windows Rust only tries `claude.exe`, so the
+/// npm wrapper `claude.cmd` is tried by name.
+fn claude_program() -> Option<&'static str> {
+    let names: &[&'static str] = if cfg!(windows) { &["claude", "claude.cmd"] } else { &["claude"] };
+    names.iter().copied().find(|name| {
+        Command::new(name).arg("--version").output().is_ok_and(|o| o.status.success())
+    })
+}
+
 pub fn claude_on_path() -> bool {
-    Command::new("claude")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    claude_program().is_some()
 }
 
 fn codex_command_in_toml(text: &str) -> Option<String> {
@@ -439,10 +444,10 @@ pub fn harness_apply(harness: &str, action: HarnessAction) -> Result<(), String>
         return safe_write(Path::new(&preview.path), &preview.after);
     }
     if action == HarnessAction::Disconnect {
-        if !claude_on_path() {
+        let Some(claude) = claude_program() else {
             return Err("claude non è nel PATH".into());
-        }
-        let status = Command::new("claude")
+        };
+        let status = Command::new(claude)
             .args(["mcp", "remove", "--scope", "user", SERVER_KEY])
             .status()
             .map_err(|e| e.to_string())?;
@@ -451,10 +456,10 @@ pub fn harness_apply(harness: &str, action: HarnessAction) -> Result<(), String>
         } else {
             Err("claude mcp remove fallito".into())
         }
-    } else if claude_on_path() {
+    } else if let Some(claude) = claude_program() {
         let bin = bin_path();
         let json = claude_mcp_json(&bin);
-        let status = Command::new("claude")
+        let status = Command::new(claude)
             .args(["mcp", "add-json", "--scope", "user", SERVER_KEY, &json])
             .status()
             .map_err(|e| e.to_string())?;
