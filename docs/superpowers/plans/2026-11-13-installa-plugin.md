@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Agent ids are the existing `HarnessRow.id` values: `claude`, `codex`, `antigravity`, `cursor`, `opencode` (no plugin row for Claude Desktop).
-- Repo URL `https://github.com/StefanoHernandez/codebase-wiki-llm.git`; marketplace name `stefano-wiki`; plugin id `codebase-wiki-llm@stefano-wiki`; ref `main`.
+- Repo URL `https://github.com/StefanoHernandez/codebase-wiki-llm.git`; ref `main`. Claude Code: marketplace `stefano-wiki`, plugin `codebase-wiki-llm@stefano-wiki`. Codex: marketplace `codebase-wiki-llm`, plugin `codebase-wiki-llm@codebase-wiki-llm`.
 - Skill folders for Cursor/OpenCode: `codebase-wiki-llm`, `codebase-wiki-context`, `codebase-wiki-init`, `codebase-wiki-ingest`, `codebase-wiki-sync`, `codebase-wiki-lint`; marker `codebase-wiki-llm/.installed-version`.
 - Paths: Antigravity `~/.gemini/config/plugins/codebase-wiki-llm/`; Cursor `~/.cursor/skills/`; OpenCode `$XDG_CONFIG_HOME|~/.config` + `/opencode/skills/`.
 - Replace only our folders; old one moved to `<name>.bak`, removed after success, restored on failure.
@@ -44,11 +44,12 @@
   - `latest_tag("…refs/tags/v0.9.2\n…refs/tags/v0.14.0\n…refs/tags/v0.14.0^{}\n…refs/tags/foo")` → `Some("0.14.0")`.
   - claude JSON `[{"id":"codebase-wiki-llm@other","version":"9.0.0"},{"id":"codebase-wiki-llm@stefano-wiki","version":"0.13.0"}]`, latest `0.14.0` → claude row `installed 0.13.0`, `Outdated`.
   - claude program missing (runner Err "not found") and no `~/.claude` → `agent_found false`.
+  - codex `list --json` `{"installed":[{"pluginId":"codebase-wiki-llm@codebase-wiki-llm","version":"0.11.0","enabled":true}],"available":[]}`, latest `0.14.0` → `Outdated`.
   - codex runner Err `spawn … ENOENT` with `~/.codex` present → `agent_found true`, `error` set, `manual` = the two codex commands.
   - antigravity folder with `plugin.json` version `0.14.0` → `Current`; cursor with marker `0.13.0` → `Outdated`, `skills_only true`; opencode absent but `~/.config/opencode` present → `Missing`.
   - latest `None` + installed → `Unknown`.
 - [ ] **Step 2:** `cargo test -p rag-core plugin_install` — Expected: FAIL (module missing).
-- [ ] **Step 3:** Implement. Claude/Codex parse `list --json` (Codex shape per spec, **verify**: accept an array of `{name|id, version, source|marketplace}`; match name `codebase-wiki-llm` with source `stefano-wiki` or the repo). Agent found = CLI answered or its config folder exists (`~/.claude`, `~/.codex` / `$CODEX_HOME`, `~/.gemini`, `~/.cursor`, opencode config dir).
+- [ ] **Step 3:** Implement. Claude/Codex parse `list --json` (Codex: object with `installed[]`, match `pluginId == codebase-wiki-llm@codebase-wiki-llm`). Agent found = CLI answered or its config folder exists (`~/.claude`, `~/.codex` / `$CODEX_HOME`, `~/.gemini`, `~/.cursor`, opencode config dir).
 - [ ] **Step 4:** `cargo test -p rag-core plugin_install` — Expected: PASS.
 - [ ] **Step 5: Commit** `feat(plugin): read installed plugin state per agent`.
 
@@ -63,7 +64,7 @@
 
 - [ ] **Step 1: Failing tests:**
   - claude preview without `stefano-wiki` on main (runner `plugin marketplace list --json` returns `[]`) → commands `claude plugin marketplace add https://github.com/StefanoHernandez/codebase-wiki-llm.git#main`, `claude plugin install codebase-wiki-llm@stefano-wiki`; with it present on main → `claude plugin marketplace update stefano-wiki`, `claude plugin install …`.
-  - codex preview → `codex plugin marketplace add StefanoHernandez/codebase-wiki-llm --ref main`, `codex plugin add codebase-wiki-llm`.
+  - codex preview without marketplace `codebase-wiki-llm` (runner `plugin marketplace list` output lacks it) → `codex plugin marketplace add StefanoHernandez/codebase-wiki-llm --ref main`, `codex plugin add codebase-wiki-llm@codebase-wiki-llm`; with it → `codex plugin marketplace upgrade codebase-wiki-llm`, `codex plugin add codebase-wiki-llm@codebase-wiki-llm`.
   - cursor apply from a fake source with the six skill folders → six folders under `home/.cursor/skills/`, marker = version; `home/.cursor/skills/other/` untouched.
   - second apply with an existing install → replaced, no `.bak` left; a pre-existing stale `codebase-wiki-sync.bak` → gone.
   - apply where the source lacks `codebase-wiki-lint` → Err, previous six folders intact (restored from `.bak`).

@@ -18,7 +18,7 @@ commands), project-scoped installs, Windows paths beyond what `dirs` gives for f
 | Agent | Package | Install | Installed version read from |
 | --- | --- | --- | --- |
 | Claude Code | native plugin, hooks | `claude plugin marketplace add https://github.com/StefanoHernandez/codebase-wiki-llm.git#main` (skipped when `stefano-wiki` exists with ref `main`), then `claude plugin install codebase-wiki-llm@stefano-wiki`; update: `claude plugin marketplace update stefano-wiki` + `claude plugin install …` | `claude plugin list --json`, entry `codebase-wiki-llm@stefano-wiki`, field `version` |
-| Codex | native plugin, hooks | `codex plugin marketplace add StefanoHernandez/codebase-wiki-llm --ref main`, then `codex plugin add codebase-wiki-llm` and `enabled = true` in `config.toml` if the add does not enable it **(verify on a working Codex CLI)**; update: `codex plugin marketplace upgrade <name>` | `codex plugin list --json` **(verify shape)** |
+| Codex | native plugin, hooks | `codex plugin marketplace add StefanoHernandez/codebase-wiki-llm --ref main` (skipped when marketplace `codebase-wiki-llm` exists), then `codex plugin add codebase-wiki-llm@codebase-wiki-llm`; update: `codex plugin marketplace upgrade codebase-wiki-llm` + the same `plugin add` (verified on codex-cli 0.169.0) | `codex plugin list --json` → `installed[]` entry with `pluginId` `codebase-wiki-llm@codebase-wiki-llm`, fields `version`, `enabled` (verified) |
 | Antigravity | native plugin (rules + skills), no hooks for the change note | copy `plugins/antigravity-codebase-wiki-llm/` to `~/.gemini/config/plugins/codebase-wiki-llm/` | `version` in that folder's `plugin.json` |
 | Cursor | skills only, no hooks | copy each `skills/codebase-wiki-*` folder to `~/.cursor/skills/<name>/` | marker file `~/.cursor/skills/codebase-wiki-llm/.installed-version` |
 | OpenCode | skills only, no hooks | copy each `skills/codebase-wiki-*` folder to `$XDG_CONFIG_HOME or ~/.config`/`opencode/skills/<name>/` | marker file in `…/opencode/skills/codebase-wiki-llm/.installed-version` |
@@ -81,7 +81,7 @@ done when at least one agent has the plugin installed **and** the MCP link conne
 
 ## Risks
 
-- Codex CLI flags and JSON are from docs, not tried (the local CLI is broken): first use may need
-  a fix; the manual-commands fallback covers it.
+- Codex: commands and JSON checked on codex-cli 0.169.0 (help and `list --json`); the marketplace
+  is named `codebase-wiki-llm` (from `.agents/plugins/marketplace.json`), not `stefano-wiki`.
 - Agents change their folders: paths live in one table in `plugin_install.rs`.
 - Cursor/OpenCode get no hooks, so no "wiki not updated" note: shown in the row.
