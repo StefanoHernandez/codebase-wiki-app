@@ -29,11 +29,21 @@ confidence: high
    pubblicazione, push di `main` con un commit che ha `[skip ci]` nel messaggio, così non riparte
    una seconda build sullo stesso codice.
 3. La CI del tag crea una release **in bozza** con `.dmg`, `.app.tar.gz`, `.exe`, `.msi`,
-   `.AppImage`, `.deb`, `.rpm`.
-4. Scrivere le note e pubblicarla (`gh release edit vX.Y.Z --draft=false --latest`).
+   `.AppImage`, `.deb`, `.rpm`, le firme `.sig` e `latest.json` (dalla 0.6.0). Firma con i secret
+   `TAURI_SIGNING_PRIVATE_KEY` e `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; la chiave privata sta solo
+   lì e sul Mac di Stefano (`~/.tauri/codebase-wiki.key`), la pubblica in `tauri.conf.json`. Le
+   build dei branch e `npm run build:app` usano `src-tauri/tauri.no-updater.conf.json`.
+4. Prima di pubblicare, controllare che `latest.json` della bozza abbia `darwin-aarch64`,
+   `windows-x86_64` e `linux-x86_64`: i tre job lo aggiornano in parallelo e uno può perdere la
+   propria voce (`gh release download vX.Y.Z -p latest.json -O - | python3 -m json.tool`). Se ne
+   manca una, rilanciare quel job.
+5. Scrivere le note e pubblicarla (`gh release edit vX.Y.Z --draft=false --latest`).
 
 Merge su `main`, tag e pubblicazione solo con l'ok di Stefano.
 
 ## Dopo l'aggiornamento
+Le app dalla 0.6.0 in poi trovano la release pubblicata come `latest` tramite
+`releases/latest/download/latest.json` e propongono "Aggiorna e riavvia"; la 0.5.x va aggiornata
+a mano una volta.
 All'avvio l'app copia il nuovo `codebase-wiki-mcp` in `<data>/bin/`; gli agenti già collegati
 vanno chiusi e riaperti per usarlo.

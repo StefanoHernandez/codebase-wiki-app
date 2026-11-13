@@ -17,6 +17,8 @@ sources:
   - src/lib/dependencies.ts
   - src/lib/plugin.ts
   - src/lib/graph-history.ts
+  - src/lib/updates.ts
+  - src/state/updates.tsx
   - src/views/Grafo.tsx
   - src/api.ts
   - src-tauri/src/commands.rs
@@ -39,7 +41,8 @@ confidence: high
 | Salute | validatore, livelli di fiducia, budget, rischi, log |
 | Grafo | wiki ↔ codice, filtri e drift; **Storia** riproduce la crescita commit per commit (`lib/graph-history.ts`: un nodo nasce al primo commit che tocca il suo file e pulsa a ogni modifica; un link compare quando esistono i due capi, approssimazione; storia dal comando `graph_history`, ultimi 2000 commit) |
 | Ricerca | stato dell'indice, Indicizza/Annulla, prova di `search_code` |
-| Impostazioni | profilo, tema, modelli, collegamento degli agenti (MCP), plugin per agente (installa / aggiorna, `lib/plugin.ts`) |
+| Impostazioni | profilo, tema, modelli, collegamento degli agenti (MCP), plugin per agente (installa / aggiorna, `lib/plugin.ts`), "Controlla aggiornamenti" |
+| Banner aggiornamenti | sopra ogni vista (`components/UpdateBanner.tsx`): 5 s dopo l'avvio e ogni 24 h controlla `latest.json` (plugin updater) e i plugin indietro (`plugin_state`); testo da `lib/updates.ts`; "Aggiorna e riavvia" solo al clic; su Linux fuori da un AppImage "Scarica" apre la release; un controllo automatico fallito non mostra niente |
 
 ## Etichette del formato
 - `lib/labels.ts` traduce solo il vocabolario fisso del plugin: chiavi note (`fieldLabel`) e

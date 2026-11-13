@@ -43,7 +43,7 @@ confidence: high
 | Test Rust | `cargo test --workspace` | 2026-11-11 @fe7bba6 → tutti verdi |
 | Build frontend | `npm run build` | 2026-11-11 @fe7bba6 |
 | App in sviluppo | `npm run tauri dev` | ⚠️ NOT VERIFIED - non lanciato in questa sessione |
-| Bundle macOS locale | `npx tauri build --bundles app` | 2026-11-11 @fe7bba6 → `Codebase Wiki.app` 85 MB |
+| Bundle macOS locale | `npm run build:app` (senza chiave di firma: `npx tauri build` da solo fallisce) | 2026-11-13 @224232f → `Codebase Wiki.app` 89 MB |
 | Eseguibile di ricerca | `cargo build -p wiki-mcp --release --features embed` | 2026-11-11 @fe7bba6 |
 
 ## Fatti verificati

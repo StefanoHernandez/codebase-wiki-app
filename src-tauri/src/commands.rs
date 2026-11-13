@@ -569,6 +569,32 @@ pub async fn read_source_file(
     blocking(move || read_repo_file_safe(&opened_repo(&app, &repo)?, &rel_path, None)).await
 }
 
+const RELEASE_PAGE: &str = "https://github.com/StefanoHernandez/codebase-wiki-app/releases/latest";
+
+/// False where the updater cannot replace the app: Linux installed from `.deb`/`.rpm`
+/// (only the AppImage self-updates). The banner then offers the release page.
+#[tauri::command]
+pub fn updater_supported() -> bool {
+    !cfg!(target_os = "linux") || std::env::var_os("APPIMAGE").is_some()
+}
+
+/// Opens the latest release page in the default browser (fixed URL, nothing from the page).
+#[tauri::command]
+pub fn open_release_page() -> Result<(), String> {
+    let program = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(windows) {
+        "explorer"
+    } else {
+        "xdg-open"
+    };
+    wiki_core::no_window_command(program)
+        .arg(RELEASE_PAGE)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 /// Commits for the graph timeline (Grafo → Storia), oldest first.
 #[tauri::command]
 pub async fn graph_history(app: AppHandle, repo: String) -> Result<FileHistory, String> {

@@ -54,7 +54,7 @@ confidence: high
 | --- | --- | --- | --- |
 | `npm test` | repo | pass @47eaee0 | 140 test |
 | `cargo test --workspace` | repo | pass @47eaee0 | tutti verdi; `cargo test -p wiki-mcp --features embed` 2 test |
-| `npm run tauri build -- --bundles app` | repo | pass @9a19fdd | `Codebase Wiki.app` 85 MB, `Signature=adhoc`, `codesign --verify --deep --strict` ok |
+| `npm run build:app` | repo | pass @224232f | `Codebase Wiki.app` 89 MB; `npx tauri build` senza override ora fallisce per la chiave di firma mancante |
 | CI tag `v0.5.0` | GitHub Actions | pass @c73e9bd | run 43411334416 |
 
 ## Da non rifare
