@@ -35,6 +35,11 @@ pub struct PluginRow {
     pub manual: Vec<String>,
 }
 
+/// The user's home folder (`USERPROFILE` on Windows, `HOME` elsewhere).
+pub fn home_dir() -> PathBuf {
+    dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
+}
+
 /// Where each agent keeps its files.
 #[derive(Debug, Clone)]
 pub struct AgentDirs {
@@ -59,8 +64,7 @@ impl AgentDirs {
 
     /// The real layout: `CODEX_HOME` and `XDG_CONFIG_HOME` honoured.
     pub fn real() -> Self {
-        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        let mut d = Self::from_home(&home);
+        let mut d = Self::from_home(&home_dir());
         if let Some(codex) = std::env::var_os("CODEX_HOME") {
             d.codex = PathBuf::from(codex);
         }

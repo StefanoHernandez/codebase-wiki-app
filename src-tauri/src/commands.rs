@@ -938,6 +938,12 @@ fn parse_harness_action(action: &str) -> Result<rag_core::harness::HarnessAction
 mod tests {
     use super::*;
 
+    #[test]
+    fn program_names_add_windows_extensions() {
+        assert_eq!(program_names("claude", false), vec!["claude"]);
+        assert_eq!(program_names("codex", true), vec!["codex.exe", "codex.cmd", "codex.bat"]);
+    }
+
     fn rp(path: &str) -> RecentProject {
         RecentProject {
             path: path.into(),
@@ -1096,7 +1102,7 @@ struct CliRunner {
 
 impl CliRunner {
     fn new() -> Self {
-        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+        let home = plugin_install::home_dir();
         let mut dirs_list: Vec<PathBuf> = std::env::var_os("PATH")
             .map(|p| std::env::split_paths(&p).collect())
             .unwrap_or_default();
@@ -1115,6 +1121,10 @@ impl CliRunner {
         ] {
             dirs_list.push(home.join(extra));
         }
+        // Windows: npm global installs (claude.cmd, codex.cmd) live in %APPDATA%\npm.
+        if let Some(appdata) = std::env::var_os("APPDATA") {
+            dirs_list.push(PathBuf::from(appdata).join("npm"));
+        }
         // nvm keeps one bin folder per node version; any of them serves `env node`.
         if let Ok(versions) = std::fs::read_dir(home.join(".nvm/versions/node")) {
             dirs_list.extend(versions.flatten().map(|v| v.path().join("bin")));
@@ -1123,7 +1133,20 @@ impl CliRunner {
     }
 
     fn resolve(&self, program: &str) -> Option<PathBuf> {
-        std::env::split_paths(&self.path).map(|d| d.join(program)).find(|p| p.is_file())
+        let names = program_names(program, cfg!(windows));
+        std::env::split_paths(&self.path)
+            .flat_map(|d| names.iter().map(move |n| d.join(n)).collect::<Vec<_>>())
+            .find(|p| p.is_file())
+    }
+}
+
+/// File names a program can have on disk: on Windows `claude` is `claude.exe` or an npm
+/// `claude.cmd` wrapper (Rust runs `.cmd`/`.bat` through cmd.exe with safe quoting).
+fn program_names(program: &str, windows: bool) -> Vec<String> {
+    if windows {
+        ["exe", "cmd", "bat"].iter().map(|ext| format!("{program}.{ext}")).collect()
+    } else {
+        vec![program.to_string()]
     }
 }
 
