@@ -14,6 +14,7 @@ pub mod paths;
 pub mod repo;
 pub mod store;
 pub mod harness;
+pub mod plugin_install;
 
 pub use catalog::{catalog, default_model_id, model_by_id, ModelSpec, Pooling};
 pub use files::{list_files, FileEntry, FileSource};
