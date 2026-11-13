@@ -89,3 +89,8 @@ confidence: high
 - What: dipendenze npm fissate alla versione esatta del lockfile (come le crate Rust); test del validatore senza `../..`; il nome `.private-terms` confrontato in minuscolo Unicode; tolti i tre avvisi di clippy (contatore di ciclo, `while let` → `for`, campo `tool_router` mai letto). Resta non verificabile qui solo il prefisso `\\?\` del watcher su Windows.
 - Evidence: `npm ci --dry-run` ok; `npm test` → 157 pass; `cargo test --workspace --features wiki-mcp/embed` → 105 pass; `cargo clippy --workspace` → 0 avvisi; `codebase-wiki-mcp serve` elenca ancora `search_code`, `index_status`, `list_repos`
 - IDs: none
+
+## 2026-11-13 · Release 0.4.0 e plugin 0.14.0 · agent
+- What: app 0.4.0 pubblicata (Progetti, primi passi, dipendenze nel tracker, icona, secondo giro UI, correzioni) con i 7 pacchetti; plugin codebase-wiki-llm 0.14.0 su `main` con tag. Per risparmiare minuti di CI si pusha prima solo il tag e poi `main` con `[skip ci]`; le build Linux e Windows sono state rilanciate a repo reso pubblico da Stefano. Il marketplace `stefano-wiki` di Claude Code ora segue `main` del plugin (prima `dev`, fermo alla 0.13.0).
+- Evidence: CI tag app https://github.com/StefanoHernandez/codebase-wiki-app/actions/runs/43395240820 verde (test + 3 build); CI tag plugin https://github.com/StefanoHernandez/codebase-wiki-llm/actions/runs/43395066612 verde (4 job); `.dmg` installato in Applicazioni, versione 0.4.0, firma ad-hoc valida
+- IDs: none

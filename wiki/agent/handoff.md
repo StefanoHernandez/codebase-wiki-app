@@ -18,10 +18,10 @@ confidence: high
 <!-- wiki:state -->
 
 - Tracker IDs: T1, T3, T4, T5
-- Goal: tracker con dipendenze in revisione (plugin 0.14.0 e app su `feat/tracker-deps`); merge, tag e release solo con l'ok di Stefano
-- Last completed step: dipendenze nel tracker implementate su `feat/tracker-deps` (plugin e app)
-- Current branch: `feat/tracker-deps`
-- Last commit: `0971972`
+- Goal: nessun sottoprogetto aperto; prossimo passo proposto: note del catalogo dei modelli in Impostazioni (testo per chi sceglie, non i risultati delle prove)
+- Last completed step: release app 0.4.0 e plugin 0.14.0 pubblicate
+- Current branch: `main`
+- Last commit: `a180d25` (release: 0.4.0) più questo aggiornamento della wiki
 - Worktree: clean
 
 ## Baton per il prossimo agente

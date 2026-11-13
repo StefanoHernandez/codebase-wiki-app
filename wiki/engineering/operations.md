@@ -25,7 +25,9 @@ confidence: high
 ## Release
 1. Portare la versione in `package.json`, `package-lock.json` (2 righe), `src-tauri/tauri.conf.json`,
    i quattro `Cargo.toml` (`crates/*`, `src-tauri`) e `Cargo.lock`.
-2. Commit `release: X.Y.Z`, tag annotato `vX.Y.Z`, push di `main` e del tag.
+2. Commit `release: X.Y.Z` e tag annotato `vX.Y.Z`; push **solo del tag** (una sola CI). Dopo la
+   pubblicazione, push di `main` con un commit che ha `[skip ci]` nel messaggio, così non riparte
+   una seconda build sullo stesso codice.
 3. La CI del tag crea una release **in bozza** con `.dmg`, `.app.tar.gz`, `.exe`, `.msi`,
    `.AppImage`, `.deb`, `.rpm`.
 4. Scrivere le note e pubblicarla (`gh release edit vX.Y.Z --draft=false --latest`).
