@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use wiki_core::no_window_command;
 
 use sha2::{Digest, Sha256};
 use wiki_core::{ensure_wiki_inside_repo, resolve_wiki_root};
@@ -43,7 +43,7 @@ pub fn repo_id(root: &Path) -> String {
 }
 
 pub fn head_sha(root: &Path) -> Option<String> {
-    let out = Command::new("git")
+    let out = no_window_command("git")
         .arg("-C")
         .arg(root)
         .args(["rev-parse", "HEAD"])

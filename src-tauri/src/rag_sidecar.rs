@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use rag_core::{bin_path, ensure_data_dirs};
@@ -66,7 +65,7 @@ pub fn install_mcp_binary() -> Result<(), String> {
 }
 
 fn sidecar_version(path: &Path) -> Option<String> {
-    let out = Command::new(path).arg("--version").output().ok()?;
+    let out = wiki_core::no_window_command(path).arg("--version").output().ok()?;
     if !out.status.success() {
         return None;
     }

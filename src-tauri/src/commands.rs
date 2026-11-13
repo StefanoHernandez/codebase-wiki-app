@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 
@@ -266,7 +265,7 @@ fn parse_version_stdout(text: &str) -> Option<(u32, u32)> {
 }
 
 fn python_version_at(path: &Path) -> Option<(u32, u32)> {
-    let output = Command::new(path)
+    let output = wiki_core::no_window_command(path)
         .arg("-c")
         .arg(PYTHON_VERSION_SNIPPET)
         .output()
@@ -279,7 +278,7 @@ fn python_version_at(path: &Path) -> Option<(u32, u32)> {
 
 #[cfg(windows)]
 fn python_version_py_dash_3() -> Option<(u32, u32)> {
-    let output = Command::new("py")
+    let output = wiki_core::no_window_command("py")
         .arg("-3")
         .arg("-c")
         .arg(PYTHON_VERSION_SNIPPET)
@@ -630,13 +629,8 @@ fn rag_bin() -> Result<PathBuf, String> {
 }
 
 fn run_sidecar_output(bin: &PathBuf, args: &[&str]) -> Result<Vec<u8>, String> {
-    let mut cmd = Command::new(bin);
+    let mut cmd = wiki_core::no_window_command(bin);
     cmd.args(args);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000);
-    }
     let out = cmd.output().map_err(|e| e.to_string())?;
     if !out.status.success() {
         let err = parse_sidecar_error(&out.stdout).or_else(|| {
@@ -1160,12 +1154,7 @@ impl Runner for CliRunner {
     fn run(&self, args: &[&str]) -> Result<String, String> {
         let (program, rest) = args.split_first().ok_or("comando vuoto")?;
         let exe = self.resolve(program).ok_or_else(|| format!("{program}: comando non trovato"))?;
-        let mut cmd = Command::new(exe);
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW: no console flash per CLI call
-        }
+        let mut cmd = wiki_core::no_window_command(exe);
         let mut child = cmd
             .args(rest)
             .env("PATH", &self.path)

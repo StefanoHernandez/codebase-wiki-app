@@ -141,6 +141,8 @@ export default function PrimiPassi() {
         {state.project === 'incompatible' && (
           <p className="field-hint">La wiki usa un formato vecchio: avvia /wiki-init --adopt nell'agente.</p>
         )}
+        {project.loading && <p className="field-hint">Apertura del progetto…</p>}
+        {project.error && <p className="field-hint error-text">{project.error}</p>}
         <div className="primi-passi-actions">
           <button type="button" className="btn" onClick={() => void openFolder()} disabled={project.loading}>
             {project.snapshot ? 'Apri un’altra cartella' : 'Apri cartella'}
