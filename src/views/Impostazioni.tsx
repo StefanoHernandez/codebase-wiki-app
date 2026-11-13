@@ -8,6 +8,7 @@ import { PYTHON_KEY, useProject } from '../state/project';
 import { useRag } from '../state/rag';
 import { useNav } from '../state/nav';
 import { markFirstRunDone } from './PrimiPassi';
+import { AGENT_LABEL, pluginBlocked, pluginStateText, type PluginRow } from '../lib/plugin';
 import type { ThemeChoice } from '../state/theme';
 import './ricerca.css';
 
@@ -48,6 +49,7 @@ export default function Impostazioni(props: ThemeProps) {
       <Profilo {...props} />
       <Modelli />
       <Agenti />
+      <PluginAgenti />
     </section>
   );
 }
@@ -436,6 +438,132 @@ function Agenti() {
                   <pre className="ricerca-snippet">{dlg.after}</pre>
                 </div>
               </div>
+            )}
+          </>
+        )}
+      </Dialog>
+    </section>
+  );
+}
+
+type PluginDlg = { id: string; label: string; update: boolean; commands: string[]; folders: string[] };
+
+function PluginAgenti() {
+  const toast = useToast();
+  const [rows, setRows] = useState<PluginRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [dlg, setDlg] = useState<PluginDlg | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      setRows(await invoke<PluginRow[]>('plugin_state'));
+    } catch (e) {
+      setError(message(e));
+      setRows([]);
+    }
+  }, []);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const open = async (row: PluginRow) => {
+    if (busy) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const p = await invoke<{ commands: string[]; folders: string[] }>('plugin_preview', { agent: row.id });
+      setDlg({ id: row.id, label: AGENT_LABEL[row.id] ?? row.id, update: row.status === 'outdated', ...p });
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirm = async () => {
+    if (!dlg) return;
+    setBusy(true);
+    try {
+      await invoke('plugin_apply', { agent: dlg.id });
+      toast(`Plugin ${dlg.update ? 'aggiornato' : 'installato'} in ${dlg.label}: riavvia l'agente`);
+      setDlg(null);
+      void refresh();
+    } catch (e) {
+      setError(message(e));
+      setDlg(null);
+      // A CLI may have done part of the work: show what is there now.
+      void refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const latest = rows?.find((r) => r.latest)?.latest;
+
+  return (
+    <section className="group">
+      <h2 className="group-title">Plugin Codebase Wiki LLM</h2>
+      <p className="muted">
+        Il plugin è ciò che fa scrivere e aggiornare la wiki agli agenti.{' '}
+        {latest ? `Ultima versione: ${latest}.` : rows ? 'Ultima versione non disponibile (sei offline?).' : ''}
+      </p>
+      {!rows ? (
+        <p className="muted">Controllo degli agenti…</p>
+      ) : (
+        <table className="table">
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id}>
+                <td>{AGENT_LABEL[row.id] ?? row.id}</td>
+                <td className={row.status === 'current' ? undefined : 'muted'}>{pluginStateText(row)}</td>
+                <td className="muted">
+                  {row.error ??
+                    (row.agentFound ? (pluginBlocked(row) ?? (row.skillsOnly ? 'solo skill, senza gli avvisi automatici' : '')) : '')}
+                </td>
+                <td className="ricerca-actions">
+                  {row.agentFound && row.error ? (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => void copyText(row.manual.join('\n')).then(() => toast('Comandi copiati'))}
+                    >
+                      Copia comandi
+                    </button>
+                  ) : row.agentFound && (row.status === 'missing' || row.status === 'outdated') ? (
+                    <button type="button" className="btn" onClick={() => void open(row)} disabled={busy || !!pluginBlocked(row)}>
+                      {row.status === 'missing' ? 'Installa plugin' : 'Aggiorna plugin'}
+                    </button>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {error && <p className="error-text">{error}</p>}
+
+      <Dialog
+        open={!!dlg}
+        title={dlg ? `${dlg.update ? 'Aggiorna' : 'Installa'} il plugin in ${dlg.label}` : ''}
+        confirmLabel={dlg?.update ? 'Aggiorna' : 'Installa'}
+        busy={busy}
+        onCancel={() => setDlg(null)}
+        onConfirm={() => void confirm()}
+      >
+        {dlg && (
+          <>
+            {dlg.commands.length > 0 && (
+              <>
+                <p className="muted">Comandi che verranno eseguiti</p>
+                <pre className="ricerca-snippet">{dlg.commands.join('\n')}</pre>
+              </>
+            )}
+            {dlg.folders.length > 0 && (
+              <>
+                <p className="muted">Cartelle create o sostituite (le altre non vengono toccate)</p>
+                <pre className="ricerca-snippet">{dlg.folders.join('\n')}</pre>
+              </>
             )}
           </>
         )}

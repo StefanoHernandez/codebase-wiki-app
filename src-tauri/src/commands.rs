@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 use wiki_core::{
-    build_workflow_prompt, collect_repo_files_recursive, file_diff_since_commit, inspect_git_state,
+    build_workflow_prompt, collect_repo_files_recursive, file_diff_since_commit, file_history, FileHistory, inspect_git_state,
     is_git_repo, load_wiki_snapshot, read_repo_file_safe, resolve_wiki_root,
     read_wiki_file_safe, run_structural_lint_with, watch_repo_reporting,
     write_wiki_file_safe, write_wiki_files_safe, LintReport, RepoFilePayload, WatchHandle,
@@ -570,6 +570,12 @@ pub async fn read_source_file(
     blocking(move || read_repo_file_safe(&opened_repo(&app, &repo)?, &rel_path, None)).await
 }
 
+/// Commits for the graph timeline (Grafo → Storia), oldest first.
+#[tauri::command]
+pub async fn graph_history(app: AppHandle, repo: String) -> Result<FileHistory, String> {
+    blocking(move || Ok(file_history(&opened_repo(&app, &repo)?, 2000))).await
+}
+
 #[tauri::command]
 pub async fn source_diff(
     app: AppHandle,
@@ -938,6 +944,12 @@ fn parse_harness_action(action: &str) -> Result<rag_core::harness::HarnessAction
 mod tests {
     use super::*;
 
+    #[test]
+    fn program_names_add_windows_extensions() {
+        assert_eq!(program_names("claude", false), vec!["claude"]);
+        assert_eq!(program_names("codex", true), vec!["codex.exe", "codex.cmd", "codex.bat"]);
+    }
+
     fn rp(path: &str) -> RecentProject {
         RecentProject {
             path: path.into(),
@@ -1082,4 +1094,189 @@ mod tests {
         });
         assert_eq!(chosen, Some(PathBuf::from("/opt/python3.12")));
     }
+}
+
+// ---- Plugin install (Impostazioni → Agenti) ----
+
+use rag_core::plugin_install::{self, AgentDirs, PluginPreview, PluginRow, Runner, REPO_URL};
+
+/// Runs agent CLIs and git. A GUI app on macOS starts with a minimal PATH, so the usual
+/// install folders are added (also for `#!/usr/bin/env node` wrappers such as `codex`).
+struct CliRunner {
+    path: std::ffi::OsString,
+}
+
+impl CliRunner {
+    fn new() -> Self {
+        let home = plugin_install::home_dir();
+        let mut dirs_list: Vec<PathBuf> = std::env::var_os("PATH")
+            .map(|p| std::env::split_paths(&p).collect())
+            .unwrap_or_default();
+        for extra in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"] {
+            dirs_list.push(PathBuf::from(extra));
+        }
+        for extra in [
+            ".local/bin",
+            ".claude/local",
+            ".npm-global/bin",
+            ".volta/bin",
+            ".asdf/shims",
+            ".local/share/mise/shims",
+            ".bun/bin",
+            ".cargo/bin",
+        ] {
+            dirs_list.push(home.join(extra));
+        }
+        // Windows: npm global installs (claude.cmd, codex.cmd) live in %APPDATA%\npm.
+        if let Some(appdata) = std::env::var_os("APPDATA") {
+            dirs_list.push(PathBuf::from(appdata).join("npm"));
+        }
+        // nvm keeps one bin folder per node version; any of them serves `env node`.
+        if let Ok(versions) = std::fs::read_dir(home.join(".nvm/versions/node")) {
+            dirs_list.extend(versions.flatten().map(|v| v.path().join("bin")));
+        }
+        Self { path: std::env::join_paths(dirs_list).unwrap_or_default() }
+    }
+
+    fn resolve(&self, program: &str) -> Option<PathBuf> {
+        let names = program_names(program, cfg!(windows));
+        std::env::split_paths(&self.path)
+            .flat_map(|d| names.iter().map(move |n| d.join(n)).collect::<Vec<_>>())
+            .find(|p| p.is_file())
+    }
+}
+
+/// File names a program can have on disk: on Windows `claude` is `claude.exe` or an npm
+/// `claude.cmd` wrapper (Rust runs `.cmd`/`.bat` through cmd.exe with safe quoting).
+fn program_names(program: &str, windows: bool) -> Vec<String> {
+    if windows {
+        ["exe", "cmd", "bat"].iter().map(|ext| format!("{program}.{ext}")).collect()
+    } else {
+        vec![program.to_string()]
+    }
+}
+
+impl Runner for CliRunner {
+    fn run(&self, args: &[&str]) -> Result<String, String> {
+        let (program, rest) = args.split_first().ok_or("comando vuoto")?;
+        let exe = self.resolve(program).ok_or_else(|| format!("{program}: comando non trovato"))?;
+        let mut cmd = Command::new(exe);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW: no console flash per CLI call
+        }
+        let mut child = cmd
+            .args(rest)
+            .env("PATH", &self.path)
+            // Never wait for a person: no stdin, no git credential prompt.
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("{program}: {e}"))?;
+        let read = |pipe: Option<Box<dyn std::io::Read + Send>>| {
+            std::thread::spawn(move || {
+                let mut buf = Vec::new();
+                if let Some(mut p) = pipe {
+                    let _ = p.read_to_end(&mut buf);
+                }
+                buf
+            })
+        };
+        let stdout = read(child.stdout.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>));
+        let stderr = read(child.stderr.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>));
+        let deadline = std::time::Instant::now() + CLI_TIMEOUT;
+        let status = loop {
+            if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+                break status;
+            }
+            if std::time::Instant::now() > deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("{program}: nessuna risposta dopo {} s", CLI_TIMEOUT.as_secs()));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        };
+        let out = stdout.join().unwrap_or_default();
+        let err = String::from_utf8_lossy(&stderr.join().unwrap_or_default()).trim().to_string();
+        if status.success() {
+            Ok(String::from_utf8_lossy(&out).into_owned())
+        } else {
+            Err(if err.is_empty() { format!("{program}: uscita {status}") } else { err })
+        }
+    }
+}
+
+const CLI_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+const LATEST_RETRY: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Newest released plugin version, remembered once known. A failed lookup (offline) is retried
+/// after a minute; the network call runs without holding the lock.
+fn latest_plugin_version(runner: &dyn Runner) -> Option<String> {
+    static LATEST: Mutex<(Option<String>, Option<std::time::Instant>)> = Mutex::new((None, None));
+    {
+        let cached = LATEST.lock().unwrap_or_else(|e| e.into_inner());
+        if cached.0.is_some() || cached.1.is_some_and(|t| t.elapsed() < LATEST_RETRY) {
+            return cached.0.clone();
+        }
+    }
+    let found = runner
+        .run(&["git", "ls-remote", "--tags", REPO_URL])
+        .ok()
+        .and_then(|out| plugin_install::latest_tag(&out));
+    let mut cached = LATEST.lock().unwrap_or_else(|e| e.into_inner());
+    *cached = (found.clone(), found.is_none().then(std::time::Instant::now));
+    found
+}
+
+/// Shallow checkout of the plugin repo at `v<version>` under the data dir.
+fn plugin_source(runner: &dyn Runner, version: &str) -> Result<PathBuf, String> {
+    let dir = rag_core::paths::data_dir().join("plugin-src");
+    let tag = format!("v{version}");
+    let d = dir.to_string_lossy().into_owned();
+    if dir.join(".git").is_dir() {
+        runner.run(&["git", "-C", &d, "fetch", "--depth", "1", "origin", "tag", &tag])?;
+        runner.run(&["git", "-C", &d, "checkout", "--force", &tag])?;
+        // Files of older versions must not be copied into the agents.
+        runner.run(&["git", "-C", &d, "clean", "-fdx"])?;
+    } else {
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+        }
+        runner.run(&["git", "clone", "--depth", "1", "--branch", &tag, REPO_URL, &d])?;
+    }
+    Ok(dir)
+}
+
+#[tauri::command]
+pub async fn plugin_state() -> Result<Vec<PluginRow>, String> {
+    blocking(|| {
+        let runner = CliRunner::new();
+        let latest = latest_plugin_version(&runner);
+        Ok(plugin_install::plugin_state(&AgentDirs::real(), &runner, latest.as_deref()))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn plugin_preview(agent: String) -> Result<PluginPreview, String> {
+    blocking(move || plugin_install::plugin_preview(&agent, &AgentDirs::real(), &CliRunner::new())).await
+}
+
+#[tauri::command]
+pub async fn plugin_apply(agent: String) -> Result<(), String> {
+    blocking(move || {
+        let runner = CliRunner::new();
+        let needs_source = matches!(agent.as_str(), "antigravity" | "cursor" | "opencode");
+        let latest = latest_plugin_version(&runner);
+        let source = match (&latest, needs_source) {
+            (Some(v), true) => Some(plugin_source(&runner, v)?),
+            (None, true) => return Err("Versione del plugin non disponibile: controlla la connessione e riprova.".into()),
+            _ => None,
+        };
+        plugin_install::plugin_apply(&agent, &AgentDirs::real(), &runner, source.as_deref(), latest.as_deref())
+    })
+    .await
 }

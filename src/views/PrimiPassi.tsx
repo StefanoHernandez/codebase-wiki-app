@@ -8,6 +8,7 @@ import { formatBytes, parseIndexStatus, type IndexStatus } from '../lib/rag-form
 import { useNav } from '../state/nav';
 import { useProject } from '../state/project';
 import { useRag } from '../state/rag';
+import { agentReady, type PluginRow } from '../lib/plugin';
 import './primi-passi.css';
 
 const DEFAULT_MODEL = 'multilingual-e5-small';
@@ -19,7 +20,7 @@ const TITLES: Record<FirstRunStepId, string> = {
   progetto: 'Un progetto con la wiki',
   struttura: 'Controllo della struttura',
   ricerca: 'Ricerca nel codice',
-  agente: 'Collega un agente',
+  agente: 'Collega un agente (plugin e ricerca)',
 };
 
 export function markFirstRunDone(done: boolean) {
@@ -63,8 +64,11 @@ export default function PrimiPassi() {
         setInstalled(Object.fromEntries(rows));
       })
       .catch(() => undefined);
-    await invoke<Array<{ status: string }>>('rag_harness_state')
-      .then((h) => setAgent(h.some((x) => x.status !== 'absent')))
+    await Promise.all([
+      invoke<Array<{ id: string; status: string }>>('rag_harness_state'),
+      invoke<PluginRow[]>('plugin_state'),
+    ])
+      .then(([mcp, plugins]) => setAgent(agentReady(mcp, plugins)))
       .catch(() => undefined);
   }, [repo]);
 
@@ -205,7 +209,10 @@ export default function PrimiPassi() {
     ),
     agente: (
       <>
-        <p className="field-hint">Aggiunge la ricerca agli strumenti di Claude Code, Codex o Cursor. Prima di scrivere ti mostra cosa cambia.</p>
+        <p className="field-hint">
+          Installa il plugin, che scrive la wiki, e collega la ricerca nello stesso agente (Claude Code, Codex, Cursor…). Prima di
+          scrivere ti mostra cosa cambia.
+        </p>
         <div className="primi-passi-actions">
           <button type="button" className="btn" onClick={() => nav.go('impostazioni')}>
             Collega dalle Impostazioni

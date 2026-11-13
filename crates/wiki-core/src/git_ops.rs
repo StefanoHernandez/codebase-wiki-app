@@ -257,6 +257,69 @@ pub fn head_commit(repo: &Path) -> Option<String> {
     (out.status.success() && !sha.is_empty()).then_some(sha)
 }
 
+/// One commit of the graph timeline: files it added or modified (repo-relative).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryCommit {
+    pub sha: String,
+    pub date: String,
+    pub subject: String,
+    pub added: Vec<String>,
+    pub modified: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileHistory {
+    /// Oldest first.
+    pub commits: Vec<HistoryCommit>,
+    /// True when older commits were left out (`max` reached).
+    pub truncated: bool,
+}
+
+/// The last `max` commits of HEAD with their added and modified files, oldest first.
+/// Renames count as delete + add; deletions and merge commits carry no files.
+pub fn file_history(repo: &Path, max: usize) -> FileHistory {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["-c", "core.quotePath=false", "log", "--no-renames", "--name-status"])
+        .arg(format!("--max-count={}", max + 1))
+        .arg("--format=%x1e%H%x1f%cI%x1f%s")
+        .output();
+    let Some(out) = out.ok().filter(|o| o.status.success()) else {
+        return FileHistory { commits: Vec::new(), truncated: false };
+    };
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut commits: Vec<HistoryCommit> = text
+        .split('\x1e')
+        .filter(|chunk| !chunk.trim().is_empty())
+        .filter_map(|chunk| {
+            let mut lines = chunk.lines();
+            let mut head = lines.next()?.splitn(3, '\x1f');
+            let mut c = HistoryCommit {
+                sha: head.next()?.to_string(),
+                date: head.next()?.to_string(),
+                subject: head.next().unwrap_or("").to_string(),
+                added: Vec::new(),
+                modified: Vec::new(),
+            };
+            for line in lines {
+                match line.split_once('\t') {
+                    Some(("A", path)) => c.added.push(path.to_string()),
+                    Some((status, path)) if status != "D" => c.modified.push(path.to_string()),
+                    _ => {}
+                }
+            }
+            Some(c)
+        })
+        .collect();
+    let truncated = commits.len() > max;
+    commits.truncate(max);
+    commits.reverse();
+    FileHistory { commits, truncated }
+}
+
 #[cfg(test)]
 mod news_tests {
     use super::*;
@@ -273,6 +336,33 @@ mod news_tests {
         git(repo, &["add", file]);
         git(repo, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", msg]);
         head_commit(repo).unwrap()
+    }
+
+    #[test]
+    fn file_history_lists_added_and_modified_oldest_first() {
+        let d = tempfile::tempdir().unwrap();
+        git(d.path(), &["init", "-q"]);
+        commit(d.path(), "wiki/a.md", "first");
+        commit(d.path(), "src/b.rs", "second");
+        commit(d.path(), "wiki/a.md", "third");
+        let h = file_history(d.path(), 10);
+        assert!(!h.truncated);
+        let subjects: Vec<_> = h.commits.iter().map(|c| c.subject.as_str()).collect();
+        assert_eq!(subjects, ["first", "second", "third"]);
+        assert_eq!(h.commits[0].added, ["wiki/a.md"]);
+        assert_eq!(h.commits[2].modified, ["wiki/a.md"]);
+        assert!(!h.commits[2].date.is_empty());
+
+        let last = file_history(d.path(), 2);
+        assert!(last.truncated);
+        assert_eq!(last.commits.len(), 2);
+        assert_eq!(last.commits[0].subject, "second");
+    }
+
+    #[test]
+    fn file_history_outside_git_is_empty() {
+        let d = tempfile::tempdir().unwrap();
+        assert_eq!(file_history(d.path(), 10).commits.len(), 0);
     }
 
     #[test]

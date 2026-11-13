@@ -94,3 +94,13 @@ confidence: high
 - What: app 0.4.0 pubblicata (Progetti, primi passi, dipendenze nel tracker, icona, secondo giro UI, correzioni) con i 7 pacchetti; plugin codebase-wiki-llm 0.14.0 su `main` con tag. Per risparmiare minuti di CI si pusha prima solo il tag e poi `main` con `[skip ci]`; le build Linux e Windows sono state rilanciate a repo reso pubblico da Stefano. Il marketplace `stefano-wiki` di Claude Code ora segue `main` del plugin (prima `dev`, fermo alla 0.13.0).
 - Evidence: CI tag app https://github.com/StefanoHernandez/codebase-wiki-app/actions/runs/43395240820 verde (test + 3 build); CI tag plugin https://github.com/StefanoHernandez/codebase-wiki-llm/actions/runs/43395066612 verde (4 job); `.dmg` installato in Applicazioni, versione 0.4.0, firma ad-hoc valida
 - IDs: none
+
+## 2026-11-13 · Plugin installabile dall'app · agent
+- What: Impostazioni ha la sezione "Plugin Codebase Wiki LLM": per Claude Code, Codex, Antigravity, Cursor e OpenCode mostra la versione installata contro l'ultimo tag del plugin e la installa o aggiorna dopo un'anteprima (comandi delle CLI; copia di cartelle da un checkout del tag in `<data>/plugin-src`). Cursor e OpenCode ricevono solo le skill, senza hook. Primi passi chiede plugin e ricerca sullo stesso agente. CLI Codex del Mac di Stefano riparata (reinstallata la 0.169.0 con npm), comandi verificati su quella.
+- Evidence: `cargo test --workspace --features wiki-mcp/embed` → 118 pass (13 nuovi in `plugin_install`); `npm test` → 159 pass; `npm run build` ok; installazione reale non ancora provata a mano
+- IDs: none
+
+## 2026-11-13 · Plugin dall'app: prova reale e CLI su Windows · agent
+- What: Stefano ha provato sul suo Mac l'installazione da Impostazioni con Codex: plugin aggiornato da 0.11.0 e ricerca (MCP) collegata. Su Windows l'app ora trova `claude` e `codex` anche come `.exe`/`.cmd`/`.bat`, usa la cartella utente di sistema (`USERPROFILE`) al posto di `HOME` e cerca in `%APPDATA%\npm`; anche "Collega Claude Code" (MCP) prova `claude.cmd`; i comandi delle CLI non aprono più una finestra di console.
+- Evidence: prova a mano di Stefano (Codex, macOS); `cargo test -p codebase-wiki-app program_names` → pass; `cargo test -p rag-core plugin_install` → 14 pass; `cargo clippy --workspace --features wiki-mcp/embed` → 0 avvisi; codice `cfg(windows)` non compilato qui, comportamento su Windows non provato (T2)
+- IDs: T2, T11, T12
