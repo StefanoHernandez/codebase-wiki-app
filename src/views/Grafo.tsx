@@ -175,6 +175,12 @@ export default function Grafo() {
 
   // Spread the layout: stronger repulsion and longer links than the defaults, then fit once it settles.
   const fitted = useRef(false);
+  // After the first fit, a resized stage (window, sidebar, drawer) refits once it stops changing.
+  useEffect(() => {
+    if (!fitted.current) return;
+    const t = setTimeout(() => fgRef.current?.zoomToFit(300, 40), 200);
+    return () => clearTimeout(t);
+  }, [size.w, size.h]);
   const [legendOpen, setLegendOpen] = useState(() => {
     try {
       return localStorage.getItem(LEGEND_KEY) === '1';
