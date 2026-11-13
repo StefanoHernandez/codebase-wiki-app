@@ -1083,3 +1083,112 @@ mod tests {
         assert_eq!(chosen, Some(PathBuf::from("/opt/python3.12")));
     }
 }
+
+// ---- Plugin install (Impostazioni → Agenti) ----
+
+use rag_core::plugin_install::{self, AgentDirs, PluginPreview, PluginRow, Runner, REPO_URL};
+
+/// Runs agent CLIs and git. A GUI app on macOS starts with a minimal PATH, so the usual
+/// install folders are added (also for `#!/usr/bin/env node` wrappers such as `codex`).
+struct CliRunner {
+    path: std::ffi::OsString,
+}
+
+impl CliRunner {
+    fn new() -> Self {
+        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+        let mut dirs_list: Vec<PathBuf> = std::env::var_os("PATH")
+            .map(|p| std::env::split_paths(&p).collect())
+            .unwrap_or_default();
+        for extra in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"] {
+            dirs_list.push(PathBuf::from(extra));
+        }
+        for extra in [".local/bin", ".npm-global/bin", ".bun/bin", ".cargo/bin"] {
+            dirs_list.push(home.join(extra));
+        }
+        Self { path: std::env::join_paths(dirs_list).unwrap_or_default() }
+    }
+
+    fn resolve(&self, program: &str) -> Option<PathBuf> {
+        std::env::split_paths(&self.path).map(|d| d.join(program)).find(|p| p.is_file())
+    }
+}
+
+impl Runner for CliRunner {
+    fn run(&self, args: &[&str]) -> Result<String, String> {
+        let (program, rest) = args.split_first().ok_or("comando vuoto")?;
+        let exe = self.resolve(program).ok_or_else(|| format!("{program}: comando non trovato"))?;
+        let out = Command::new(exe)
+            .args(rest)
+            .env("PATH", &self.path)
+            .output()
+            .map_err(|e| format!("{program}: {e}"))?;
+        if out.status.success() {
+            Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+        } else {
+            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            Err(if err.is_empty() { format!("{program}: uscita {}", out.status) } else { err })
+        }
+    }
+}
+
+/// Newest released plugin version, remembered once known (offline → `None`, retried next time).
+fn latest_plugin_version(runner: &dyn Runner) -> Option<String> {
+    static LATEST: Mutex<Option<String>> = Mutex::new(None);
+    let mut cached = LATEST.lock().unwrap_or_else(|e| e.into_inner());
+    if cached.is_none() {
+        *cached = runner
+            .run(&["git", "ls-remote", "--tags", REPO_URL])
+            .ok()
+            .and_then(|out| plugin_install::latest_tag(&out));
+    }
+    cached.clone()
+}
+
+/// Shallow checkout of the plugin repo at `v<version>` under the data dir.
+fn plugin_source(runner: &dyn Runner, version: &str) -> Result<PathBuf, String> {
+    let dir = rag_core::paths::data_dir().join("plugin-src");
+    let tag = format!("v{version}");
+    let d = dir.to_string_lossy().into_owned();
+    if dir.join(".git").is_dir() {
+        runner.run(&["git", "-C", &d, "fetch", "--depth", "1", "origin", "tag", &tag])?;
+        runner.run(&["git", "-C", &d, "checkout", "--force", &tag])?;
+    } else {
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+        }
+        runner.run(&["git", "clone", "--depth", "1", "--branch", &tag, REPO_URL, &d])?;
+    }
+    Ok(dir)
+}
+
+#[tauri::command]
+pub async fn plugin_state() -> Result<Vec<PluginRow>, String> {
+    blocking(|| {
+        let runner = CliRunner::new();
+        let latest = latest_plugin_version(&runner);
+        Ok(plugin_install::plugin_state(&AgentDirs::real(), &runner, latest.as_deref()))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn plugin_preview(agent: String) -> Result<PluginPreview, String> {
+    blocking(move || plugin_install::plugin_preview(&agent, &AgentDirs::real(), &CliRunner::new())).await
+}
+
+#[tauri::command]
+pub async fn plugin_apply(agent: String) -> Result<(), String> {
+    blocking(move || {
+        let runner = CliRunner::new();
+        let needs_source = matches!(agent.as_str(), "antigravity" | "cursor" | "opencode");
+        let latest = latest_plugin_version(&runner);
+        let source = match (&latest, needs_source) {
+            (Some(v), true) => Some(plugin_source(&runner, v)?),
+            (None, true) => return Err("Versione del plugin non disponibile: controlla la connessione e riprova.".into()),
+            _ => None,
+        };
+        plugin_install::plugin_apply(&agent, &AgentDirs::real(), &runner, source.as_deref(), latest.as_deref())
+    })
+    .await
+}

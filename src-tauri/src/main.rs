@@ -59,6 +59,9 @@ fn main() {
             commands::agent_activity,
             commands::rag_harness_preview,
             commands::rag_harness_apply,
+            commands::plugin_state,
+            commands::plugin_preview,
+            commands::plugin_apply,
             commands::rag_models_search,
             commands::rag_models_add,
         ])
