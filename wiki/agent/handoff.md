@@ -2,13 +2,13 @@
 type: AgentNote
 title: Passaggio di consegne
 description: Stato del lavoro e prossimo compito per l'agente che riprende l'app Codebase Wiki.
-generated: { by: claude-code/claude-opus-5-5, at: 2026-11-13T17:00:00Z }
+generated: { by: claude-code/claude-opus-5-5, at: 2026-11-13T20:00:00Z }
 sources:
   - wiki/SCHEMA.md
   - wiki/log.md
   - wiki/project/work-tracker.md
   - crates/wiki-mcp/src/serve.rs
-source_commit: 02a2ab8
+source_commit: 5be5d53
 confidence: high
 ---
 
@@ -18,10 +18,10 @@ confidence: high
 <!-- wiki:state -->
 
 - Tracker IDs: T1, T2, T3, T4, T5, T13
-- Goal: nessun sottoprogetto aperto; restano le prove a mano (T1–T5, T13: aggiornamento automatico alla prossima release)
-- Last completed step: release 0.6.0 pubblicata (aggiornamenti dall'app, correzioni Windows di Alessandro Cianfaglione)
+- Goal: nessun sottoprogetto aperto; restano le prove a mano (T1–T5; T13 ora provabile: una 0.6.0 installata deve proporre la 0.7.0)
+- Last completed step: release 0.7.0 (barra laterale "Notte", contenuto morbido, icona "00_modern", interfaccia in inglese); da rivedere a mano le viste con un progetto aperto e i testi inglesi
 - Current branch: `main`
-- Last commit: `80aa12f` (release: 0.6.0) più questo aggiornamento della wiki
+- Last commit: `release: 0.7.0` dopo il merge di `feat/notte` (`5be5d53`)
 - Worktree: clean
 
 ## Baton per il prossimo agente
