@@ -133,3 +133,9 @@ confidence: high
 - What: l'app controlla all'avvio e ogni 24 ore se c'è una release nuova (`tauri-plugin-updater` 2.14.1, `latest.json` della release `latest`) e se un agente ha il plugin indietro; un banner propone "Aggiorna e riavvia" (o "Scarica" su Linux fuori da un AppImage) e porta a Impostazioni → Plugin, senza installare niente da solo. La CI firma gli aggiornamenti solo sui tag. Unite le PR #5 e #6 di Alessandro Cianfaglione (@cianf4): niente console su Windows per i processi figli; un solo controllo e un solo `git diff` per `source_commit` all'apertura (da circa 66 a circa 15 processi `git` sulla wiki di questo repo). Aggiunti `CONTRIBUTORS.md` e la sezione Contributi nel README.
 - Evidence: `npm test` → 171 pass (6 in `tests/updates.test.ts`); `cargo test --workspace --features wiki-mcp/embed` → 125 pass dopo le PR #5 e #6; clippy 0 avvisi; `npm run build:app` ok e app avviata 10 s senza errori; aggiornamento reale non provato (T13)
 - IDs: T2, T13
+
+## 2026-11-13 · Release 0.6.0 · agent
+- What: app 0.6.0 pubblicata come Latest: aggiornamenti dall'app, PR #5 e #6 di Alessandro Cianfaglione per Windows, `CONTRIBUTORS.md`. Prima esecuzione della CI fallita alla creazione della release (`Resource not accessible by integration`, il commit del tag cambiava `build.yml`): bozza creata a mano con `gh release create --draft`, job rilanciati. `latest.json` ha darwin-aarch64, windows-x86_64 e linux-x86_64 (più le voci `-deb`, `-rpm`, `-nsis`, `-msi`, `-appimage`), ognuna con la firma.
+- Evidence: CI del tag https://github.com/StefanoHernandez/codebase-wiki-app/actions/runs/43424572413 verde dopo il rilancio; release https://github.com/StefanoHernandez/codebase-wiki-app/releases/tag/v0.6.0 con 14 file e `latest.json`; `releases/latest/download/latest.json` → HTTP 200
+- IDs: T13
+

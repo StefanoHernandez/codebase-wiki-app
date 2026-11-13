@@ -18,10 +18,10 @@ confidence: high
 <!-- wiki:state -->
 
 - Tracker IDs: T1, T2, T3, T4, T5, T13
-- Goal: release 0.6.0 (aggiornamenti dell'app e del plugin, PR #5 e #6 di Alessandro Cianfaglione); poi le prove a mano (T1–T5, T13)
-- Last completed step: unite su `main` le PR #5 e #6 e il branch `feat/updates`; test verdi
+- Goal: nessun sottoprogetto aperto; restano le prove a mano (T1–T5, T13: aggiornamento automatico alla prossima release)
+- Last completed step: release 0.6.0 pubblicata (aggiornamenti dall'app, correzioni Windows di Alessandro Cianfaglione)
 - Current branch: `main`
-- Last commit: `release: 0.6.0`
+- Last commit: `80aa12f` (release: 0.6.0) più questo aggiornamento della wiki
 - Worktree: clean
 
 ## Baton per il prossimo agente
@@ -55,7 +55,7 @@ confidence: high
 | `npm test` | repo | pass @47eaee0 | 140 test |
 | `cargo test --workspace` | repo | pass @47eaee0 | tutti verdi; `cargo test -p wiki-mcp --features embed` 2 test |
 | `npm run build:app` | repo | pass @224232f | `Codebase Wiki.app` 89 MB; `npx tauri build` senza override ora fallisce per la chiave di firma mancante |
-| CI tag `v0.5.0` | GitHub Actions | pass @c73e9bd | run 43411334416 |
+| CI tag `v0.6.0` | GitHub Actions | pass @80aa12f dopo il rilancio | run 43424572413 |
 
 ## Da non rifare
 <!-- wiki:do-not-redo -->

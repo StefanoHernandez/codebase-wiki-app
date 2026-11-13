@@ -25,7 +25,10 @@ confidence: high
 ## Release
 1. Portare la versione in `package.json`, `package-lock.json` (2 righe), `src-tauri/tauri.conf.json`,
    i quattro `Cargo.toml` (`crates/*`, `src-tauri`) e `Cargo.lock`.
-2. Commit `release: X.Y.Z` e tag annotato `vX.Y.Z`; push **solo del tag** (una sola CI). Dopo la
+2. Commit `release: X.Y.Z` e tag annotato `vX.Y.Z`; creare subito la bozza con il proprio token
+   (`gh release create vX.Y.Z --draft --verify-tag --title "Codebase Wiki X.Y.Z"`): se il commit
+   del tag modifica `.github/workflows/`, il token della CI non può crearla (`Resource not
+   accessible by integration`, successo con la 0.6.0) e la trova già pronta. Push **solo del tag** (una sola CI). Dopo la
    pubblicazione, push di `main` con un commit che ha `[skip ci]` nel messaggio, così non riparte
    una seconda build sullo stesso codice.
 3. La CI del tag crea una release **in bozza** con `.dmg`, `.app.tar.gz`, `.exe`, `.msi`,
