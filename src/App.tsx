@@ -3,6 +3,7 @@ import { ToastProvider } from './components/Toast';
 import { NavProvider } from './state/nav';
 import { ProjectProvider } from './state/project';
 import { RagProvider } from './state/rag';
+import { UpdatesProvider } from './state/updates';
 
 export default function App() {
   return (
@@ -10,7 +11,9 @@ export default function App() {
       <ProjectProvider>
         <RagProvider>
           <NavProvider>
-            <Shell />
+            <UpdatesProvider>
+              <Shell />
+            </UpdatesProvider>
           </NavProvider>
         </RagProvider>
       </ProjectProvider>

@@ -21,6 +21,8 @@ fn main() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(Mutex::new(None::<WatchHandle>))
         .manage(Arc::new(rag_jobs::RagJobs::new()))
         .setup(|_app| {
@@ -42,6 +44,8 @@ fn main() {
             commands::read_source_file,
             commands::source_diff,
             commands::graph_history,
+            commands::updater_supported,
+            commands::open_release_page,
             commands::run_lint,
             commands::git_user_name,
             commands::workflow_prompt,

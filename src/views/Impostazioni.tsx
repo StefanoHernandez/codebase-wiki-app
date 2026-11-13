@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { copyText } from '../api';
+import { appVersion, copyText } from '../api';
 import { Dialog } from '../components/Dialog';
 import { useToast } from '../components/Toast';
 import { parseIndexStatus, type IndexStatus } from '../lib/rag-format';
 import { PYTHON_KEY, useProject } from '../state/project';
 import { useRag } from '../state/rag';
 import { useNav } from '../state/nav';
+import { useUpdates } from '../state/updates';
 import { markFirstRunDone } from './PrimiPassi';
 import { AGENT_LABEL, pluginBlocked, pluginStateText, type PluginRow } from '../lib/plugin';
 import type { ThemeChoice } from '../state/theme';
@@ -50,6 +51,7 @@ export default function Impostazioni(props: ThemeProps) {
       <Modelli />
       <Agenti />
       <PluginAgenti />
+      <Aggiornamenti />
     </section>
   );
 }
@@ -568,6 +570,27 @@ function PluginAgenti() {
           </>
         )}
       </Dialog>
+    </section>
+  );
+}
+
+/** App version and a manual update check; the answer shows in the banner on top. */
+function Aggiornamenti() {
+  const { checking, checkNow } = useUpdates();
+  const [version, setVersion] = useState('');
+  useEffect(() => {
+    appVersion().then(setVersion, () => setVersion(''));
+  }, []);
+  return (
+    <section className="group">
+      <h2 className="group-title">Aggiornamenti</h2>
+      <p className="field-hint">
+        {version ? `Codebase Wiki ${version}. ` : ''}L’app controlla da sola all’avvio e una volta al giorno; non
+        installa niente senza il tuo clic.
+      </p>
+      <button type="button" className="btn" onClick={() => void checkNow()} disabled={checking}>
+        {checking ? 'Controllo in corso…' : 'Controlla aggiornamenti'}
+      </button>
     </section>
   );
 }

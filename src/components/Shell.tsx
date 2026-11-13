@@ -10,6 +10,7 @@ import { CommandPalette, MOD } from './CommandPalette';
 import { Empty } from './Empty';
 import { IncompatibleWiki } from './Compat';
 import { useToast } from './Toast';
+import { UpdateBanner } from './UpdateBanner';
 import markUrl from '../assets/mark.svg';
 import { sectionCounts } from '../lib/attention';
 import PrimiPassi, { firstRunDone } from '../views/PrimiPassi';
@@ -117,6 +118,7 @@ export function Shell() {
       />
 
       <main className="content">
+        <UpdateBanner />
         {nav.section === 'primi-passi' ? (
           <div className="content-body">
             <PrimiPassi />

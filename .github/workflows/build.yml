@@ -117,6 +117,9 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Updater signatures (.sig) and latest.json; the key never leaves the secrets.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: ${{ matrix.args }}
           tagName: ${{ github.ref_name }}
@@ -128,7 +131,8 @@ jobs:
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: tauri-apps/tauri-action@v0
         with:
-          args: ${{ matrix.args }}
+          # No signing key on branches: skip updater artifacts.
+          args: ${{ matrix.args }} --config src-tauri/tauri.no-updater.conf.json
 
       - name: Upload artifacts
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}

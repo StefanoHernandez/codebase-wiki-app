@@ -3,6 +3,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { getVersion } from '@tauri-apps/api/app';
+import { check, type Update } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 import type {
   ActivityLine,
   LintReport,
@@ -12,6 +15,7 @@ import type {
   WikiSnapshot,
 } from './types/snapshot';
 import type { GraphHistory } from './lib/graph-history';
+import type { PluginRow } from './lib/plugin';
 
 export type { UnlistenFn };
 
@@ -108,4 +112,44 @@ export function onWatchError(cb: (event: { repo: string; message: string }) => v
 /** Subscribes to `wiki-changed` events emitted by the repo watcher. */
 export function onWikiChanged(cb: (event: WikiChangedEvent) => void): Promise<UnlistenFn> {
   return listen<WikiChangedEvent>('wiki-changed', (e) => cb(e.payload));
+}
+
+// ---- Updates ----
+
+export type { Update };
+
+export function appVersion(): Promise<string> {
+  return getVersion();
+}
+
+/** The newer release from `latest.json`, or null when this is the latest. */
+export function checkAppUpdate(): Promise<Update | null> {
+  return check();
+}
+
+/** False on Linux outside an AppImage: the app cannot replace itself there. */
+export function updaterSupported(): Promise<boolean> {
+  return invoke('updater_supported');
+}
+
+export function openReleasePage(): Promise<void> {
+  return invoke('open_release_page');
+}
+
+export function pluginState(): Promise<PluginRow[]> {
+  return invoke('plugin_state');
+}
+
+/** Downloads (progress 0–100, null when the size is unknown), installs, restarts. */
+export async function installAppUpdate(update: Update, onProgress: (pct: number | null) => void): Promise<void> {
+  let total = 0;
+  let got = 0;
+  await update.downloadAndInstall((e) => {
+    if (e.event === 'Started') total = e.data.contentLength ?? 0;
+    if (e.event === 'Progress') {
+      got += e.data.chunkLength;
+      onProgress(total ? Math.min(100, Math.round((got / total) * 100)) : null);
+    }
+  });
+  await relaunch();
 }

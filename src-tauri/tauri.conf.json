@@ -28,7 +28,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["binaries/codebase-wiki-mcp"],
+    "externalBin": [
+      "binaries/codebase-wiki-mcp"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -41,6 +43,15 @@
     },
     "resources": {
       "../resources/validate-wiki.py": "resources/validate-wiki.py"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE5RTkxMzI5MUJGMzdFREEKUldUYWZ2TWJLUlBwcVRCTFBWOFhBZDJ0clhBSVRRMllxYk1mNGZMWnllVDZ5UlZiY3Z3bytrcDgK",
+      "endpoints": [
+        "https://github.com/StefanoHernandez/codebase-wiki-app/releases/latest/download/latest.json"
+      ]
     }
   }
 }

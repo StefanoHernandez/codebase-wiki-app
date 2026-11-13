@@ -283,6 +283,26 @@ kbd {
 .banner-drift {
   color: var(--drift);
 }
+.banner-update {
+  color: var(--ink-muted);
+}
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.update-banner-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.update-banner-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 .view .banner {
   margin: 0 0 14px;
 }
