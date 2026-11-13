@@ -897,3 +897,78 @@ kbd {
   margin: 6px 0 0;
   padding-left: 20px;
 }
+
+/* ---------- Soft content (direction D2): raised surfaces, pressed fields ---------- */
+/* `html` prefix: these must win over the per-view stylesheets loaded later. */
+html .panel,
+html .card,
+html .banner,
+html .status,
+html .decisioni-list,
+html .decisioni-detail,
+html .handoff-freshness,
+html .rag-tile,
+html .primi-passi-step.is-current {
+  background: var(--ground);
+  border-color: transparent;
+  box-shadow: var(--raise);
+}
+html .panel,
+html .card,
+html .decisioni-list,
+html .decisioni-detail,
+html .handoff-freshness,
+html .rag-tile,
+html .primi-passi-step.is-current {
+  border-radius: 14px;
+}
+.btn {
+  border-color: transparent;
+  background: var(--ground);
+  box-shadow: var(--raise-sm);
+}
+.btn:hover:not(:disabled):not([aria-disabled='true']) {
+  background: var(--ground);
+}
+.btn:active:not(:disabled) {
+  box-shadow: var(--press);
+}
+.btn-strong,
+.btn-human {
+  box-shadow: var(--raise-sm);
+}
+.btn-human-outline {
+  background: var(--ground);
+  border-color: var(--human);
+}
+.btn-link,
+.btn-quiet {
+  box-shadow: none;
+}
+.input,
+.dialog-body input,
+.dialog-body textarea,
+.dialog-body select {
+  background: var(--ground);
+  border-color: transparent;
+  box-shadow: var(--press);
+}
+.segmented {
+  border-color: transparent;
+  background: var(--ground);
+  box-shadow: var(--press);
+}
+.segmented button[aria-pressed='true'] {
+  background: var(--ground);
+  box-shadow: var(--raise-sm);
+}
+/* Night sidebar: the current section and the project sit pressed into the blue. */
+.section-link[aria-current='page'] {
+  box-shadow: inset 2px 2px 6px rgb(0 0 0 / 0.3), inset -1px -1px 2px rgb(255 255 255 / 0.08);
+}
+.switcher-btn {
+  background: rgb(255 255 255 / 0.06);
+  box-shadow: inset 2px 2px 6px rgb(0 0 0 / 0.25), inset -1px -1px 2px rgb(255 255 255 / 0.08);
+  border-radius: 12px;
+}
+

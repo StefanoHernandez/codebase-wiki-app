@@ -2,7 +2,7 @@
    Cold slate instead of green-grey; ultramarine (--human) stays reserved for human authority. */
 :root {
   color-scheme: light;
-  --ground: #f3f4f7;
+  --ground: #e4e8f1;
   --surface: #ffffff;
   --surface-raised: #fafbfc;
   --surface-sunk: #e9ebf0;
@@ -36,6 +36,13 @@
   --side-dirty: #ffcf86;
   --side-focus: #ffffff;
 
+  /* Soft content: surfaces share the ground and rise or sink by a light and a dark shadow. */
+  --neu-hi: #ffffff;
+  --neu-lo: #b9c1d4;
+  --raise: 5px 5px 12px var(--neu-lo), -5px -5px 12px var(--neu-hi);
+  --raise-sm: 3px 3px 7px var(--neu-lo), -3px -3px 7px var(--neu-hi);
+  --press: inset 3px 3px 7px var(--neu-lo), inset -3px -3px 7px var(--neu-hi);
+
   --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
   --font-read: 'Newsreader', Georgia, serif;
   --font-code: 'IBM Plex Mono', ui-monospace, monospace;
@@ -59,7 +66,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --ground: #13151b;
+    --ground: #1d2130;
     --surface: #1a1d25;
     --surface-raised: #20242e;
     --surface-sunk: #0f1116;
@@ -81,13 +88,15 @@
     --focus: #8c9cff;
     --side-bg: linear-gradient(180deg, #16247a 0%, #0a1240 100%);
     --side-on-count: #0c1650;
+    --neu-hi: #283046;
+    --neu-lo: #11141e;
     --shadow-overlay: 0 16px 48px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --ground: #13151b;
+  --ground: #1d2130;
   --surface: #1a1d25;
   --surface-raised: #20242e;
   --surface-sunk: #0f1116;
@@ -109,5 +118,7 @@
   --focus: #8c9cff;
   --side-bg: linear-gradient(180deg, #16247a 0%, #0a1240 100%);
   --side-on-count: #0c1650;
+  --neu-hi: #283046;
+  --neu-lo: #11141e;
   --shadow-overlay: 0 16px 48px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
 }

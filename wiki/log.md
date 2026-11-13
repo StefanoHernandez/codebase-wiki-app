@@ -144,3 +144,8 @@ confidence: high
 - Evidence: `npm test` → 172 pass (1 nuovo su `verifiedShare`); `npm run build:app` ok, app installata in Applicazioni; barra laterale vista nel browser in chiaro e scuro senza progetto; anello con un progetto aperto da verificare a mano
 - IDs: none
 
+## 2026-11-13 · Contenuto in soft neumorphism (direzione D2) · agent
+- What: dopo un secondo mockup (`docs/design/mockup-neumorphism-2026-11-13.html`, con anteprima in inglese) Stefano ha scelto D2: barra laterale "Notte" e contenuto morbido. Fondo grigio-azzurro (`#e4e8f1` chiaro, `#1d2130` scuro), superfici in rilievo e campi premuti con le ombre `--neu-hi`/`--neu-lo`; sezione attiva e progetto "premuti" nel blu della barra.
+- Evidence: `npm test` → 172 pass; Primi passi e Impostazioni viste nel browser in chiaro e scuro; `npm run build:app` ok, app installata in Applicazioni; viste con un progetto aperto da verificare a mano
+- IDs: none
+
