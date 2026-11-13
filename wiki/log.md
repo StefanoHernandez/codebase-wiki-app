@@ -117,5 +117,5 @@ confidence: high
 
 ## 2026-11-13 · Release 0.5.1: note dei modelli e plugin 0.14.1 · agent
 - What: le note del catalogo dei modelli dicevano ancora "adatto a wiki in italiano" e riportavano risultati delle prove; ora dicono lingua e velocità, utili per un indice che copre solo il codice. Plugin codebase-wiki-llm 0.14.1: la regola di contesto non nomina più `search_wiki` (tolto dal server MCP con la [0004](project/decisions/0004-rag-solo-codice.md)) e lascia alla wiki stato, decisioni, rischi e perché. L'app include il validatore 0.14.1.
-- Evidence: plugin `bash scripts/run-tests.sh` → exit 0; app `npm test` → 165 pass, `cargo test --workspace --features wiki-mcp/embed` → 122 pass
+- Evidence: plugin `bash scripts/run-tests.sh` → exit 0, CI del tag https://github.com/StefanoHernandez/codebase-wiki-llm/actions/runs/43415192161 verde; app `npm test` → 165 pass, `cargo test --workspace --features wiki-mcp/embed` → 122 pass, CI del tag https://github.com/StefanoHernandez/codebase-wiki-app/actions/runs/43415453676 verde, release https://github.com/StefanoHernandez/codebase-wiki-app/releases/tag/v0.5.1 con 7 pacchetti
 - IDs: T12

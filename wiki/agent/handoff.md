@@ -21,7 +21,7 @@ confidence: high
 - Goal: nessun sottoprogetto aperto; restano le prove a mano (T1–T5)
 - Last completed step: release app 0.5.1 (note dei modelli) e plugin 0.14.1 (regola di contesto senza `search_wiki`)
 - Current branch: `main`
-- Last commit: `release: 0.5.1`
+- Last commit: `release: 0.5.1` (CI del tag verde, run 43415453676)
 - Worktree: clean
 
 ## Baton per il prossimo agente
