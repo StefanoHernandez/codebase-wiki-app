@@ -13,7 +13,8 @@ Grazie a chi ha dedicato tempo a Codebase Wiki.
   Windows; niente finestre di console per i processi dell'app
   ([#5](https://github.com/StefanoHernandez/codebase-wiki-app/pull/5)) e apertura dei progetti
   con meno della metà dei processi `git`
-  ([#6](https://github.com/StefanoHernandez/codebase-wiki-app/pull/6)), nella 0.6.0.
+  ([#6](https://github.com/StefanoHernandez/codebase-wiki-app/pull/6)), nella 0.6.0; l'icona
+  dell'app "00_modern" e le sue varianti.
 
 ## Ringraziamenti
 

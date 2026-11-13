@@ -83,7 +83,7 @@ pub fn parse_lint_output(exit_code: i32, stdout: &str, stderr: &str) -> LintRepo
         Err(_) => LintReport {
             exit_code,
             error: Some(if raw_output.is_empty() {
-                format!("Il validatore non ha prodotto output (codice {exit_code}).")
+                crate::tr(&format!("Il validatore non ha prodotto output (codice {exit_code})."), &format!("The validator produced no output (code {exit_code})."))
             } else {
                 raw_output.clone()
             }),
@@ -134,7 +134,7 @@ pub fn run_structural_lint_with_args(
             &String::from_utf8_lossy(&out.stderr),
         ),
         Err(e) => {
-            let msg = format!("Impossibile eseguire il validatore: {e}");
+            let msg = crate::tr(&format!("Impossibile eseguire il validatore: {e}"), &format!("Cannot run the validator: {e}"));
             LintReport { exit_code: -1, error: Some(msg.clone()), raw_output: msg, ..LintReport::default() }
         }
     }

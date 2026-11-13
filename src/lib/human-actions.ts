@@ -16,6 +16,7 @@ import {
   type Doc,
   type TableLoc,
 } from './md-edit.ts';
+import { t } from '../i18n/index.ts';
 
 export { StaleError } from './md-edit.ts';
 
@@ -65,8 +66,7 @@ const OPEN_PROPS: (keyof TrackerOpenRow)[] = [
 ];
 const DONE_PROPS: (keyof TrackerDoneRow)[] = ['id', 'status', 'goal', 'closed', 'criteriaMet', 'evidence'];
 
-const UNSUPPORTED_COLUMNS =
-  'Le colonne della tabella non corrispondono al formato della wiki: correggile o aggiorna la wiki con /wiki-init --adopt.';
+const unsupportedColumns = () => t('lavori.errors.unsupportedColumns');
 
 /**
  * Same rule as the plugin validator: a header with every documented English column is read by name
@@ -84,7 +84,7 @@ function columnMode(header: string[], columns: readonly string[]): 'named' | 'po
 
 function requireColumnMode(header: string[], columns: readonly string[]): 'named' | 'positional' {
   const mode = columnMode(header, columns);
-  if (!mode) throw new Error(UNSUPPORTED_COLUMNS);
+  if (!mode) throw new Error(unsupportedColumns());
   return mode;
 }
 
@@ -136,15 +136,15 @@ function isAgentName(name: string): boolean {
 
 export function validateHumanActor(person: string): void {
   if (!person || typeof person !== 'string' || !person.trim()) {
-    throw new Error('Serve il nome di una persona.');
+    throw new Error(t('lavori.errors.personRequired'));
   }
   // Same reading as the validator's `unresolved()`: outer backticks stripped, no `<…>` anywhere.
   const trimmed = person.trim().replace(/^`+|`+$/g, '').trim();
   if (!trimmed || /<[^<>]+>/.test(trimmed)) {
-    throw new Error(`Il nome non può essere un segnaposto ('${person.trim()}').`);
+    throw new Error(t('lavori.errors.personPlaceholder', { name: person.trim() }));
   }
   if (DISALLOWED_ACTORS.has(trimmed.toLowerCase()) || isAgentName(trimmed)) {
-    throw new Error(`'${trimmed}' non è una persona: firma con il tuo nome (niente agenti, process: o /).`);
+    throw new Error(t('lavori.errors.notAPerson', { name: trimmed }));
   }
 }
 
@@ -248,7 +248,7 @@ function idColumnIndex(header: string[]): number {
 
 function assertRowWidth(table: TableLoc, row: { line: number; cells: string[] }, idLabel: string): void {
   if (row.cells.length > table.header.length) {
-    throw new Error(`La riga ${idLabel} ha una | non protetta: correggila nel file (scrivi \\|)`);
+    throw new Error(t('lavori.errors.unescapedPipe', { id: idLabel }));
   }
 }
 
@@ -453,7 +453,7 @@ export function closeTrackerItemHumanUnproven(params: {
   const doneLower = doneBefore.header.map((h) => h.trim().toLowerCase());
   if (columnMode(doneBefore.header, DONE_COLUMNS) === null && doneLower.includes('goal') && !doneLower.includes('status')) {
     throw new Error(
-      'La tabella Done non ha la colonna Status: una chiusura ⚫ non si può registrare. Aggiorna la wiki con /wiki-init --adopt.',
+      t('lavori.errors.doneNoStatus'),
     );
   }
   requireColumnMode(doneBefore.header, DONE_COLUMNS);
@@ -664,7 +664,7 @@ function flowMapsOnVerifiedLine(line: string): string[] {
   if (value.startsWith('[')) {
     const close = value.lastIndexOf(']');
   if (close < 0) {
-      throw new Error('Il frontmatter verified non è leggibile: correggilo a mano nel file.');
+      throw new Error(t('lavori.errors.verifiedUnreadable'));
     }
     return splitFlowMaps(value.slice(1, close));
   }
@@ -692,7 +692,7 @@ function verifiedRegionEnd(lines: string[], start: number, fmEnd: number): numbe
 function blockEntryToFlow(entryLines: string[]): string {
   const first = entryLines[0]!.replace(/^\s*-\s+/, '').trim();
   if (first.startsWith('{')) return first;
-  const unreadable = () => new Error('Il frontmatter verified non è leggibile: correggilo a mano nel file.');
+  const unreadable = () => new Error(t('lavori.errors.verifiedUnreadable'));
   const map: Record<string, string> = {};
   const add = (match: RegExpMatchArray | null) => {
     if (!match) throw unreadable();
@@ -768,7 +768,7 @@ export function markPageReviewed(params: {
   const commit = params.commit.trim();
   const id = personId(person);
   if (!id) {
-    throw new Error('Il nome non produce un id valido per human:<id>: usa lettere o cifre.');
+    throw new Error(t('lavori.errors.noValidId'));
   }
   const page = parseFrontmatter(params.pageMarkdown);
 

@@ -5,6 +5,7 @@ import { Empty } from '../components/Empty';
 import { useToast } from '../components/Toast';
 import { buildRow, lastUseByAgent, lastUseOfHarness, relativeTime, type ProjectRow } from '../lib/overview';
 import { parseIndexStatus } from '../lib/rag-format';
+import { locale, t } from '../i18n';
 import { DEFAULT_CORE_MAP } from '../lib/schema-parser';
 import { useNav } from '../state/nav';
 import { deriveProject, useProject } from '../state/project';
@@ -38,7 +39,7 @@ async function loadRow(recent: RecentProject, activity: ActivityLine[]): Promise
       status,
       news,
       activity,
-      error: snap.wikiRoot ? null : 'nessuna wiki in questa cartella',
+      error: snap.wikiRoot ? null : t('esplora.progetti.noWiki'),
     });
   } catch (e) {
     return buildRow(recent, { attention: null, log: null, git: null, status: null, news: null, activity, error: message(e) });
@@ -46,10 +47,10 @@ async function loadRow(recent: RecentProject, activity: ActivityLine[]): Promise
 }
 
 function indexText(r: ProjectRow): string {
-  if (r.index === 'aggiornato') return 'indice aggiornato';
-  if (r.index === 'indietro') return `indice indietro (${r.behindFiles} file)`;
-  if (r.index === 'assente') return 'indice assente';
-  return 'indice non leggibile';
+  if (r.index === 'aggiornato') return t('esplora.progetti.indexUpToDate');
+  if (r.index === 'indietro') return t('esplora.progetti.indexBehind', { n: r.behindFiles });
+  if (r.index === 'assente') return t('esplora.progetti.indexNone');
+  return t('esplora.progetti.indexUnreadable');
 }
 
 export default function Progetti() {
@@ -65,8 +66,8 @@ export default function Progetti() {
   // Relative times move while the view stays open.
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
   }, []);
   const recentKey = project.recent.map((r) => r.path).join('\n');
 
@@ -107,16 +108,16 @@ export default function Progetti() {
 
   const go = async (path: string) => {
     if (await project.open(path)) nav.go('per-te');
-    else toast('Progetto non aperto: vedi il messaggio in alto', 'error');
+    else toast(t('esplora.progetti.notOpened'), 'error');
   };
 
   if (project.recent.length === 0) {
     return (
       <Empty
-        title="Apri una cartella con una wiki"
+        title={t('esplora.progetti.openFolderTitle')}
         action={
           <button type="button" className="btn btn-strong" onClick={() => void addProject()}>
-            Apri cartella
+            {t('esplora.progetti.openFolder')}
           </button>
         }
       />
@@ -126,9 +127,9 @@ export default function Progetti() {
   return (
     <div className="progetti">
       <div className="progetti-head">
-        <h1 className="view-title">Progetti</h1>
+        <h1 className="view-title">{t('esplora.progetti.title')}</h1>
         <button type="button" className="btn" onClick={() => void addProject()}>
-          Apri cartella
+          {t('esplora.progetti.openFolder')}
         </button>
       </div>
 
@@ -147,16 +148,16 @@ export default function Progetti() {
                   )}
                 </span>
                 {!row ? (
-                  <span className="row-detail">Lettura…</span>
+                  <span className="row-detail">{t('esplora.progetti.reading')}</span>
                 ) : row.error ? (
                   <span className="row-detail error-text">{row.error}</span>
                 ) : (
                   <span className="row-detail">
-                    <span className={row.attention ? 'progetti-human' : undefined}>{row.attention ? `${row.attention} per te` : 'niente per te'}</span>
+                    <span className={row.attention ? 'progetti-human' : undefined}>{row.attention ? t('esplora.progetti.forYou', { n: row.attention }) : t('esplora.progetti.nothingForYou')}</span>
                     {' · '}
                     <span className={row.index === 'indietro' ? 'progetti-drift' : undefined}>{indexText(row)}</span>
                     {' · '}
-                    {row.lastAgent ? `ultimo agente: ${row.lastAgent.agent} ${relativeTime(row.lastAgent.ts, now)}` : 'nessun agente'}
+                    {row.lastAgent ? t('esplora.progetti.lastAgent', { agent: row.lastAgent.agent, when: relativeTime(row.lastAgent.ts, now) }) : t('esplora.progetti.noAgent')}
                   </span>
                 )}
               </button>
@@ -168,7 +169,7 @@ export default function Progetti() {
                   disabled={row.news.length === 0}
                   onClick={() => setOpenNews(openNews === r.path ? null : r.path)}
                 >
-                  {row.news.length ? `${row.news.length} novità` : 'nessuna novità'}
+                  {row.news.length ? t('esplora.progetti.news', { n: row.news.length }) : t('esplora.progetti.noNews')}
                 </button>
               )}
               <span className="row-chevron" aria-hidden="true">
@@ -188,9 +189,9 @@ export default function Progetti() {
 
       <section className="group">
         <div className="progetti-head">
-          <h2 className="group-title">Attività degli agenti</h2>
-          <select className="input" value={filter} onChange={(e) => (setFilter(e.target.value), setShown(PAGE))} aria-label="Filtra per progetto">
-            <option value="">Tutti i progetti</option>
+          <h2 className="group-title">{t('esplora.progetti.activity')}</h2>
+          <select className="input" value={filter} onChange={(e) => (setFilter(e.target.value), setShown(PAGE))} aria-label={t('esplora.progetti.filter')}>
+            <option value="">{t('esplora.progetti.allProjects')}</option>
             {project.recent.map((r) => (
               <option key={r.path} value={r.path}>
                 {r.name}
@@ -200,18 +201,18 @@ export default function Progetti() {
         </div>
         {filtered.length === 0 ? (
           <p className="muted">
-            {filter ? 'Nessuna chiamata degli agenti su questo progetto.' : 'Nessun agente ha ancora cercato: collegane uno dalle Impostazioni'}
+            {filter ? t('esplora.progetti.noCallsProject') : t('esplora.progetti.noCalls')}
           </p>
         ) : (
           <ul className="rows">
             {filtered.slice(0, shown).map((a, i) => (
               <li key={`${a.ts}-${i}`} className="row progetti-call">
-                <span className="progetti-time">{new Date(a.ts).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</span>
+                <span className="progetti-time">{new Date(a.ts).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })}</span>
                 <div className="row-main">
                   <p className="row-title">
                     {a.agent} <span className="muted">· {nameOf(a.repo)} · {a.tool}</span>
                   </p>
-                  {a.query && <p className="row-detail">{a.query === '[riservata]' ? 'query riservata' : `"${a.query}"`}</p>}
+                  {a.query && <p className="row-detail">{a.query === '[riservata]' ? t('esplora.progetti.privateQuery') : `"${a.query}"`}</p>}
                   {a.error ? (
                     <p className="row-detail error-text">{a.error}</p>
                   ) : (
@@ -224,13 +225,13 @@ export default function Progetti() {
         )}
         {filtered.length > shown && (
           <button type="button" className="btn btn-link" onClick={() => setShown(shown + PAGE)}>
-            Mostra altre 20
+            {t('esplora.progetti.showMore')}
           </button>
         )}
       </section>
 
       <section className="group">
-        <h2 className="group-title">Agenti configurati</h2>
+        <h2 className="group-title">{t('esplora.progetti.agents')}</h2>
         <ul className="rows">
           {harness.map((h) => {
             const used = lastUseOfHarness(h.id, lastUse);
@@ -239,12 +240,12 @@ export default function Progetti() {
                 <div className="row-main">
                   <p className="row-title">{h.label}</p>
                   <p className="row-detail">
-                    {h.status === 'absent' ? '— non collegato' : used ? `✓ ultimo uso ${relativeTime(used, now)}` : '✓ mai usato'}
+                    {h.status === 'absent' ? t('esplora.progetti.notConnected') : used ? t('esplora.progetti.lastUse', { when: relativeTime(used, now) }) : t('esplora.progetti.neverUsed')}
                   </p>
                 </div>
                 {h.status === 'absent' && (
                   <button type="button" className="btn btn-link" onClick={() => nav.go('impostazioni')}>
-                    Collega
+                    {t('esplora.progetti.connect')}
                   </button>
                 )}
               </li>

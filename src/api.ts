@@ -153,3 +153,8 @@ export async function installAppUpdate(update: Update, onProgress: (pct: number 
   });
   await relaunch();
 }
+
+/** Language of the messages the backend shows to the person. */
+export function setBackendLanguage(lang: 'it' | 'en'): Promise<void> {
+  return invoke('set_language', { lang });
+}

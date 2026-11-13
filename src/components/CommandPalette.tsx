@@ -1,4 +1,5 @@
 import { Command } from 'cmdk';
+import { t } from '../i18n';
 import { useProject } from '../state/project';
 import { useNav } from '../state/nav';
 import { SECTIONS } from '../views';
@@ -28,17 +29,17 @@ export function CommandPalette({ open, onOpenChange, onLint, onCopySync, onToggl
     <Command.Dialog
       open={open}
       onOpenChange={onOpenChange}
-      label="Comandi"
+      label={t('shell.palette.label')}
       overlayClassName="palette-overlay"
       contentClassName="palette"
       loop
     >
-      <Command.Input className="palette-input" placeholder="Cerca un comando o un progetto" />
+      <Command.Input className="palette-input" placeholder={t('shell.palette.placeholder')} />
       <Command.List className="palette-list">
-        <Command.Empty className="palette-empty">Nessun comando trovato.</Command.Empty>
+        <Command.Empty className="palette-empty">{t('shell.palette.empty')}</Command.Empty>
 
         {hasWiki && (
-          <Command.Group heading="Vai a">
+          <Command.Group heading={t('shell.palette.goTo')}>
             {SECTIONS.map((s, i) => (
               <Command.Item key={s.id} value={`vai ${s.label}`} onSelect={run(() => nav.go(s.id))}>
                 <span>{s.label}</span>
@@ -52,7 +53,7 @@ export function CommandPalette({ open, onOpenChange, onLint, onCopySync, onToggl
         )}
 
         {recent.some((r) => r.path !== current) && (
-          <Command.Group heading="Progetti">
+          <Command.Group heading={t('shell.palette.projects')}>
             {recent
               .filter((r) => r.path !== current)
               .map((r) => (
@@ -61,26 +62,26 @@ export function CommandPalette({ open, onOpenChange, onLint, onCopySync, onToggl
                   value={`progetto ${r.name} ${r.path}`}
                   disabled={loading}
                   onSelect={run(() => void openProject(r.path))}>
-                  <span>Apri {r.name}</span>
+                  <span>{t('shell.palette.open', { name: r.name })}</span>
                   <span className="palette-meta">{r.path}</span>
                 </Command.Item>
               ))}
           </Command.Group>
         )}
 
-        <Command.Group heading="Azioni">
+        <Command.Group heading={t('shell.palette.actions')}>
           {hasWiki && (
             <>
               <Command.Item value="esegui lint controlla struttura" onSelect={run(onLint)}>
-                Esegui lint
+                {t('shell.palette.lint')}
               </Command.Item>
               <Command.Item value="copia prompt wiki-sync" onSelect={run(onCopySync)}>
-                Copia prompt /wiki-sync
+                {t('shell.palette.copySync')}
               </Command.Item>
             </>
           )}
           <Command.Item value="cambia tema chiaro scuro" onSelect={run(onToggleTheme)}>
-            Cambia tema
+            {t('shell.palette.theme')}
           </Command.Item>
         </Command.Group>
       </Command.List>

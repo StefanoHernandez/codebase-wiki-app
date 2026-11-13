@@ -14,6 +14,7 @@ use wiki_core::{
     WikiFileWrite, WikiSnapshot,
 };
 
+pub const PYTHON_NOT_FOUND_MSG_EN: &str = "Structural check needs Python 3.10 or newer. Install it (python.org, or `brew install python` on macOS) or set the path in settings.";
 pub const PYTHON_NOT_FOUND_MSG: &str = "Il controllo strutturale richiede Python 3.10 o più recente. Installalo (python.org, oppure `brew install python` su macOS) o indica il percorso nelle impostazioni.";
 
 const RECENTS_FILE: &str = "recent.json";
@@ -389,7 +390,7 @@ fn resolve_python(setting: Option<&str>) -> Result<ResolvedPython, String> {
     {
         return Ok(ResolvedPython::PyDash3);
     }
-    Err(PYTHON_NOT_FOUND_MSG.to_string())
+    Err(wiki_core::tr(PYTHON_NOT_FOUND_MSG, PYTHON_NOT_FOUND_MSG_EN))
 }
 
 fn find_python(setting: Option<&str>) -> Result<ResolvedPython, String> {
@@ -405,7 +406,7 @@ fn find_python(setting: Option<&str>) -> Result<ResolvedPython, String> {
             return Ok(resolved);
         }
         if cache.failed_at.is_some_and(|t| t.elapsed() < PYTHON_RETRY_AFTER) {
-            return Err(PYTHON_NOT_FOUND_MSG.to_string());
+            return Err(wiki_core::tr(PYTHON_NOT_FOUND_MSG, PYTHON_NOT_FOUND_MSG_EN));
         }
     } else {
         cache.setting = normalized.clone();
@@ -567,6 +568,12 @@ pub async fn read_source_file(
     rel_path: String,
 ) -> Result<RepoFilePayload, String> {
     blocking(move || read_repo_file_safe(&opened_repo(&app, &repo)?, &rel_path, None)).await
+}
+
+/// Language of the messages the backend shows ("it" or "en").
+#[tauri::command]
+pub fn set_language(lang: String) {
+    wiki_core::lang::set_english(lang == "en");
 }
 
 const RELEASE_PAGE: &str = "https://github.com/StefanoHernandez/codebase-wiki-app/releases/latest";
@@ -747,7 +754,7 @@ pub fn rag_index_delete(
     jobs: tauri::State<'_, Arc<crate::rag_jobs::RagJobs>>,
 ) -> Result<(), String> {
     if jobs.index_running(&repo) {
-        return Err("Indicizzazione in corso: annullala prima di cancellare l'indice".into());
+        return Err(wiki_core::tr("Indicizzazione in corso: annullala prima di cancellare l'indice", "Indexing in progress: cancel it before deleting the index"));
     }
     // Same resolution as the sidecar, so the id matches the index it wrote.
     let root = rag_core::resolve_repo(Some(std::path::Path::new(&repo)))?;
@@ -763,14 +770,14 @@ pub fn rag_model_remove(
 ) -> Result<(), String> {
     let safe = !id.is_empty() && id != "." && id != ".." && id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
     if !safe {
-        return Err(format!("id modello non valido: {id}"));
+        return Err(wiki_core::tr(&format!("id modello non valido: {id}"), &format!("invalid model id: {id}")));
     }
     if jobs.pull_running() || jobs.any_index_running() {
         return Err("Download o indicizzazione in corso: aspetta che finisca".into());
     }
     let dir = rag_core::model_dir(&id);
     if !dir.is_dir() {
-        return Err(format!("{id} non è installato"));
+        return Err(wiki_core::tr(&format!("{id} non è installato"), &format!("{id} is not installed")));
     }
     std::fs::remove_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))
 }
@@ -1179,7 +1186,7 @@ fn program_names(program: &str, windows: bool) -> Vec<String> {
 impl Runner for CliRunner {
     fn run(&self, args: &[&str]) -> Result<String, String> {
         let (program, rest) = args.split_first().ok_or("comando vuoto")?;
-        let exe = self.resolve(program).ok_or_else(|| format!("{program}: comando non trovato"))?;
+        let exe = self.resolve(program).ok_or_else(|| wiki_core::tr(&format!("{program}: comando non trovato"), &format!("{program}: command not found")))?;
         let mut cmd = wiki_core::no_window_command(exe);
         let mut child = cmd
             .args(rest)
@@ -1288,7 +1295,7 @@ pub async fn plugin_apply(agent: String) -> Result<(), String> {
         let latest = latest_plugin_version(&runner);
         let source = match (&latest, needs_source) {
             (Some(v), true) => Some(plugin_source(&runner, v)?),
-            (None, true) => return Err("Versione del plugin non disponibile: controlla la connessione e riprova.".into()),
+            (None, true) => return Err(wiki_core::tr("Versione del plugin non disponibile: controlla la connessione e riprova.", "Plugin version not available: check your connection and try again.")),
             _ => None,
         };
         plugin_install::plugin_apply(&agent, &AgentDirs::real(), &runner, source.as_deref(), latest.as_deref())

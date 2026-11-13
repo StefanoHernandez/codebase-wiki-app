@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import type { AttentionItem } from './attention';
 import type { LogOrder } from './human-actions';
 import type { IndexStatus } from './rag-format';
@@ -35,12 +36,12 @@ export function newLogEntries(logMd: string, seen: number | null, order: LogOrde
 
 export function relativeTime(ms: number, now: number): string {
   const s = Math.max(0, Math.floor((now - ms) / 1000));
-  if (s < 60) return 'ora';
+  if (s < 60) return t('common.relative.now');
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m} min fa`;
+  if (m < 60) return t('common.relative.minutes', { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} h fa`;
-  return `${Math.floor(h / 24)} g fa`;
+  if (h < 24) return t('common.relative.hours', { n: h });
+  return t('common.relative.days', { n: Math.floor(h / 24) });
 }
 
 export type IndexState = 'aggiornato' | 'indietro' | 'assente' | 'errore';

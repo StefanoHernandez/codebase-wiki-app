@@ -1,3 +1,4 @@
+import { t, tn } from '../i18n';
 import { copyText } from '../api';
 import { adoptPrompt } from '../lib/wiki-compat';
 import { useProject } from '../state/project';
@@ -12,9 +13,9 @@ export function CopyAdoptButton() {
   const copy = async () => {
     try {
       await copyText(adoptPrompt(root));
-      toast('Prompt /wiki-init --adopt copiato');
+      toast(t('revisione.compat.copied'));
     } catch (e) {
-      toast(`Copia non riuscita: ${e instanceof Error ? e.message : String(e)}`, 'error');
+      toast(t('revisione.compat.copyFailed', { error: e instanceof Error ? e.message : String(e) }), 'error');
     }
   };
   return (
@@ -23,7 +24,7 @@ export function CopyAdoptButton() {
         e.preventDefault();
         void copy();
       }}>
-      Copia prompt
+      {t('revisione.compat.copyPrompt')}
     </button>
   );
 }
@@ -37,9 +38,9 @@ export function UpgradeBanner() {
     <details className="banner banner-drift" role="status">
       <summary>
         <span className="banner-title">
-          La wiki usa un formato vecchio: {n} {n === 1 ? 'punto da aggiornare' : 'punti da aggiornare'} con /wiki-init --adopt
+          {tn('revisione.compat.banner', n)}
         </span>
-        <span className="banner-toggle">Mostra</span>
+        <span className="banner-toggle">{t('revisione.compat.show')}</span>
         {compat.banner.some((u) => u.fix === 'adopt') && <CopyAdoptButton />}
       </summary>
       <ul>
@@ -60,9 +61,8 @@ export function UpgradeBanner() {
 /** Replaces the six sections when the wiki has no Core map (v1). Read-only: no write action here. */
 export function IncompatibleWiki() {
   return (
-    <Empty title="Wiki non compatibile" action={<CopyAdoptButton />}>
-      Questa wiki usa un formato vecchio (manca la Core map) che l’app non legge. Avvia /wiki-init --adopt in Claude
-      Code o Codex per portarla al formato attuale: quando ha finito, questa finestra si aggiorna da sola.
+    <Empty title={t('revisione.compat.incompatibleTitle')} action={<CopyAdoptButton />}>
+      {t('revisione.compat.incompatibleBody')}
     </Empty>
   );
 }

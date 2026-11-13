@@ -1,6 +1,7 @@
 import { openReleasePage } from '../api';
 import { useNav } from '../state/nav';
 import { useUpdates } from '../state/updates';
+import { t } from '../i18n';
 
 /** App and plugin updates, above every view. Nothing installs without a click. */
 export function UpdateBanner() {
@@ -15,32 +16,32 @@ export function UpdateBanner() {
           {banner.title && <span className="banner-title">{banner.title}</span>}
           {banner.pluginLine && <span>{banner.pluginLine}</span>}
           {banner.error && <span>{banner.error}</span>}
-          {installing && <span className="muted">{progress === null ? 'Scaricamento…' : `Scaricamento ${progress}%`}</span>}
+          {installing && <span className="muted">{progress === null ? t('impostazioni.banner.downloadingUnknown') : t('impostazioni.banner.downloading', { percent: progress })}</span>}
         </div>
         {!installing && (
           <div className="update-banner-actions">
             {banner.action === 'install' && (
               <button type="button" className="btn btn-strong" onClick={() => void install()}>
-                Aggiorna e riavvia
+                {t('impostazioni.banner.install')}
               </button>
             )}
             {banner.action === 'download' && (
               <button type="button" className="btn btn-strong" onClick={() => void openReleasePage()}>
-                Scarica
+                {t('impostazioni.banner.download')}
               </button>
             )}
             {banner.action === 'install' && (
               <button type="button" className="btn" onClick={() => void openReleasePage()}>
-                Novità
+                {t('impostazioni.banner.whatsNew')}
               </button>
             )}
             {banner.pluginLine && (
               <button type="button" className="btn" onClick={() => nav.go('impostazioni')}>
-                Vai al plugin
+                {t('impostazioni.banner.goPlugin')}
               </button>
             )}
             <button type="button" className="btn" onClick={dismiss}>
-              {banner.action ? 'Più tardi' : 'Chiudi'}
+              {t(banner.action ? 'impostazioni.banner.later' : 'impostazioni.banner.close')}
             </button>
           </div>
         )}

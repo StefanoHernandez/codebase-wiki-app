@@ -139,3 +139,17 @@ confidence: high
 - Evidence: CI del tag https://github.com/StefanoHernandez/codebase-wiki-app/actions/runs/43424572413 verde dopo il rilancio; release https://github.com/StefanoHernandez/codebase-wiki-app/releases/tag/v0.6.0 con 14 file e `latest.json`; `releases/latest/download/latest.json` → HTTP 200
 - IDs: T13
 
+## 2026-11-13 · Icona "00_modern" e barra laterale "Notte" · agent
+- What: nuova icona dell'app dalla proposta "00_modern" di Alessandro Cianfaglione (anello pieno, gradiente oltremare), unica sorgente per tutte le taglie. Stefano ha scelto la direzione B "Notte" fra tre mockup (`docs/design/mockup-ui-2026-11-13.html`, chiaro e scuro): barra laterale blu notte in entrambi i temi, anello di salute attorno al progetto (pagine con verifica ancora valida), blu delle azioni umane più scuro nel tema chiaro. Branch `feat/notte`, non ancora rilasciato.
+- Evidence: `npm test` → 172 pass (1 nuovo su `verifiedShare`); `npm run build:app` ok, app installata in Applicazioni; barra laterale vista nel browser in chiaro e scuro senza progetto; anello con un progetto aperto da verificare a mano
+- IDs: none
+
+## 2026-11-13 · Contenuto in soft neumorphism (direzione D2) · agent
+- What: dopo un secondo mockup (`docs/design/mockup-neumorphism-2026-11-13.html`, con anteprima in inglese) Stefano ha scelto D2: barra laterale "Notte" e contenuto morbido. Fondo grigio-azzurro (`#e4e8f1` chiaro, `#1d2130` scuro), superfici in rilievo e campi premuti con le ombre `--neu-hi`/`--neu-lo`; sezione attiva e progetto "premuti" nel blu della barra.
+- Evidence: `npm test` → 172 pass; Primi passi e Impostazioni viste nel browser in chiaro e scuro; `npm run build:app` ok, app installata in Applicazioni; viste con un progetto aperto da verificare a mano
+- IDs: none
+
+## 2026-11-13 · Interfaccia in inglese · agent
+- What: su richiesta di Stefano l'app parla italiano o inglese (Impostazioni → Lingua, automatica dalla lingua del Mac), senza riavvio. Circa 610 testi spostati in `src/i18n/` per sei aree, date con `locale()`, messaggi del backend con `tr`, note del catalogo dei modelli tradotte per id; il testo scritto nella wiki resta invariato. Regola 3 di `CLAUDE.md` aggiornata. Branch `feat/notte`, non ancora rilasciato.
+- Evidence: `npm test` → 177 pass (compreso `no-italian.test.ts`); `cargo test --workspace --features wiki-mcp/embed` → verde; Primi passi e Impostazioni viste nel browser in inglese e in italiano, cambio lingua dal vivo; viste con un progetto aperto e revisione dei testi inglesi da fare a mano
+- IDs: none

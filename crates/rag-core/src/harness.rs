@@ -107,12 +107,12 @@ fn sibling_bak(path: &Path) -> PathBuf {
 pub fn propose_codex_patch(existing: &str, command: &Path) -> Result<String, String> {
     let mut doc = existing
         .parse::<DocumentMut>()
-        .map_err(|e| format!("TOML non valido: {e}"))?;
+        .map_err(|e| wiki_core::tr(&format!("TOML non valido: {e}"), &format!("Invalid TOML: {e}")))?;
     let table = doc
         .entry("mcp_servers")
         .or_insert(Item::Table(Table::new()))
         .as_table_mut()
-        .ok_or("mcp_servers non è una tabella")?;
+        .ok_or_else(|| wiki_core::tr("mcp_servers non è una tabella", "mcp_servers is not a table"))?;
     let mut srv = Table::new();
     srv.insert(
         "command",
@@ -128,7 +128,7 @@ pub fn propose_codex_patch(existing: &str, command: &Path) -> Result<String, Str
 pub fn propose_codex_disconnect(existing: &str) -> Result<String, String> {
     let mut doc = existing
         .parse::<DocumentMut>()
-        .map_err(|e| format!("TOML non valido: {e}"))?;
+        .map_err(|e| wiki_core::tr(&format!("TOML non valido: {e}"), &format!("Invalid TOML: {e}")))?;
     if let Some(table) = doc
         .get_mut("mcp_servers")
         .and_then(|i| i.as_table_mut())
@@ -142,9 +142,9 @@ fn parse_json_root(existing: &str) -> Result<Value, String> {
     if existing.trim().is_empty() {
         return Ok(json!({}));
     }
-    let root: Value = serde_json::from_str(existing).map_err(|e| format!("JSON non valido: {e}"))?;
+    let root: Value = serde_json::from_str(existing).map_err(|e| wiki_core::tr(&format!("JSON non valido: {e}"), &format!("Invalid JSON: {e}")))?;
     if !root.is_object() {
-        return Err("il file non contiene un oggetto JSON".into());
+        return Err(wiki_core::tr("il file non contiene un oggetto JSON", "the file does not contain a JSON object"));
     }
     Ok(root)
 }
@@ -155,11 +155,11 @@ fn json_object_at<'a>(root: &'a mut Value, path: &[&str]) -> Result<&'a mut serd
     for key in path {
         cur = cur
             .as_object_mut()
-            .ok_or_else(|| format!("{key}: il contenitore non è un oggetto"))?
+            .ok_or_else(|| wiki_core::tr(&format!("{key}: il contenitore non è un oggetto"), &format!("{key}: the container is not an object")))?
             .entry(key.to_string())
             .or_insert(json!({}));
         if !cur.is_object() {
-            return Err(format!("{key} non è un oggetto"));
+            return Err(wiki_core::tr(&format!("{key} non è un oggetto"), &format!("{key} is not an object")));
         }
     }
     Ok(cur.as_object_mut().expect("checked"))
@@ -444,7 +444,7 @@ pub fn harness_apply(harness: &str, action: HarnessAction) -> Result<(), String>
     }
     if action == HarnessAction::Disconnect {
         let Some(claude) = claude_program() else {
-            return Err("claude non è nel PATH".into());
+            return Err(wiki_core::tr("claude non è nel PATH", "claude is not in PATH"));
         };
         let status = wiki_core::no_window_command(claude)
             .args(["mcp", "remove", "--scope", "user", SERVER_KEY])
@@ -468,7 +468,7 @@ pub fn harness_apply(harness: &str, action: HarnessAction) -> Result<(), String>
             Err("claude mcp add-json fallito".into())
         }
     } else {
-        Err("claude non è nel PATH; usa Copia".into())
+        Err(wiki_core::tr("claude non è nel PATH; usa Copia", "claude is not in PATH; use Copy"))
     }
 }
 

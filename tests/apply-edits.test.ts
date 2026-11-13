@@ -131,7 +131,7 @@ test('applyEdits: unreadable log writes nothing', async () => {
         },
         LOG_PATH,
       ),
-    (e: Error) => e.message === LOG_UNREADABLE,
+    (e: Error) => e.message === LOG_UNREADABLE(),
   );
   assert.deepEqual(written, []);
 });

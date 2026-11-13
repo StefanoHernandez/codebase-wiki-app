@@ -49,8 +49,8 @@ pub fn catalog() -> &'static [ModelSpec] {
             passage_prefix: "passage: ",
             max_tokens: 512,
             size_mb: 118,
-            languages: "multilingue (IT, EN, …)",
-            note: "Consigliato: domande in italiano e inglese, veloce",
+            languages: "multilingual (IT, EN, …)",
+            note: "Recommended: Italian and English questions, fast",
             tested: true,
         },
         ModelSpec {
@@ -65,7 +65,7 @@ pub fn catalog() -> &'static [ModelSpec] {
             max_tokens: 512,
             size_mb: 34,
             languages: "EN",
-            note: "Solo inglese, veloce",
+            note: "English only, fast",
             tested: true,
         },
         ModelSpec {
@@ -80,7 +80,7 @@ pub fn catalog() -> &'static [ModelSpec] {
             max_tokens: 256,
             size_mb: 23,
             languages: "EN",
-            note: "Solo inglese, il più leggero",
+            note: "English only, the lightest",
             tested: false,
         },
         ModelSpec {
@@ -94,8 +94,8 @@ pub fn catalog() -> &'static [ModelSpec] {
             passage_prefix: "passage: ",
             max_tokens: 512,
             size_mb: 279,
-            languages: "multilingue",
-            note: "Italiano e inglese, più pesante e più lento da indicizzare",
+            languages: "multilingual",
+            note: "Italian and English, heavier and slower to index",
             tested: true,
         },
         ModelSpec {
@@ -110,7 +110,7 @@ pub fn catalog() -> &'static [ModelSpec] {
             max_tokens: 8192,
             size_mb: 137,
             languages: "EN",
-            note: "Solo inglese, adatto a file lunghi",
+            note: "English only, suited to long files",
             tested: false,
         },
         ModelSpec {
@@ -125,7 +125,7 @@ pub fn catalog() -> &'static [ModelSpec] {
             max_tokens: 8192,
             size_mb: 162,
             languages: "code",
-            note: "Pensato per il codice, più lento da indicizzare",
+            note: "Built for code, slower to index",
             tested: true,
         },
     ];
@@ -152,8 +152,8 @@ pub fn reranker_spec() -> &'static ModelSpec {
         passage_prefix: "",
         max_tokens: 1024,
         size_mb: 266,
-        languages: "multilingue",
-        note: "Reranker opzionale",
+        languages: "multilingual",
+        note: "Optional reranker",
         tested: false,
     };
     &RERANKER

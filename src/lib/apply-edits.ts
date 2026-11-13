@@ -1,5 +1,7 @@
-export const LOG_UNREADABLE = 'Il log non è leggibile: nessuna modifica scritta.';
 
+import { t } from '../i18n/index.ts';
+
+export const LOG_UNREADABLE = () => t('lavori.errors.logUnreadable');
 export interface FileEdit {
   relPath: string;
   apply(current: string): string;
@@ -54,7 +56,7 @@ export async function applyEdits(
       readSha[rel] = await wikiContentSha256(text);
     } catch (e) {
       if (rel === logRelPath) {
-        throw new Error(LOG_UNREADABLE);
+        throw new Error(LOG_UNREADABLE());
       }
       throw e;
     }

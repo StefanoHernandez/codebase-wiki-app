@@ -1,16 +1,14 @@
 import { useState } from 'react';
+import { t } from '../i18n';
 import { Dialog } from './Dialog';
-import { SIGN_HINT } from './TrackerDialogs';
 import { useProject } from '../state/project';
 import { DEFAULT_CORE_MAP } from '../lib/schema-parser';
 import { peer } from '../lib/apply-edits';
 import { verifiedAtUtc } from '../lib/dates';
 import { markPageReviewed } from '../lib/human-actions';
 
-const NOT_READY = 'La wiki non è ancora caricata. Premi Ricarica e riprova.';
-
 function errorText(e: unknown): string {
-  return `Non riesco a salvare. ${e instanceof Error ? e.message : String(e)}`;
+  return t('revisione.dialog.saveError', { error: e instanceof Error ? e.message : String(e) });
 }
 
 function useReviewSigned(pageRelPath: string, onDone: () => void) {
@@ -20,14 +18,14 @@ function useReviewSigned(pageRelPath: string, onDone: () => void) {
 
   const run = async () => {
     if (project.actorError) {
-      setError(SIGN_HINT);
+      setError(t('lavori.dialog.signHint'));
       return;
     }
     const core = project.schema?.coreMap ?? DEFAULT_CORE_MAP;
     const logPage = project.pages.find((p) => p.relPath === core.log);
     const page = project.pages.find((p) => p.relPath === pageRelPath);
     if (!logPage || !page) {
-      setError(NOT_READY);
+      setError(t('revisione.dialog.notReady'));
       return;
     }
     const head = project.snapshot?.gitState.headSha?.slice(0, 7) ?? '';
@@ -85,8 +83,8 @@ export function ReviewDialog({
   return (
     <Dialog
       open
-      title="Segna come rivista"
-      confirmLabel="Segna come rivista"
+      title={t('revisione.review.title')}
+      confirmLabel={t('revisione.review.title')}
       human
       busy={busy}
       error={error}
@@ -94,11 +92,11 @@ export function ReviewDialog({
       onCancel={onClose}
     >
       <p className="dialog-note">
-        Registri che hai letto e confermato <span className="mono">{pageRelPath}</span> alla revisione{' '}
+        {t('revisione.review.noteBefore')} <span className="mono">{pageRelPath}</span> {t('revisione.review.noteAfter')}{' '}
         <span className="mono">{head}</span>.
       </p>
       <p className="dialog-note">
-        Firma: <strong>{project.actor || '—'}</strong>
+        {t('revisione.review.sign')} <strong>{project.actor || '—'}</strong>
       </p>
     </Dialog>
   );

@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type FormEvent, type ReactNode } from 'react';
+import { t } from '../i18n';
 
 export interface DialogProps {
   open: boolean;
@@ -21,7 +22,7 @@ export function Dialog({
   title,
   children,
   confirmLabel,
-  cancelLabel = 'Annulla',
+  cancelLabel = t('shell.dialog.cancel'),
   human = false,
   busy = false,
   error,

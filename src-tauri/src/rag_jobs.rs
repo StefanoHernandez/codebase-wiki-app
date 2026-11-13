@@ -40,7 +40,7 @@ impl RagJobs {
         bin: &std::path::Path,
     ) -> Result<(), String> {
         if self.index_running(&repo) {
-            return Err("Indicizzazione già in corso".into());
+            return Err(wiki_core::tr("Indicizzazione già in corso", "Indexing already in progress"));
         }
         let mut child = spawn_sidecar(bin, &["index", "--repo", &repo, "--json"])?;
         let stdout = child.stdout.take().ok_or("stdout")?;
@@ -57,7 +57,7 @@ impl RagJobs {
             .lock()
             .unwrap()
             .remove(repo)
-            .ok_or("Nessuna indicizzazione in corso per questo repo")?;
+            .ok_or_else(|| wiki_core::tr("Nessuna indicizzazione in corso per questo repo", "No indexing in progress for this repo"))?;
         let _ = child.kill();
         let _ = child.wait();
         Ok(())
@@ -89,7 +89,7 @@ impl RagJobs {
         bin: &std::path::Path,
     ) -> Result<(), String> {
         if self.pull_running() {
-            return Err("Download già in corso".into());
+            return Err(wiki_core::tr("Download già in corso", "Download already in progress"));
         }
         let mut child = spawn_sidecar(bin, &["models", "pull", &model_id, "--json"])?;
         let stdout = child.stdout.take().ok_or("stdout")?;

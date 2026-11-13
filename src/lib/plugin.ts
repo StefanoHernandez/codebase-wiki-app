@@ -1,3 +1,5 @@
+import { t } from '../i18n/index.ts';
+
 // Codebase Wiki LLM plugin per agent, as returned by the `plugin_state` command.
 
 export type PluginRow = {
@@ -20,9 +22,9 @@ export const AGENT_LABEL: Record<string, string> = {
 };
 
 export function pluginStateText(r: PluginRow): string {
-  if (!r.agentFound) return 'agente non trovato';
-  if (r.error) return 'CLI non funzionante';
-  if (r.status === 'missing') return 'non installato';
+  if (!r.agentFound) return t('impostazioni.plugin.notFound');
+  if (r.error) return t('impostazioni.plugin.cliBroken');
+  if (r.status === 'missing') return t('impostazioni.plugin.missing');
   if (r.status === 'outdated') return `${r.installed} → ${r.latest}`;
   if (r.status === 'current') return `${r.installed} ✓`;
   return r.installed ?? '';
@@ -31,7 +33,7 @@ export function pluginStateText(r: PluginRow): string {
 /** Why the install button is off, or null. Folder agents copy from the latest release, so they need it. */
 export function pluginBlocked(r: PluginRow): string | null {
   const copies = r.skillsOnly || r.id === 'antigravity';
-  return copies && !r.latest ? 'serve la connessione per scaricare il plugin' : null;
+  return copies && !r.latest ? t('impostazioni.plugin.needsNetwork') : null;
 }
 
 /** True when one agent has both the plugin (any version) and the search server connected. */

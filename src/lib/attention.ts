@@ -1,4 +1,5 @@
 import type { Decision, TrackerData } from '../types/wiki.ts';
+import { t, tn } from '../i18n/index.ts';
 import { unownedSevereRisks, type RiskRow } from './wiki-extras.ts';
 
 export type AttentionKind =
@@ -62,8 +63,8 @@ export function computeAttention(input: AttentionInput): AttentionItem[] {
     if (d.status !== 'proposed') continue;
     items.push({
       kind: 'decision-proposed',
-      title: `Decision proposed: ${d.title}`,
-      detail: d.approvalLines.join(' · ') || 'No approval recorded',
+      title: t('revisione.attention.decisionProposed.title', { title: d.title }),
+      detail: d.approvalLines.join(' · ') || t('revisione.attention.decisionProposed.noApproval'),
       target: { view: 'decisioni', ref: d.number },
     });
   }
@@ -71,7 +72,7 @@ export function computeAttention(input: AttentionInput): AttentionItem[] {
   for (const p of input.tracker?.proposals ?? []) {
     items.push({
       kind: 'proposal',
-      title: `Proposal: ${p.proposal}`,
+      title: t('revisione.attention.proposal.title', { proposal: p.proposal }),
       detail: [p.by, p.date].filter(Boolean).join(' · '),
       target: { view: 'lavori', ref: p.proposal },
     });
@@ -81,8 +82,8 @@ export function computeAttention(input: AttentionInput): AttentionItem[] {
     if (row.status !== '🔴') continue;
     items.push({
       kind: 'blocked-task',
-      title: `${row.id} blocked: ${row.goal}`,
-      detail: row.owner ? `Owner: ${row.owner}` : 'No owner',
+      title: t('revisione.attention.blocked.title', { id: row.id, goal: row.goal }),
+      detail: row.owner ? t('revisione.attention.blocked.owner', { owner: row.owner }) : t('revisione.attention.blocked.noOwner'),
       target: { view: 'lavori', ref: row.id },
     });
   }
@@ -90,8 +91,8 @@ export function computeAttention(input: AttentionInput): AttentionItem[] {
   if (input.handoffCommitsBehind !== null && input.handoffCommitsBehind >= HANDOFF_STALE_COMMITS) {
     items.push({
       kind: 'handoff-stale',
-      title: 'Handoff is stale',
-      detail: `${input.handoffCommitsBehind} commits behind HEAD`,
+      title: t('revisione.attention.handoffStale.title'),
+      detail: t('revisione.attention.handoffStale.detail', { n: input.handoffCommitsBehind }),
       target: { view: 'handoff' },
     });
   }
@@ -101,8 +102,8 @@ export function computeAttention(input: AttentionInput): AttentionItem[] {
     if (code.length === 0) continue;
     items.push({
       kind: 'page-drift',
-      title: `Drift: ${page.relPath}`,
-      detail: `${code.length} source file(s) changed: ${code.join(', ')}`,
+      title: t('revisione.attention.drift.title', { path: page.relPath }),
+      detail: t('revisione.attention.drift.detail', { n: code.length, files: code.join(', ') }),
       target: { view: 'salute', ref: page.relPath },
       count: code.length,
     });
@@ -113,8 +114,8 @@ export function computeAttention(input: AttentionInput): AttentionItem[] {
     if (count === 0) continue;
     items.push({
       kind: 'reverify',
-      title: `Re-verify: ${page.relPath}`,
-      detail: `${count} marked ⚠️ TO RE-VERIFY`,
+      title: t('revisione.attention.reverify.title', { path: page.relPath }),
+      detail: t('revisione.attention.reverify.detail', { n: count }),
       target: { view: 'salute', ref: page.relPath },
     });
   }
@@ -129,8 +130,8 @@ export function computeAttention(input: AttentionInput): AttentionItem[] {
     if (input.corePaths === undefined || isCorePath(relPath, input.corePaths)) {
       items.push({
         kind: 'lint-error',
-        title: `Lint error: ${relPath}`,
-        detail: `${n} finding(s)`,
+        title: t('revisione.attention.lintError.title', { path: relPath }),
+        detail: t('revisione.attention.findings', { n }),
         target: { view: 'salute', ref: relPath },
         count: n,
       });
@@ -142,8 +143,8 @@ export function computeAttention(input: AttentionInput): AttentionItem[] {
   if (legacyPages > 0) {
     items.push({
       kind: 'lint-legacy',
-      title: `${legacyPages} non-core page(s) to recover`,
-      detail: `${legacyFindings} finding(s)`,
+      title: t('revisione.attention.legacy.title', { n: legacyPages }),
+      detail: t('revisione.attention.findings', { n: legacyFindings }),
       target: { view: 'salute' },
       count: legacyPages,
       findings: legacyFindings,
@@ -153,7 +154,7 @@ export function computeAttention(input: AttentionInput): AttentionItem[] {
   for (const r of unownedSevereRisks(input.risks ?? [])) {
     items.push({
       kind: 'risk-unowned',
-      title: `Unowned ${r.severity} risk ${r.id}: ${r.risk}`,
+      title: t('revisione.attention.risk.title', { severity: r.severity, id: r.id, risk: r.risk }),
       detail: r.trigger,
       target: { view: 'salute', ref: r.id },
     });
@@ -164,8 +165,6 @@ export function computeAttention(input: AttentionInput): AttentionItem[] {
 
 export type SidebarCount = { text: string; tone: 'human' | 'drift' | 'muted'; title: string };
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
 /** Sidebar badges per section, each with the sentence that says what the number counts. */
 export function sectionCounts(
   attention: AttentionItem[],
@@ -173,21 +172,21 @@ export function sectionCounts(
   const n = (...kinds: AttentionKind[]) => attention.filter((a) => kinds.includes(a.kind)).length;
   const out: ReturnType<typeof sectionCounts> = {};
   if (attention.length)
-    out['per-te'] = { text: String(attention.length), tone: 'human', title: plural(attention.length, 'cosa per te', 'cose per te') };
+    out['per-te'] = { text: String(attention.length), tone: 'human', title: tn('revisione.sidebar.perTe', attention.length) };
   const proposals = n('proposal');
   const blocked = n('blocked-task');
   if (proposals + blocked) {
-    const parts = [proposals && plural(proposals, 'proposta', 'proposte'), blocked && plural(blocked, 'bloccato', 'bloccati')];
-    out.lavori = { text: String(proposals + blocked), tone: 'muted', title: `Da valutare: ${parts.filter(Boolean).join(', ')}` };
+    const parts = [proposals && tn('revisione.sidebar.proposals', proposals), blocked && tn('revisione.sidebar.blocked', blocked)];
+    out.lavori = { text: String(proposals + blocked), tone: 'muted', title: t('revisione.sidebar.toEvaluate', { parts: parts.filter(Boolean).join(', ') }) };
   }
   const decisioni = n('decision-proposed');
   if (decisioni)
     out.decisioni = {
       text: String(decisioni),
       tone: 'muted',
-      title: `${plural(decisioni, 'decisione', 'decisioni')} da accettare o rifiutare`,
+      title: t('revisione.sidebar.decisionsTitle', { count: tn('revisione.sidebar.decisions', decisioni) }),
     };
-  if (n('handoff-stale')) out.handoff = { text: '!', tone: 'drift', title: "L'handoff è da aggiornare" };
+  if (n('handoff-stale')) out.handoff = { text: '!', tone: 'drift', title: t('revisione.sidebar.handoff') };
   // Distinct pages, not items: a page with drift and lint counts once; the recovery group adds its pages.
   const pages = new Set(
     attention.filter((a) => ['page-drift', 'reverify', 'lint-error'].includes(a.kind)).map((a) => a.target.ref),
@@ -197,11 +196,11 @@ export function sectionCounts(
   const salute = pages + legacy + risks;
   if (salute) {
     const what = risks
-      ? [pages + legacy && plural(pages + legacy, 'pagina', 'pagine'), plural(risks, 'rischio senza responsabile', 'rischi senza responsabile')]
+      ? [pages + legacy && tn('revisione.sidebar.pages', pages + legacy), tn('revisione.sidebar.risks', risks)]
           .filter(Boolean)
-          .join(' e ')
-      : plural(salute, 'pagina', 'pagine');
-    out.salute = { text: String(salute), tone: 'muted', title: `${what} da controllare` };
+          .join(t('revisione.sidebar.joiner'))
+      : tn('revisione.sidebar.pages', salute);
+    out.salute = { text: String(salute), tone: 'muted', title: t('revisione.sidebar.toCheck', { what }) };
   }
   return out;
 }

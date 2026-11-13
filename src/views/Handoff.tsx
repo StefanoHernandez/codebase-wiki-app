@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { fieldLabel, fixedValue } from '../lib/labels';
 import { useCallback } from 'react';
 import { Empty } from '../components/Empty';
@@ -51,9 +52,9 @@ export default function Handoff() {
     async (text: string) => {
       try {
         await copyText(textForCopy(text));
-        toast('Comando copiato');
+        toast(t('revisione.handoff.copied'));
       } catch {
-        toast('Non riesco a copiare');
+        toast(t('revisione.handoff.copyFailed'));
       }
     },
     [toast],
@@ -64,17 +65,17 @@ export default function Handoff() {
     if (!repo) return;
     try {
       await copyText(await workflowPrompt(repo, 'wiki-sync'));
-      toast('Prompt copiato');
+      toast(t('revisione.handoff.promptCopied'));
     } catch {
-      toast('Non riesco a copiare il prompt');
+      toast(t('revisione.handoff.promptCopyFailed'));
     }
   };
 
   if (!handoffPage || !handoff) {
     return (
       <section className="view">
-        <h1 className="view-title">Handoff</h1>
-        <Empty title="Questa wiki non ha una pagina di handoff." />
+        <h1 className="view-title">{t('revisione.handoff.title')}</h1>
+        <Empty title={t('revisione.handoff.noPage')} />
       </section>
     );
   }
@@ -104,7 +105,7 @@ export default function Handoff() {
             <div className="handoff-cmd">
               {renderInlineCode(row.verificationCommand)}
               <button type="button" className="btn btn-quiet" onClick={() => void copyCmd(row.verificationCommand)}>
-                Copia
+                {t('revisione.handoff.copy')}
               </button>
             </div>
           ) : (
@@ -144,19 +145,19 @@ export default function Handoff() {
 
   return (
     <section className="view">
-      <h1 className="view-title">Handoff</h1>
+      <h1 className="view-title">{t('revisione.handoff.title')}</h1>
 
       <div className={`handoff-freshness${stale ? ' handoff-freshness--stale' : ''}`}>
         <p className="handoff-freshness-text">
           {behind === 0
-            ? 'Handoff allineato a HEAD.'
-            : `L'handoff è fermo a ${behind} commit fa: gli ultimi lavori non sono nel testimone.`}
+            ? t('revisione.handoff.aligned')
+            : t('revisione.handoff.behind', { n: behind })}
         </p>
         {stale && (
           <>
-            <span className="badge badge-drift">Handoff da aggiornare</span>
+            <span className="badge badge-drift">{t('revisione.handoff.needsUpdate')}</span>
             <button type="button" className="btn" onClick={() => void copySync()} disabled={!project.current}>
-              Copia prompt /wiki-sync
+              {t('revisione.handoff.copySync')}
             </button>
           </>
         )}
@@ -170,15 +171,15 @@ export default function Handoff() {
             ))}
           </ul>
           <button type="button" className="btn" onClick={() => void copySync()} disabled={!project.current}>
-            Copia prompt /wiki-sync
+            {t('revisione.handoff.copySync')}
           </button>
         </div>
       )}
 
       <section className="handoff-section">
-        <h2>Stato corrente</h2>
+        <h2>{t('revisione.handoff.stateTitle')}</h2>
         {Object.keys(handoff.stateBullets).length === 0 ? (
-          <p className="muted">Nessun dato nello stato.</p>
+          <p className="muted">{t('revisione.handoff.stateEmpty')}</p>
         ) : (
           <ul className="handoff-state">
             {Object.entries(handoff.stateBullets).map(([key, value]) => (
@@ -192,21 +193,21 @@ export default function Handoff() {
       </section>
 
       <section className="handoff-section">
-        <h2>Baton per il prossimo agente</h2>
+        <h2>{t('revisione.handoff.batonTitle')}</h2>
         {handoff.noOpenWork ? (
-          <Empty title="Nessun lavoro aperto." />
+          <Empty title={t('revisione.handoff.noOpenWork')} />
         ) : handoff.baton.length === 0 ? (
-          <p className="muted">Nessuna riga nel baton.</p>
+          <p className="muted">{t('revisione.handoff.batonEmpty')}</p>
         ) : (
           <table className="table">
             <thead>
               <tr>
-                <th>Ordine</th>
-                <th>Task</th>
-                <th>File di partenza</th>
-                <th>Fatto quando</th>
-                <th>Comando di verifica</th>
-                <th>Note</th>
+                <th>{t('revisione.handoff.colOrder')}</th>
+                <th>{t('revisione.handoff.colTask')}</th>
+                <th>{t('revisione.handoff.colStartFiles')}</th>
+                <th>{t('revisione.handoff.colDoneWhen')}</th>
+                <th>{t('revisione.handoff.colVerify')}</th>
+                <th>{t('revisione.handoff.colNotes')}</th>
               </tr>
             </thead>
             <tbody>
@@ -219,7 +220,7 @@ export default function Handoff() {
       </section>
 
       <section className="handoff-section">
-        <h2>Blocchi</h2>
+        <h2>{t('revisione.handoff.blockersTitle')}</h2>
         {renderTable(
           handoff.blockers.length
             ? {
@@ -227,19 +228,19 @@ export default function Handoff() {
                 rows: handoff.blockers.map((b) => Object.keys(handoff.blockers[0]).map((k) => b[k] ?? '')),
               }
             : null,
-          'Nessun blocco registrato.',
+          t('revisione.handoff.blockersEmpty'),
         )}
       </section>
 
       <section className="handoff-section">
-        <h2>Rischi noti</h2>
-        {renderTable(risks, 'Nessun rischio elencato.')}
+        <h2>{t('revisione.handoff.risksTitle')}</h2>
+        {renderTable(risks, t('revisione.handoff.risksEmpty'))}
       </section>
 
       <section className="handoff-section">
-        <h2>Non rifare</h2>
+        <h2>{t('revisione.handoff.doNotRedoTitle')}</h2>
         {doNotRedo.length === 0 ? (
-          <p className="muted">Nessuna voce.</p>
+          <p className="muted">{t('revisione.handoff.doNotRedoEmpty')}</p>
         ) : (
           <ul className="handoff-bullets">
             {doNotRedo.map((line) => (
@@ -250,8 +251,8 @@ export default function Handoff() {
       </section>
 
       <section className="handoff-section">
-        <h2>Comandi già eseguiti</h2>
-        {renderTable(commands, 'Nessun comando registrato.')}
+        <h2>{t('revisione.handoff.commandsTitle')}</h2>
+        {renderTable(commands, t('revisione.handoff.commandsEmpty'))}
       </section>
     </section>
   );
@@ -259,11 +260,11 @@ export default function Handoff() {
 
 const HANDOFF_INFO_CODES = new Set(['handoff-no-open-work-stale', 'handoff-baton-id-closed']);
 
-/** Italian copy of the validator's two handoff infos. */
+/** Localised copy of the validator's two handoff infos. */
 function handoffInfoCopy(info: LintInfo): string {
   if (info.code === 'handoff-no-open-work-stale') {
-    return 'L’handoff dice «No open work.» ma il tracker ha lavori aperti: aggiorna l’handoff con /wiki-sync.';
+    return t('revisione.handoff.infoNoOpenWork');
   }
   const id = /\b(T[1-9]\d*)\b/.exec(info.message)?.[1];
-  return `Il baton cita ${id ?? 'un lavoro'} che nel tracker è già chiuso: aggiorna l’handoff con /wiki-sync.`;
+  return t('revisione.handoff.infoBatonClosed', { id: id ?? t('revisione.handoff.infoUnknownTask') });
 }

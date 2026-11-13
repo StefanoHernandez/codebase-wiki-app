@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { t } from '../i18n';
 
 type Props = {
   title: string;
@@ -35,7 +36,7 @@ export function SidePanel({ title, onClose, children }: Props) {
       <header className="salute-side-head">
         <h2 className="salute-side-title">{title}</h2>
         <button ref={closeRef} type="button" className="btn btn-quiet" onClick={onClose}>
-          Chiudi
+          {t('shell.sidePanel.close')}
         </button>
       </header>
       <div className="salute-side-body">{children}</div>

@@ -42,7 +42,18 @@ confidence: high
 | Grafo | wiki ↔ codice, filtri e drift; **Storia** riproduce la crescita commit per commit (`lib/graph-history.ts`: un nodo nasce al primo commit che tocca il suo file e pulsa a ogni modifica; un link compare quando esistono i due capi, approssimazione; storia dal comando `graph_history`, ultimi 2000 commit) |
 | Ricerca | stato dell'indice, Indicizza/Annulla, prova di `search_code` |
 | Impostazioni | profilo, tema, modelli, collegamento degli agenti (MCP), plugin per agente (installa / aggiorna, `lib/plugin.ts`), "Controlla aggiornamenti" |
+| Barra laterale "Notte" e contenuto morbido | blu notte dell'icona in entrambi i temi; il contenuto è in soft neumorphism (sezione in fondo a `styles/components.css`: pannelli, schede e pulsanti in rilievo con `--raise`, campi e selettori premuti con `--press`; menu e dialoghi restano galleggianti) (`--side-*` in `styles/tokens.css`); in alto il progetto con un anello che si riempie con le pagine la cui verifica vale ancora (`verifiedShare` in `lib/trust.ts`), branch, commit e "modificato" |
 | Banner aggiornamenti | sopra ogni vista (`components/UpdateBanner.tsx`): 5 s dopo l'avvio e ogni 24 h controlla `latest.json` (plugin updater) e i plugin indietro (`plugin_state`); testo da `lib/updates.ts`; "Aggiorna e riavvia" solo al clic; su Linux fuori da un AppImage "Scarica" apre la release; un controllo automatico fallito non mostra niente |
+
+## Lingua
+
+- Italiano o inglese, da Impostazioni → Lingua (Automatica segue la lingua del Mac); scelta salvata in `localStorage` (`cw.lang`).
+- Testi in `src/i18n/it/<area>.ts` e `src/i18n/en/<area>.ts` (aree: common, shell, lavori, revisione, impostazioni, esplora); `t(key, vars)` e `tn` per i plurali. Le chiavi inglesi sono tipizzate sulle italiane: una chiave mancante non compila.
+- Cambio lingua: `LangKeyed` rimonta la Shell; i provider sopra di essa (`ProjectProvider`) hanno `lang` fra le dipendenze dei testi calcolati.
+- Backend: il comando `set_language` imposta `wiki_core::tr(it, en)` per i messaggi Rust; il server MCP parla sempre inglese.
+- Note del catalogo dei modelli: in inglese nel CLI, tradotte nell'interfaccia per id (`impostazioni.catalog.*`).
+- Non cambia con la lingua: il testo scritto nella wiki (log, `human:<id>`, `closed by …`).
+- `tests/no-italian.test.ts` segnala testo italiano rimasto fuori da `src/i18n/`.
 
 ## Etichette del formato
 - `lib/labels.ts` traduce solo il vocabolario fisso del plugin: chiavi note (`fieldLabel`) e

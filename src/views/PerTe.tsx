@@ -3,23 +3,24 @@ import { useState, type ReactNode } from 'react';
 import { Empty } from '../components/Empty';
 import { UpgradeBanner } from '../components/Compat';
 import { NextStepsCard } from '../components/NextSteps';
-import { PromoteDialog, SIGN_HINT } from '../components/TrackerDialogs';
+import { PromoteDialog } from '../components/TrackerDialogs';
 import { useToast } from '../components/Toast';
 import { useProject } from '../state/project';
 import { useNav } from '../state/nav';
+import { t, tn, type Key } from '../i18n';
 import type { AttentionItem, AttentionKind } from '../lib/attention';
 import type { TrackerProposalRow } from '../types/wiki';
 
-const GROUPS: Array<{ kind: AttentionKind; title: string }> = [
-  { kind: 'decision-proposed', title: 'Decisioni da approvare' },
-  { kind: 'proposal', title: 'Proposte da valutare' },
-  { kind: 'blocked-task', title: 'Lavori bloccati' },
-  { kind: 'handoff-stale', title: 'Handoff da aggiornare' },
-  { kind: 'page-drift', title: 'Pagine con sorgenti cambiati' },
-  { kind: 'reverify', title: 'Da ri-verificare' },
-  { kind: 'risk-unowned', title: 'Rischi gravi senza responsabile' },
-  { kind: 'lint-error', title: 'Errori di struttura' },
-  { kind: 'lint-legacy', title: 'Pagine da recuperare (recupero graduale)' },
+const GROUPS: Array<{ kind: AttentionKind; title: Key }> = [
+  { kind: 'decision-proposed', title: 'esplora.perte.group.decisionProposed' },
+  { kind: 'proposal', title: 'esplora.perte.group.proposal' },
+  { kind: 'blocked-task', title: 'esplora.perte.group.blockedTask' },
+  { kind: 'handoff-stale', title: 'esplora.perte.group.handoffStale' },
+  { kind: 'page-drift', title: 'esplora.perte.group.pageDrift' },
+  { kind: 'reverify', title: 'esplora.perte.group.reverify' },
+  { kind: 'risk-unowned', title: 'esplora.perte.group.riskUnowned' },
+  { kind: 'lint-error', title: 'esplora.perte.group.lintError' },
+  { kind: 'lint-legacy', title: 'esplora.perte.group.lintLegacy' },
 ];
 
 const RE_VERIFY = /⚠️? TO RE-VERIFY/g;
@@ -44,21 +45,21 @@ export default function PerTe() {
   if (attention.length === 0) {
     return (
       <section className="view">
-        <h1 className="view-title">Per te</h1>
+        <h1 className="view-title">{t('esplora.perte.title')}</h1>
         <UpgradeBanner />
         <NextStepsCard />
-        <Empty title="Niente che aspetti te." />
+        <Empty title={t('esplora.perte.empty')} />
       </section>
     );
   }
 
   const open = (view: AttentionItem['target']['view'], ref?: string) => (
     <button type="button" className="btn" onClick={() => nav.go(view, ref ?? null)}>
-      {VIEW_BUTTON[view]}
+      {t(`esplora.perte.open.${view}` as Key)}
     </button>
   );
 
-  /** Italian copy per kind, from structured data only: the English title/detail of computeAttention is never shown. */
+  /** Copy per kind, from structured data only: the English title/detail of computeAttention is never shown. */
   const describe = (item: AttentionItem, index: number): Row | null => {
     const ref = item.target.ref ?? '';
     const key = `${item.kind}:${index}`;
@@ -67,8 +68,8 @@ export default function PerTe() {
         const d = project.decisions.find((x) => x.number === ref);
         return {
           key,
-          title: d ? d.title : `Decisione ${ref}`,
-          detail: `Decisione ${ref} proposta, in attesa che tu la accetti o la rifiuti.`,
+          title: d ? d.title : t('esplora.perte.decisionFallback', { ref }),
+          detail: t('esplora.perte.decisionDetail', { ref }),
           actions: open('decisioni', ref),
         };
       }
@@ -80,8 +81,12 @@ export default function PerTe() {
           key,
           title: ref,
           detail: p
-            ? `Proposta di ${p.by || 'qualcuno'}${p.date ? ` del ${p.date}` : ''}.${p.why ? ` ${p.why}` : ''}`
-            : 'Proposta in attesa di valutazione.',
+            ? t('esplora.perte.proposalBy', {
+                by: p.by || t('esplora.perte.someone'),
+                date: p.date ? t('esplora.perte.proposalDate', { date: p.date }) : '',
+                why: p.why ? ` ${p.why}` : '',
+              })
+            : t('esplora.perte.proposalPending'),
           actions: (
             <>
               {p && (
@@ -89,10 +94,10 @@ export default function PerTe() {
                   type="button"
                   className="btn btn-human-outline"
                   aria-disabled={!signable}
-                  title={signable ? undefined : SIGN_HINT}
+                  title={signable ? undefined : t('lavori.dialog.signHint')}
                   onClick={() => signable && p && setPromoting(p)}
                 >
-                  Promuovi a lavoro
+                  {t('esplora.perte.promote')}
                 </button>
               )}
               {open('lavori', ref)}
@@ -105,7 +110,7 @@ export default function PerTe() {
         return {
           key,
           title: row?.goal || ref,
-          detail: `${ref} è fermo.${row?.owner ? ` Responsabile: ${row.owner}.` : ' Nessun responsabile.'}`,
+          detail: t('esplora.perte.blocked', { ref, owner: row?.owner ? t('esplora.perte.owner', { owner: row.owner }) : t('esplora.perte.noOwner') }),
           actions: open('lavori', ref),
         };
       }
@@ -113,8 +118,8 @@ export default function PerTe() {
         const behind = project.snapshot?.gitState.handoffCommitsBehind;
         return {
           key,
-          title: behind ? `Handoff indietro di ${behind} commit` : 'Handoff non aggiornato',
-          detail: 'Il prossimo agente partirebbe da una situazione vecchia.',
+          title: behind ? t('esplora.perte.handoffBehind', { n: behind }) : t('esplora.perte.handoffStale'),
+          detail: t('esplora.perte.handoffDetail'),
           actions: open('handoff'),
         };
       }
@@ -123,7 +128,7 @@ export default function PerTe() {
         return {
           key,
           title: ref,
-          detail: `${n} ${n === 1 ? 'file sorgente cambiato' : 'file sorgente cambiati'} dall'ultima verifica.`,
+          detail: tn('esplora.perte.drift', n),
           actions: null,
           go: () => nav.go('salute', ref),
         };
@@ -134,7 +139,7 @@ export default function PerTe() {
         return {
           key,
           title: ref,
-          detail: `${n} ${n === 1 ? 'punto segnato' : 'punti segnati'} da ri-verificare.`,
+          detail: tn('esplora.perte.reverify', n),
           actions: null,
           go: () => nav.go('salute', ref),
         };
@@ -144,7 +149,7 @@ export default function PerTe() {
         return {
           key,
           title: r ? `${ref} · ${r.risk}` : ref,
-          detail: `Rischio ${r?.severity === 'critical' ? 'critico' : 'alto'} senza responsabile: assegnalo nella pagina dei rischi.`,
+          detail: t(r?.severity === 'critical' ? 'esplora.perte.risk.critical' : 'esplora.perte.risk.high'),
           actions: open('salute', ref),
         };
       }
@@ -153,7 +158,7 @@ export default function PerTe() {
         return {
           key,
           title: ref,
-          detail: `${n} ${n === 1 ? 'problema di struttura' : 'problemi di struttura'} in questa pagina.`,
+          detail: tn('esplora.perte.lint', n),
           actions: null,
           go: () => nav.go('salute', ref),
         };
@@ -163,8 +168,8 @@ export default function PerTe() {
         const findings = item.findings ?? 0;
         return {
           key,
-          title: `${pages} ${pages === 1 ? 'pagina fuori dal nucleo' : 'pagine fuori dal nucleo'}`,
-          detail: `${findings} ${findings === 1 ? 'problema' : 'problemi'} (frontmatter, sorgenti spostati) da sistemare un po' alla volta: l'agente li corregge quando tocca quelle pagine.`,
+          title: tn('esplora.perte.legacyTitle', pages),
+          detail: tn('esplora.perte.legacyDetail', findings),
           actions: open('salute'),
         };
       }
@@ -173,7 +178,7 @@ export default function PerTe() {
 
   return (
     <section className="view">
-      <h1 className="view-title">Per te</h1>
+      <h1 className="view-title">{t('esplora.perte.title')}</h1>
       <UpgradeBanner />
       <NextStepsCard />
       {GROUPS.map((group) => {
@@ -186,7 +191,7 @@ export default function PerTe() {
         return (
           <section key={group.kind} className="group">
             <h2 className="group-title">
-              {group.title} <span className="group-count">{rows.length}</span>
+              {t(group.title)} <span className="group-count">{rows.length}</span>
             </h2>
             <ul className="rows">
               {rows.map((r) => (
@@ -215,7 +220,7 @@ export default function PerTe() {
           onClose={() => setPromoting(null)}
           onDone={(id) => {
             setPromoting(null);
-            toast(`Proposta promossa a ${id}`);
+            toast(t('esplora.perte.promoted', { id }));
           }}
         />
       )}
@@ -223,9 +228,3 @@ export default function PerTe() {
   );
 }
 
-const VIEW_BUTTON: Record<AttentionItem['target']['view'], string> = {
-  lavori: 'Apri in Lavori',
-  decisioni: 'Apri decisione',
-  handoff: 'Apri Handoff',
-  salute: 'Apri in Salute',
-};

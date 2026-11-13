@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Soft neumorphism</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
+<style>
+/* Soft neumorphism: one mid-tone ground, surfaces lifted or pressed by a light and a dark shadow
+   of the same hue. Text keeps full contrast; actions keep a visible edge. */
+:root {
+  --ground: #e4e8f1;
+  --hi: #ffffff;          /* light shadow, top-left */
+  --lo: #b9c1d4;          /* dark shadow, bottom-right */
+  --ink: #161a2b;
+  --muted: #4e566c;
+  --faint: #7c849a;
+  --accent: #2140c5;      /* icon blue */
+  --accent-2: #3860e9;
+  --on-accent: #fff;
+  --drift: #9a4d00;
+  --page: #d7dce8;
+  --night-1: #1b2c8f; --night-2: #0c1650;
+  --ui: 'IBM Plex Sans', system-ui, sans-serif; --read: 'Newsreader', Georgia, serif; --code: 'IBM Plex Mono', ui-monospace, monospace;
+}
+body.dark {
+  --ground: #1d2130;
+  --hi: #283046;
+  --lo: #11141e;
+  --ink: #e9ecf6;
+  --muted: #a3abc2;
+  --faint: #737b93;
+  --accent: #8ea2ff;
+  --accent-2: #6f86ff;
+  --on-accent: #0b1030;
+  --drift: #eaa452;
+  --page: #121521;
+  --night-1: #16247a; --night-2: #0a1240;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font-family: var(--ui); }
+.page { max-width: 1240px; margin: 0 auto; padding: 32px 16px 64px; }
+.bar { position: sticky; top: 12px; z-index: 5; display: flex; gap: 8px; justify-content: flex-end; }
+.bar button { font: 500 13px var(--ui); padding: 8px 14px; border-radius: 999px; border: 0; cursor: pointer;
+  background: var(--ground); color: var(--ink); box-shadow: 4px 4px 10px var(--lo), -4px -4px 10px var(--hi); }
+.bar button[aria-pressed="true"] { box-shadow: inset 3px 3px 7px var(--lo), inset -3px -3px 7px var(--hi); }
+button:focus-visible, .bar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.page > h1 { font: 500 28px/1.2 var(--read); margin: 0 0 6px; }
+.page > p { color: var(--muted); max-width: 72ch; font-size: 14px; line-height: 1.55; margin: 0 0 28px; }
+.proposal { margin-bottom: 52px; }
+.proposal h2 { font: 500 21px/1.3 var(--read); margin: 0 0 4px; }
+.proposal .why { color: var(--muted); font-size: 13.5px; line-height: 1.55; max-width: 78ch; margin: 0 0 16px; }
+
+/* raised / pressed primitives */
+.raised { background: var(--ground); box-shadow: 6px 6px 14px var(--lo), -6px -6px 14px var(--hi); }
+.pressed { background: var(--ground); box-shadow: inset 4px 4px 9px var(--lo), inset -4px -4px 9px var(--hi); }
+
+.win { display: grid; grid-template-columns: 252px 1fr; height: 660px; border-radius: 22px; overflow: hidden;
+  background: var(--ground); font-size: 13.5px; box-shadow: 18px 18px 40px var(--lo), -12px -12px 30px var(--hi); }
+.side { display: flex; flex-direction: column; gap: 16px; padding: 14px 14px; min-height: 0; }
+.traffic { display: flex; gap: 7px; padding: 2px 4px; }
+.traffic i { width: 11px; height: 11px; border-radius: 50%; background: #ff5f57; }
+.traffic i:nth-child(2) { background: #febc2e; } .traffic i:nth-child(3) { background: #28c840; }
+.head { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; padding: 12px; border-radius: 16px; }
+.gauge { position: relative; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; }
+.gauge svg { position: absolute; inset: 4px; width: 44px; height: 44px; transform: rotate(-90deg); }
+.gauge span { font: 500 16px var(--read); position: relative; }
+.pname { font-weight: 600; font-size: 14px; }
+.pmeta { font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+.mono { font-family: var(--code); font-size: 11.5px; }
+.dirty { color: var(--drift); font-weight: 500; }
+.nav { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.nav li { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 12px; color: var(--muted); font-weight: 500; }
+.nav svg { width: 15px; height: 15px; flex: none; }
+.nav .n { margin-left: auto; font-size: 11.5px; font-weight: 600; min-width: 22px; text-align: center; line-height: 20px; border-radius: 999px; }
+.side-foot { margin-top: auto; }
+.main { padding: 28px 34px; overflow: hidden; }
+.main h3 { font: 500 25px/1.2 var(--read); margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 22px; }
+.list { display: grid; gap: 14px; }
+.item { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; padding: 14px 16px; border-radius: 16px; }
+.item b { font-weight: 500; display: block; margin-bottom: 2px; }
+.meta { color: var(--muted); font-size: 12.5px; }
+.kind { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-size: 11.5px; font-weight: 600; color: var(--accent); }
+.btn { font: 500 12.5px var(--ui); padding: 8px 14px; border-radius: 12px; border: 0; color: var(--ink); cursor: pointer; white-space: nowrap;
+  background: var(--ground); box-shadow: 4px 4px 9px var(--lo), -4px -4px 9px var(--hi); }
+.btn.human { color: var(--on-accent); background: linear-gradient(145deg, var(--accent-2), var(--accent));
+  box-shadow: 4px 4px 10px var(--lo), -3px -3px 8px var(--hi), inset 0 0 0 1px rgb(255 255 255 / .18); }
+.group-title { font-size: 12.5px; color: var(--muted); margin: 26px 0 10px; font-weight: 500; }
+
+/* D1: everything soft */
+.d1 .nav li.on { color: var(--ink); }
+.d1 .nav li.on svg { color: var(--accent); }
+.d1 .n { color: var(--on-accent); background: var(--accent); }
+.d1 .gauge-track { stroke: var(--lo); opacity: .6; }
+.d1 .gauge-fill { stroke: var(--accent); }
+
+/* D2: night sidebar, soft content */
+.d2 .side { background: linear-gradient(180deg, var(--night-1), var(--night-2)); color: rgb(255 255 255 / .74); }
+.d2 .head { background: rgb(255 255 255 / .06); box-shadow: inset 2px 2px 6px rgb(0 0 0 / .25), inset -1px -1px 2px rgb(255 255 255 / .08); }
+.d2 .gauge { background: transparent; box-shadow: 4px 4px 10px rgb(0 0 0 / .35), -2px -2px 6px rgb(255 255 255 / .08); }
+.d2 .gauge span, .d2 .pname { color: #fff; }
+.d2 .pmeta { color: #c2d7ff; }
+.d2 .dirty { color: #ffcf86; }
+.d2 .gauge-track { stroke: rgb(255 255 255 / .16); }
+.d2 .gauge-fill { stroke: #fff; }
+.d2 .nav li { color: rgb(255 255 255 / .74); }
+.d2 .nav li.on { color: #fff; background: rgb(255 255 255 / .1); box-shadow: inset 2px 2px 6px rgb(0 0 0 / .3), inset -1px -1px 2px rgb(255 255 255 / .08); }
+.d2 .n { background: #fff; color: #142477; }
+.d2 .side-foot li { color: rgb(255 255 255 / .6); }
+
+[data-en] { display: none; }
+body.en [data-en] { display: revert; }
+body.en [data-it] { display: none; }
+@media (max-width: 900px) { .win { grid-template-columns: 200px 1fr; } .main { padding: 18px; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="bar">
+    <button type="button" id="lang" aria-pressed="false">English</button>
+    <button type="button" id="theme" aria-pressed="false">Scuro</button>
+  </div>
+  <h1><span data-it>Soft neumorphism</span><span data-en>Soft neumorphism</span></h1>
+  <p><span data-it>Superfici dello stesso colore dello sfondo, in rilievo o premute grazie a un'ombra chiara e una scura. La sezione attiva e l'header del progetto sono "premuti"; le schede e i pulsanti sono "in rilievo". Il testo resta a contrasto pieno e l'azione umana ha il blu dell'icona, così il morbido non rende niente illeggibile. I pulsanti in alto mostrano il tema scuro e l'app in inglese.</span><span data-en>Surfaces share the ground colour and rise or sink through one light and one dark shadow. The active section and the project header are pressed in; cards and buttons are raised. Text keeps full contrast and the human action keeps the icon blue, so softness never costs legibility. The buttons above show the dark theme and the app in English.</span></p>
+
+  <svg width="0" height="0" style="position:absolute">
+    <symbol id="i-prog" viewBox="0 0 16 16"><path d="M2.5 4.5h4l1.5 1.5h5.5v6.5h-11z" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+    <symbol id="i-te" viewBox="0 0 16 16"><path d="M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM8 5.5v3l2 1.2" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+    <symbol id="i-lav" viewBox="0 0 16 16"><path d="M2.5 3.5h3v9h-3zM6.5 3.5h3v6h-3zM10.5 3.5h3v4h-3z" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+    <symbol id="i-dec" viewBox="0 0 16 16"><path d="M8 2l5.5 6L8 14 2.5 8z" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+    <symbol id="i-hand" viewBox="0 0 16 16"><path d="M2.5 5.5h9l-2.5-2.5M13.5 10.5h-9l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+    <symbol id="i-sal" viewBox="0 0 16 16"><path d="M2 8.5h3l1.5-4 3 7 1.5-3H14" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+    <symbol id="i-ric" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10.5 10.5l3 3" stroke="currentColor" stroke-width="1.3"/></symbol>
+    <symbol id="i-gra" viewBox="0 0 16 16"><circle cx="4" cy="4" r="1.8" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="12" cy="6" r="1.8" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="7" cy="12" r="1.8" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.6 4.6l4.7 1M11 7.5l-3 3M4.6 5.7l1.8 4.6" stroke="currentColor" stroke-width="1.1"/></symbol>
+    <symbol id="i-set" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M3.6 12.4 5 11M11 5l1.4-1.4" stroke="currentColor" stroke-width="1.3"/></symbol>
+  </svg>
+
+  <template id="screen">
+    <aside class="side">
+      <div class="traffic"><i></i><i></i><i></i></div>
+      <div class="head pressed">
+        <div class="gauge raised" title="14 / 20">
+          <svg viewBox="0 0 44 44"><circle class="gauge-track" cx="22" cy="22" r="19" fill="none" stroke-width="3.5"/><circle class="gauge-fill" cx="22" cy="22" r="19" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="83.6 119.4"/></svg>
+          <span>cw</span>
+        </div>
+        <div>
+          <div class="pname">codebase-wiki-app</div>
+          <div class="pmeta"><span class="mono">main @5ace35c</span><br><span class="dirty"><span data-it>modificato</span><span data-en>modified</span></span></div>
+        </div>
+      </div>
+      <ul class="nav">
+        <li><svg><use href="#i-prog"/></svg><span data-it>Progetti</span><span data-en>Projects</span></li>
+        <li class="on pressed"><svg><use href="#i-te"/></svg><span data-it>Per te</span><span data-en>For you</span><span class="n">3</span></li>
+        <li><svg><use href="#i-lav"/></svg><span data-it>Lavori</span><span data-en>Work</span><span class="n">7</span></li>
+        <li><svg><use href="#i-dec"/></svg><span data-it>Decisioni</span><span data-en>Decisions</span></li>
+        <li><svg><use href="#i-hand"/></svg><span data-it>Handoff</span><span data-en>Handoff</span></li>
+        <li><svg><use href="#i-sal"/></svg><span data-it>Salute</span><span data-en>Health</span></li>
+        <li><svg><use href="#i-ric"/></svg><span data-it>Ricerca</span><span data-en>Search</span></li>
+        <li><svg><use href="#i-gra"/></svg><span data-it>Grafo</span><span data-en>Graph</span></li>
+      </ul>
+      <ul class="nav side-foot"><li><svg><use href="#i-set"/></svg><span data-it>Impostazioni</span><span data-en>Settings</span></li></ul>
+    </aside>
+    <main class="main">
+      <h3><span data-it>Per te</span><span data-en>For you</span></h3>
+      <p class="sub"><span data-it>Tre cose aspettano una persona.</span><span data-en>Three things are waiting for a person.</span></p>
+      <div class="list">
+        <div class="item raised"><span class="kind pressed">T13</span><div><b><span data-it>Prova l'aggiornamento automatico</span><span data-en>Try the automatic update</span></b><span class="meta"><span data-it>Serve la 0.6.0 installata e una release successiva</span><span data-en>Needs 0.6.0 installed and a later release</span></span></div><button class="btn"><span data-it>Apri lavoro</span><span data-en>Open task</span></button></div>
+        <div class="item raised"><span class="kind pressed">R7</span><div><b><span data-it>Chiave di firma degli aggiornamenti senza copia</span><span data-en>Update signing key has no backup</span></b><span class="meta"><span data-it>Rischio alto, owner Stefano</span><span data-en>High risk, owner Stefano</span></span></div><button class="btn"><span data-it>Apri rischio</span><span data-en>Open risk</span></button></div>
+        <div class="item raised"><span class="kind pressed">T6</span><div><b><span data-it>Chiudi la prova di privacy del RAG</span><span data-en>Close the RAG privacy test</span></b><span class="meta"><span data-it>Criteri senza prova: serve la tua firma</span><span data-en>Criteria without proof: needs your sign-off</span></span></div><button class="btn human"><span data-it>Firma la chiusura</span><span data-en>Sign the closure</span></button></div>
+      </div>
+      <p class="group-title"><span data-it>Novità dall'ultima visita</span><span data-en>New since your last visit</span></p>
+      <div class="list"><div class="item raised"><span class="kind pressed">↺</span><div><b>Release 0.6.0</b><span class="meta"><span data-it>4 voci nuove nel log, 2 pagine aggiornate</span><span data-en>4 new log entries, 2 pages updated</span></span></div><button class="btn"><span data-it>Leggi</span><span data-en>Read</span></button></div></div>
+    </main>
+  </template>
+
+  <section class="proposal">
+    <h2><span data-it>D1 · Tutto morbido</span><span data-en>D1 · Soft throughout</span></h2>
+    <p class="why"><span data-it>Sidebar e contenuto sullo stesso fondo grigio-azzurro. L'header del progetto è una vaschetta premuta con il monogramma in rilievo dentro, come l'icona soft_neumorphism; la sezione attiva è premuta, le schede sono in rilievo. Il blu dell'icona compare solo nell'anello di salute, nei contatori e nell'azione umana.</span><span data-en>Sidebar and content share one blue-grey ground. The project header is a pressed tray holding the raised monogram, like the soft_neumorphism icon; the active section is pressed in, cards are raised. The icon blue appears only in the health ring, the counters and the human action.</span></p>
+    <div class="win d1" data-screen></div>
+  </section>
+
+  <section class="proposal">
+    <h2><span data-it>D2 · Notte con contenuto morbido</span><span data-en>D2 · Night with soft content</span></h2>
+    <p class="why"><span data-it>La sidebar blu notte della direzione B resta, con la sezione attiva e l'header "premuti" nel blu; il contenuto prende il neumorphism. È il passo più piccolo da quello che hai già sul branch feat/notte.</span><span data-en>The night-blue sidebar from direction B stays, with the active section and the header pressed into the blue; the content goes soft. It is the smallest step from what is already on the feat/notte branch.</span></p>
+    <div class="win d2" data-screen></div>
+  </section>
+</div>
+<script>
+  const tpl = document.getElementById('screen');
+  document.querySelectorAll('[data-screen]').forEach((w) => w.appendChild(tpl.content.cloneNode(true)));
+  const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { return null; } };
+  const theme = document.getElementById('theme');
+  const lang = document.getElementById('lang');
+  const setTheme = (dark) => {
+    document.body.classList.toggle('dark', dark);
+    theme.setAttribute('aria-pressed', String(dark));
+    theme.textContent = document.body.classList.contains('en') ? (dark ? 'Light' : 'Dark') : (dark ? 'Chiaro' : 'Scuro');
+  };
+  const setLang = (en) => {
+    document.body.classList.toggle('en', en);
+    document.documentElement.lang = en ? 'en' : 'it';
+    lang.setAttribute('aria-pressed', String(en));
+    lang.textContent = en ? 'Italiano' : 'English';
+    setTheme(document.body.classList.contains('dark'));
+  };
+  setLang(pref('neu-lang') === 'en');
+  setTheme(pref('neu-theme') ? pref('neu-theme') === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches);
+  theme.addEventListener('click', () => { const d = !document.body.classList.contains('dark'); setTheme(d); pref('neu-theme', d ? 'dark' : 'light'); });
+  lang.addEventListener('click', () => { const e = !document.body.classList.contains('en'); setLang(e); pref('neu-lang', e ? 'en' : 'it'); });
+</script>
+</body>
+</html>

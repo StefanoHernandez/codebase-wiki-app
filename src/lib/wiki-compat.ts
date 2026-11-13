@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import type { LintReport, LintUpgrade } from '../types/snapshot.ts';
 
 export interface WikiCompat {
@@ -17,10 +18,8 @@ export interface WikiCompat {
   writesBlocked: string | null;
 }
 
-export const INCOMPATIBLE_REASON =
-  'Questa wiki usa un formato vecchio che l’app non legge: aggiornala con /wiki-init --adopt.';
-export const PLUGIN_OUTDATED_REASON =
-  'La wiki è più nuova del plugin: aggiorna il plugin prima di firmare azioni.';
+export const incompatibleReason = () => t('revisione.compat.incompatible');
+export const pluginOutdatedReason = () => t('revisione.compat.pluginOutdated');
 
 const DECISION_CODES = new Set(['decision-status-missing', 'decision-status-invalid', 'decision-approval-missing']);
 
@@ -45,14 +44,12 @@ export function wikiCompat(report: LintReport | null, schema: { hasCoreMap: bool
     ),
     validatorUnavailable: report?.error ?? null,
     // An older plugin must not edit a newer wiki (validator rule); a v1 wiki is not read at all.
-    writesBlocked: incompatible ? INCOMPATIBLE_REASON : pluginOutdated ? PLUGIN_OUTDATED_REASON : null,
+    writesBlocked: incompatible ? incompatibleReason() : pluginOutdated ? pluginOutdatedReason() : null,
   };
 }
 
-export const CLOSE_BLOCKED_REASON =
-  'La tabella Done non ha la colonna Status: la chiusura ⚫ non si può registrare. Aggiorna la wiki con /wiki-init --adopt.';
-export const DECISION_BLOCKED_REASON =
-  'Questa decisione non ha lo stato nel frontmatter o la sezione ## Approval: aggiorna la wiki con /wiki-init --adopt.';
+export const closeBlockedReason = () => t('revisione.compat.closeBlocked');
+export const decisionBlockedReason = () => t('revisione.compat.decisionBlocked');
 
 export function adoptPrompt(wikiRoot: string): string {
   return `/wiki-init --adopt ${wikiRoot}`;

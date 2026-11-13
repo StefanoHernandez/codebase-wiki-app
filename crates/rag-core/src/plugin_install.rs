@@ -378,7 +378,7 @@ pub fn plugin_apply(
     if targets.is_empty() {
         return Ok(());
     }
-    let source = source.ok_or("Copia del plugin non disponibile: controlla la connessione e riprova.")?;
+    let source = source.ok_or_else(|| wiki_core::tr("Copia del plugin non disponibile: controlla la connessione e riprova.", "Plugin copy not available: check your connection and try again."))?;
     let pairs: Vec<(PathBuf, PathBuf)> = folder_sources(id, source).into_iter().zip(targets).collect();
     let marker = dirs.skills_root(id).map(|root| root.join(PLUGIN).join(MARKER));
     replace_folders(&pairs, || match (marker, version) {

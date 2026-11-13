@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { AGENT_LABEL, type PluginRow } from './plugin.ts';
 
 /** Result of asking the updater whether a newer app release exists. */
@@ -27,14 +28,14 @@ export function updateBanner(
 ): UpdateBanner | null {
   const behind = plugins.filter((p) => p.status === 'outdated' && p.installed && p.latest);
   const pluginLine = behind.length
-    ? `Plugin da aggiornare: ${behind
-        .map((p) => `${AGENT_LABEL[p.id] ?? p.id} ${p.installed} → ${p.latest}`)
-        .join(', ')}`
+    ? t('impostazioni.upd.plugins', {
+        list: behind.map((p) => `${AGENT_LABEL[p.id] ?? p.id} ${p.installed} → ${p.latest}`).join(', '),
+      })
     : null;
 
   if (app.kind === 'available') {
     return {
-      title: `Codebase Wiki ${app.version} disponibile`,
+      title: t('impostazioni.upd.available', { version: app.version }),
       pluginLine,
       action: opts.canInstall ? 'install' : 'download',
       error: null,
@@ -42,10 +43,10 @@ export function updateBanner(
   }
   if (opts.manual) {
     return {
-      title: app.kind === 'none' ? 'Codebase Wiki è aggiornata' : null,
+      title: app.kind === 'none' ? t('impostazioni.upd.upToDate') : null,
       pluginLine,
       action: null,
-      error: app.kind === 'error' ? `Impossibile controllare: ${app.message}` : null,
+      error: app.kind === 'error' ? t('impostazioni.upd.checkFailed', { message: app.message }) : null,
     };
   }
   return pluginLine ? { title: null, pluginLine, action: null, error: null } : null;

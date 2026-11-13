@@ -4,6 +4,7 @@ import { Empty } from '../components/Empty';
 import { useToast } from '../components/Toast';
 import { formatBytes, parseIndexStatus, type IndexStatus } from '../lib/rag-format';
 import { relativeTime } from '../lib/overview';
+import { locale, t } from '../i18n';
 import { agentActivity } from '../api';
 import type { ActivityLine } from '../types/snapshot';
 import { useNav } from '../state/nav';
@@ -31,17 +32,17 @@ const short = (sha?: string | null) => (sha ? sha.slice(0, 7) : '—');
 
 /** One word for the index state, and its tone. */
 function indexState(s: IndexStatus | null, running: boolean): { label: string; tone: 'ok' | 'drift' | 'muted' } {
-  if (running) return { label: 'Indicizzazione in corso', tone: 'muted' };
-  if (!s?.indexed) return { label: 'Indice assente', tone: 'muted' };
+  if (running) return { label: t('esplora.ricerca.indexing'), tone: 'muted' };
+  if (!s?.indexed) return { label: t('esplora.ricerca.noIndex'), tone: 'muted' };
   const behind = (s.changedSinceIndex ?? 0) > 0 || (!!s.head && !!s.indexedHead && s.head !== s.indexedHead);
-  return behind ? { label: 'Da aggiornare', tone: 'drift' } : { label: 'Aggiornato', tone: 'ok' };
+  return behind ? { label: t('esplora.ricerca.outdated'), tone: 'drift' } : { label: t('esplora.ricerca.upToDate'), tone: 'ok' };
 }
 
 /** Where a hit came from: keyword list, meaning (vector) list, or both. */
 function matchLabel(h: SearchHit): string {
-  if (h.bm25Rank && h.vecRank) return `testo #${h.bm25Rank}, significato #${h.vecRank}`;
-  if (h.bm25Rank) return `solo testo #${h.bm25Rank}`;
-  if (h.vecRank) return `solo significato #${h.vecRank}`;
+  if (h.bm25Rank && h.vecRank) return t('esplora.ricerca.matchBoth', { text: h.bm25Rank, meaning: h.vecRank });
+  if (h.bm25Rank) return t('esplora.ricerca.matchText', { text: h.bm25Rank });
+  if (h.vecRank) return t('esplora.ricerca.matchMeaning', { meaning: h.vecRank });
   return '—';
 }
 
@@ -92,8 +93,8 @@ export default function Ricerca() {
   if (!repo) {
     return (
       <section className="view">
-        <h1 className="view-title">Ricerca locale</h1>
-        <Empty title="Apri un progetto per usare la ricerca locale." />
+        <h1 className="view-title">{t('esplora.ricerca.title')}</h1>
+        <Empty title={t('esplora.ricerca.openProject')} />
       </section>
     );
   }
@@ -105,13 +106,13 @@ export default function Ricerca() {
 
   const rebuild = async (andIndex: boolean) => {
     const msg = andIndex
-      ? "L'indice di questo progetto verrà cancellato e ricostruito da zero."
-      : "L'indice di questo progetto verrà cancellato. La ricerca e l'MCP non risponderanno finché non lo ricrei.";
+      ? t('esplora.ricerca.confirmRebuild')
+      : t('esplora.ricerca.confirmDelete');
     if (!window.confirm(msg)) return;
     try {
       await invoke('rag_index_delete', { repo });
       if (andIndex) await rag.startIndex(repo);
-      else toast('Indice cancellato');
+      else toast(t('esplora.ricerca.deleted'));
     } catch (e) {
       toast(message(e), 'error');
     }
@@ -134,66 +135,62 @@ export default function Ricerca() {
 
   return (
     <section className="view">
-      <h1 className="view-title">Ricerca locale</h1>
-      <p className="muted">
-        Indice del codice di questo progetto, usato dalla ricerca qui sotto e dagli agenti via MCP. La wiki non è indicizzata: gli agenti la leggono partendo dall'indice delle pagine.
-      </p>
+      <h1 className="view-title">{t('esplora.ricerca.title')}</h1>
+      <p className="muted">{t('esplora.ricerca.intro')}</p>
       {status?.staleInstall && (
-        <p className="banner banner-drift">Chiudi gli agenti collegati e riapri l'app per aggiornare il server MCP.</p>
+        <p className="banner banner-drift">{t('esplora.ricerca.staleInstall')}</p>
       )}
 
       <section className="group">
-        <h2 className="group-title">Stato</h2>
+        <h2 className="group-title">{t('esplora.ricerca.status')}</h2>
         <div className="rag-tiles">
           <div className="rag-tile">
-            <span className="rag-tile-label">Indice</span>
+            <span className="rag-tile-label">{t('esplora.ricerca.index')}</span>
             <span className={`rag-tile-value rag-tone-${state.tone}`}>{state.label}</span>
             <span className="rag-tile-sub">
               {status?.indexed
-                ? `${status.changedSinceIndex ?? 0} file cambiati, indice @${short(status.indexedHead)}, HEAD @${short(status.head)}`
-                : (status?.error ?? 'Premi Indicizza per crearlo')}
+                ? t('esplora.ricerca.indexSub', { changed: status.changedSinceIndex ?? 0, indexed: short(status.indexedHead), head: short(status.head) })
+                : (status?.error ?? t('esplora.ricerca.pressIndex'))}
             </span>
           </div>
           <div className="rag-tile">
-            <span className="rag-tile-label">Contenuto</span>
-            <span className="rag-tile-value">{(status?.chunks ?? 0).toLocaleString('it-IT')} frammenti</span>
-            <span className="rag-tile-sub">
-              {code?.files ?? 0} file di codice; esclusi wiki, Markdown, dati e log
-            </span>
+            <span className="rag-tile-label">{t('esplora.ricerca.content')}</span>
+            <span className="rag-tile-value">{t('esplora.ricerca.chunks', { n: (status?.chunks ?? 0).toLocaleString(locale()) })}</span>
+            <span className="rag-tile-sub">{t('esplora.ricerca.codeFiles', { n: code?.files ?? 0 })}</span>
           </div>
           <div className="rag-tile">
-            <span className="rag-tile-label">Su disco</span>
+            <span className="rag-tile-label">{t('esplora.ricerca.disk')}</span>
             <span className="rag-tile-value">{formatBytes(status?.sizeBytes ?? 0)}</span>
             <span className="rag-tile-sub">
               {status?.indexedAt
-                ? `ultima scrittura ${new Date(status.indexedAt * 1000).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' })}`
+                ? t('esplora.ricerca.lastWrite', { when: new Date(status.indexedAt * 1000).toLocaleString(locale(), { dateStyle: 'short', timeStyle: 'short' }) })
                 : '—'}
             </span>
           </div>
           <div className="rag-tile">
-            <span className="rag-tile-label">Modelli</span>
+            <span className="rag-tile-label">{t('esplora.ricerca.models')}</span>
             <span className="rag-tile-value mono">{status?.model || DEFAULT_MODEL}</span>
-            <span className="rag-tile-sub">reranker: {status?.reranker ?? 'non installato'}</span>
+            <span className="rag-tile-sub">{t('esplora.ricerca.reranker', { name: status?.reranker ?? t('esplora.ricerca.notInstalled') })}</span>
           </div>
           <div className="rag-tile">
-            <span className="rag-tile-label">Agenti (MCP)</span>
-            <span className="rag-tile-value">{connected.length === 1 ? '1 collegato' : connected.length ? `${connected.length} collegati` : 'Nessuno'}</span>
-            <span className="rag-tile-sub">{connected.map((h) => h.label).join(', ') || 'Collegali dalle Impostazioni'}</span>
+            <span className="rag-tile-label">{t('esplora.ricerca.agents')}</span>
+            <span className="rag-tile-value">{connected.length === 1 ? t('esplora.ricerca.oneConnected') : connected.length ? t('esplora.ricerca.nConnected', { n: connected.length }) : t('esplora.ricerca.none')}</span>
+            <span className="rag-tile-sub">{connected.map((h) => h.label).join(', ') || t('esplora.ricerca.connectInSettings')}</span>
             <span className="rag-tile-sub">
-              {lastCall ? `Ultima chiamata: ${lastCall.agent} ${relativeTime(lastCall.ts, Date.now())}` : 'Nessuna chiamata da questo repo'}
+              {lastCall ? t('esplora.ricerca.lastCall', { agent: lastCall.agent, when: relativeTime(lastCall.ts, Date.now()) }) : t('esplora.ricerca.noCall')}
             </span>
             <button type="button" className="btn btn-link" onClick={() => nav.go('progetti')}>
-              Vedi attività
+              {t('esplora.ricerca.seeActivity')}
             </button>
           </div>
         </div>
         <button type="button" className="btn btn-link" onClick={() => nav.go('impostazioni')}>
-          Cambia modelli o agenti
+          {t('esplora.ricerca.changeModels')}
         </button>
       </section>
 
       <section className="group">
-        <h2 className="group-title">Azioni</h2>
+        <h2 className="group-title">{t('esplora.ricerca.actions')}</h2>
         <div className="toolbar">
           <button type="button" className="btn btn-strong" disabled={busy} onClick={() => void rag.startIndex(repo)}>
             {job.running && (
@@ -201,34 +198,32 @@ export default function Ricerca() {
                 ⟳
               </span>
             )}
-            {status?.indexed ? 'Aggiorna indice' : 'Indicizza'}
+            {status?.indexed ? t('esplora.ricerca.updateIndex') : t('esplora.ricerca.indexNow')}
           </button>
           {job.running ? (
             <button type="button" className="btn" onClick={() => void rag.cancelIndex(repo)}>
-              Annulla
+              {t('esplora.ricerca.cancel')}
             </button>
           ) : (
             status?.indexed && (
               <>
                 <button type="button" className="btn" disabled={busy} onClick={() => void rebuild(true)}>
-                  Ricostruisci da zero
+                  {t('esplora.ricerca.rebuild')}
                 </button>
                 <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => void rebuild(false)}>
-                  Elimina indice
+                  {t('esplora.ricerca.deleteIndex')}
                 </button>
               </>
             )
           )}
           <label className="ricerca-check">
             <input type="checkbox" checked={rag.autoIndex} onChange={(e) => rag.setAutoIndex(e.target.checked)} />
-            Aggiorna automaticamente quando cambiano i file
+            {t('esplora.ricerca.autoUpdate')}
           </label>
         </div>
         {job.progress && (
           <div className="ricerca-progress">
-            <span className="muted">
-              Codice: {job.progress.done}/{job.progress.total}
-            </span>
+            <span className="muted">{t('esplora.ricerca.progress', { done: job.progress.done, total: job.progress.total })}</span>
             <progress value={job.progress.done} max={job.progress.total || 1} />
           </div>
         )}
@@ -236,28 +231,28 @@ export default function Ricerca() {
       </section>
 
       <section className="group">
-        <h2 className="group-title">Prova una ricerca</h2>
-        <p className="muted">Gli stessi risultati che riceve un agente con search_code.</p>
+        <h2 className="group-title">{t('esplora.ricerca.tryTitle')}</h2>
+        <p className="muted">{t('esplora.ricerca.tryHint')}</p>
         <div className="toolbar">
           <input
             className="input"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void runSearch()}
-            placeholder="Dove viene gestito il watcher?"
-            aria-label="Domanda"
+            placeholder={t('esplora.ricerca.placeholder')}
+            aria-label={t('esplora.ricerca.question')}
           />
           <button type="button" className="btn btn-strong" disabled={searching || !query.trim()} onClick={() => void runSearch()}>
-            Cerca
+            {t('esplora.ricerca.search')}
           </button>
         </div>
         {searchError && <p className="error-text">{searchError}</p>}
-        {hits && hits.length === 0 && <p className="muted">Nessun risultato.</p>}
+        {hits && hits.length === 0 && <p className="muted">{t('esplora.ricerca.noResults')}</p>}
         {hits && hits.length > 0 && (
           <p className="muted">
             {hits[0].reranked
-              ? 'Ordinati dal reranker; tra parentesi la posizione prima del reranker.'
-              : 'Ordinati fondendo ricerca testuale e per significato (RRF).'}
+              ? t('esplora.ricerca.orderReranked')
+              : t('esplora.ricerca.orderFused')}
           </p>
         )}
         {hits?.map((h, i) => {
@@ -267,11 +262,11 @@ export default function Ricerca() {
               <div className="ricerca-hit-head">
                 <span className="rag-rank">#{i + 1}</span>
                 <span className="mono">{label}</span>
-                {h.stale && <span className="badge badge-drift">cambiato dopo l'indice</span>}
+                {h.stale && <span className="badge badge-drift">{t('esplora.ricerca.changedAfter')}</span>}
                 <span className="ricerca-hit-meta">
                   <span>{matchLabel(h)}</span>
-                  {h.reranked && <span>prima del reranker #{h.fusedRank}</span>}
-                  <span>punteggio {h.score.toFixed(3)}</span>
+                  {h.reranked && <span>{t('esplora.ricerca.beforeRerank', { rank: h.fusedRank })}</span>}
+                  <span>{t('esplora.ricerca.score', { score: h.score.toFixed(3) })}</span>
                 </span>
               </div>
               <pre className="ricerca-snippet">{h.snippet}</pre>
