@@ -408,11 +408,14 @@ sources:
         fs::write(repo.join("wiki/a.md"), page("a.txt", &base)).unwrap();
         fs::write(repo.join("wiki/b.md"), page("b.txt", &base)).unwrap();
         fs::write(repo.join("wiki/x.md"), page("a.txt", "deadbeef")).unwrap();
+        // A glob is not a plain path: that page keeps its own `git diff -- <glob>`.
+        fs::write(repo.join("wiki/g.md"), page("\"*.txt\"", &base)).unwrap();
 
         let snap = load_wiki_snapshot(repo, "wiki").unwrap();
         assert_eq!(snap.changed_files_by_page["a.md"], vec!["a.txt".to_string()]);
         assert_eq!(snap.changed_files_by_page["b.md"], vec!["b.txt".to_string()]);
         assert!(snap.changed_files_by_page["x.md"].is_empty());
+        assert_eq!(snap.changed_files_by_page["g.md"], vec!["a.txt".to_string(), "b.txt".to_string()]);
     }
 
     #[test]

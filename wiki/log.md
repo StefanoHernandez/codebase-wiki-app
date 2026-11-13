@@ -124,3 +124,8 @@ confidence: high
 - What: sulla 0.5.1 installata su Windows ogni `git`, Python e `claude --version` apriva una finestra di console (`CREATE_NO_WINDOW` c'era solo per il sidecar) e l'apertura di un progetto restava senza risposta: circa 66 processi `git` in fila e l'errore non mostrato in Primi passi. Sul branch `fix/windows-console`: `wiki_core::no_window_command` per ogni processo figlio (no-op su macOS e Linux), un controllo per `source_commit` invece che per pagina, caricamento ed errore nel passo del progetto di Primi passi.
 - Evidence: `recent.json` vuoto dopo la prova; 20 `git rev-parse` → 5,2 s su quella macchina; `npm test` → 157 pass, 8 fail nei test del validatore (Python dei test non trovato su Windows, `|` in una riga). ⚠️ NOT VERIFIED - Rust non compilato: nessun toolchain Rust su quella macchina
 - IDs: T2
+
+## 2026-11-13 · Un git diff per commit nello snapshot · agent
+- What: `load_wiki_snapshot` fa un solo `git diff --no-renames` per ogni `source_commit` diverso e assegna i file alle pagine in Rust con la regola di git (percorso uguale o cartella che lo contiene); le fonti con glob, `:(magic)`, `.` o `..` tengono il proprio `git diff`. Sulla wiki di questo repo da circa 32 a circa 15 processi `git` per caricamento. Con `--no-renames` un file spostato compare col nome vecchio e col nuovo.
+- Evidence: script con git vero → la regola dà lo stesso risultato del pathspec di git in 9 casi su 9 (modifiche, cancellazioni, rinomine, spazi e accenti); test Rust nuovi in `git_ops.rs` e `lib.rs`. ⚠️ NOT VERIFIED - Rust non compilato in locale (nessun toolchain), lo verifica la CI della PR
+- IDs: T2
