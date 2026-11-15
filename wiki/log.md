@@ -178,3 +178,8 @@ confidence: high
 - What: su richiesta di Stefano, dopo il mockup approvato: benvenuto alla prima apertura, un suggerimento per sezione la prima volta, un evidenziatore sul primo pulsante di firma, su "Collega" e su ⌘K; uno alla volta, chiusi non tornano, "Rivedi i suggerimenti" in Impostazioni. Testi in italiano e inglese. Non ancora rilasciati.
 - Evidence: `npm test` → 182 pass (5 in `tests/hints.test.ts`); nel browser con backend finto: benvenuto, suggerimento di Impostazioni, anello su "Collega" e su ⌘K (nota rivolta in su vicino al bordo), ripristino e benvenuto in inglese; viste con un progetto aperto (firma blu in Lavori) da provare a mano
 - IDs: none
+
+## 2026-11-15 · Release 0.7.2 · agent
+- What: versione 0.7.2 con i suggerimenti alla prima apertura, i pulsanti pieni leggibili, il banner fisso in alto e il validatore del plugin 0.15.1; tag `v0.7.2`, release pubblicata come `latest`. La build macOS del tag era stata annullata da GitHub (nessun runner macOS arm64 libero) e rilanciata con `gh run rerun --failed`.
+- Evidence: run GitHub Actions 43461020112 → test e tre build success (macOS al secondo tentativo); `latest.json` con `darwin-aarch64`, `windows-x86_64`, `linux-x86_64`
+- IDs: none
