@@ -41,7 +41,7 @@ già collegati usano il vecchio finché non vengono riavviati (banner in Ricerca
 
 ## Icona
 Sorgente unica `src-tauri/icons/src/icon.svg`: "00_modern" di Alessandro Cianfaglione (anello pieno su
-gradiente oltremare, lettere già in tracciati), messa sulla griglia macOS (824 px dentro 1024). L'anello
+gradiente salvia, lettere già in tracciati), messa sulla griglia macOS (824 px dentro 1024). L'anello
 pieno si legge anche a 16–32 px, quindi non serve più una versione piccola. Per rigenerare:
 `npx tauri icon src-tauri/icons/src/icon.svg -o <tmp>` e copiare in `src-tauri/icons/` i file che già
 ci sono (non `android/` e `ios/`). `src/assets/mark.svg` è l'originale a tutto quadro, usato come favicon.

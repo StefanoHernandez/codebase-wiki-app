@@ -30,7 +30,7 @@ confidence: high
 1. Mai `git add -A` o `git add .`: aggiungi i file per nome (cartelle locali non tracciate possono finire nel commit).
 2. Crate Rust con versione fissata `=x.y.z`, nessun `cargo update` generale: il toolchain è rustc 1.90 (`Cargo.toml` → `rust-version`).
 3. Testi dell'interfaccia in italiano e inglese (testi in `src/i18n/`); codice, commit e note di release in inglese.
-4. La classe `btn-human` (ultramarine) è solo per azioni con autorità umana ([design](../../docs/tasks/design.md)).
+4. La classe `btn-human` (salvia scura in chiaro, menta in scuro) è solo per azioni con autorità umana ([design](../../docs/tasks/design.md)).
 5. `resources/validate-wiki.py` è una copia identica di quello del plugin: si aggiorna copiandolo, mai modificandolo.
 6. Nei test non si scrivono mai le config reali `~/.claude*`, `~/.codex`, `~/.cursor` e non si lancia un vero `claude mcp add`.
 7. Merge su `main`, tag e release solo con l'ok esplicito di Stefano.
