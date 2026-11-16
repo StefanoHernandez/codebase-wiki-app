@@ -44,3 +44,11 @@ confidence: high
 - **Verification:** `codesign -dv` → `Signature=adhoc`, `Sealed Resources version=2`; `codesign --verify --deep --strict` → ok, build locale 2026-11-11
 - **Limits:** senza Developer ID e notarizzazione l'avviso di Gatekeeper resta.
 - **Related:** [CI e release](engineering/operations.md)
+
+## Su Windows Ricerca e Impostazioni dicono "Comando sidecar fallito"
+- **Cause:** `codebase-wiki-mcp.exe` non parte (exit `-1073741515`, DLL non trovata): ONNX Runtime al suo interno richiede il runtime Visual C++ (`msvcp140.dll`, `vcruntime140_1.dll`), assente su un Windows appena installato.
+- **Fix:** dalla 0.7.5 `scripts/build-sidecar.mjs` copia le tre DLL da `System32` in `src-tauri/binaries/`, `src-tauri/tauri.windows.conf.json` le installa accanto agli exe e l'app le copia anche in `<data>/bin` per gli agenti.
+- **Workaround:** `winget install --id Microsoft.VCRedist.2015+.x64 -e`
+- **Verification:** ⚠️ NOT VERIFIED - causa confermata in una VM Windows 11 pulita (exit `-1073741515`, poi indicizzazione riuscita dopo il redist), 2026-11-16; la correzione va provata sulla build Windows della CI
+- **Limits:** none known
+- **Related:** [CI e release](engineering/operations.md)

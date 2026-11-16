@@ -29,6 +29,7 @@ pub fn install_mcp_binary() -> Result<(), String> {
     ensure_data_dirs()?;
     let dest = bin_path();
     let sidecar = rag_sidecar_path()?;
+    copy_vc_runtime(&sidecar, &dest);
     let current_ver = sidecar_version(&sidecar).unwrap_or_default();
     let dest_ver = if dest.is_file() {
         sidecar_version(&dest).unwrap_or_default()
@@ -71,3 +72,18 @@ fn sidecar_version(path: &Path) -> Option<String> {
     }
     Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
+
+/// Agents run the copy in `<data>/bin`, so it needs the bundled VC++ runtime next to it too.
+#[cfg(windows)]
+fn copy_vc_runtime(sidecar: &Path, dest: &Path) {
+    let (Some(from), Some(to)) = (sidecar.parent(), dest.parent()) else { return };
+    for dll in ["msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll"] {
+        let (src, dst) = (from.join(dll), to.join(dll));
+        if src.is_file() && !dst.is_file() {
+            let _ = fs::copy(&src, &dst);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn copy_vc_runtime(_sidecar: &Path, _dest: &Path) {}

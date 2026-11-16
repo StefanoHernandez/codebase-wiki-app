@@ -27,6 +27,14 @@ const triple = positional[0] || process.env.TAURI_ENV_TARGET_TRIPLE || hostTripl
 const ext = triple.includes('windows') ? '.exe' : '';
 const dest = (t) => path.join(outDir, `codebase-wiki-mcp-${t}${ext}`);
 
+// ONNX Runtime inside the sidecar needs the VC++ runtime, which clean Windows installs lack
+// (exit -1073741515, DLL not found). Ship it next to the exes; tauri.windows.conf.json bundles it.
+const VCRT = ['msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll'];
+if (triple.includes('windows') && process.platform === 'win32') {
+  const sys = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32');
+  for (const f of VCRT) fs.copyFileSync(path.join(sys, f), path.join(outDir, f));
+}
+
 if ((flags.has('--if-missing') || flags.has('--stub')) && fs.existsSync(dest(triple))) {
   console.log('sidecar present:', dest(triple));
   process.exit(0);
