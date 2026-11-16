@@ -8,5 +8,5 @@ export const common = {
   'common.problems.other': '{n} problemi',
   'common.language': 'Lingua',
   'common.language.auto': 'Automatica',
-  'common.language.hint': 'Automatica segue la lingua del Mac.',
+  'common.language.hint': 'Automatica segue la lingua del sistema.',
 };

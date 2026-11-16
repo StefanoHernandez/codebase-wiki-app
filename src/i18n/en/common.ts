@@ -9,5 +9,5 @@ export const common: Record<keyof typeof it, string> = {
   'common.problems.other': '{n} problems',
   'common.language': 'Language',
   'common.language.auto': 'Automatic',
-  'common.language.hint': "Automatic follows the Mac's language.",
+  'common.language.hint': 'Automatic follows the system language.',
 };

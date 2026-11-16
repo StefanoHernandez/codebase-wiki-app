@@ -103,7 +103,7 @@ function Profilo({ theme, setTheme }: ThemeProps) {
                 // Storage unavailable: the value still applies for this session.
               }
             }}
-            placeholder="/usr/bin/python3"
+            placeholder={/Win/.test(navigator.platform) ? 'C:\\…\\Python312\\python.exe' : '/usr/bin/python3'}
           />
           <span className="field-hint">
             {t('impostazioni.profile.pythonHint')}
