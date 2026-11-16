@@ -193,3 +193,8 @@ confidence: high
 - What: versione 0.7.3 con il tema salvia e menta ("Menta nel buio" in scuro) e il badge "ok" con spunta e contorno; tag `v0.7.3`, release pubblicata come `latest`.
 - Evidence: run GitHub Actions 43885911566 → test e tre build success; 14 file nella release, `latest.json` incluso
 - IDs: none
+
+## 2026-11-16 · Icona salvia e menta, release 0.7.4 · agent
+- What: icona ricolorata come il tema (fondo salvia, anello e lettere menta, stesso disegno di Alessandro Cianfaglione), file rigenerati con `tauri icon`; badge del README e pagine wiki sui colori aggiornati. Versione 0.7.4, tag `v0.7.4`, release pubblicata come `latest`.
+- Evidence: run GitHub Actions 43890727962 → test e tre build success; 14 file nella release
+- IDs: none
