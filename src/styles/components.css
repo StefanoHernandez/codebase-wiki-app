@@ -501,6 +501,11 @@ kbd {
 .badge-ok {
   color: var(--ok);
   background: var(--ok-wash);
+  box-shadow: inset 0 0 0 1px var(--ok);
+}
+/* The theme is green too: a tick keeps "ok" from reading as plain decoration. */
+.badge-ok::before {
+  content: '✓ ';
 }
 
 /* Plugin status emoji (🟢⚫🟡⚪🔴) next to Italian text; the emoji is never recoloured. */
