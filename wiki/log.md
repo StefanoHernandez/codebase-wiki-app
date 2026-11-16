@@ -188,3 +188,8 @@ confidence: high
 - What: scartata la palette "Pietra" (commit annullati, release 0.7.3 fermata prima della pubblicazione: build annullate, tag rimosso). Stefano ha scelto salvia (`#6a8d73`) e menta (`#e4ffe1`) per il chiaro e "Menta nel buio" per lo scuro (barra `#1f2a23`, fondo `#111513`, testo e pulsanti di firma menta). `--human` diventa salvia scura `#4f7459` in chiaro e menta in scuro. Colori di stato invariati: il verde "aggiornato" si distingue poco dal tema.
 - Evidence: `src/styles/tokens.css`; app provata in `tauri dev` @afddb5e
 - IDs: none
+
+## 2026-11-16 · Release 0.7.3 · agent
+- What: versione 0.7.3 con il tema salvia e menta ("Menta nel buio" in scuro) e il badge "ok" con spunta e contorno; tag `v0.7.3`, release pubblicata come `latest`.
+- Evidence: run GitHub Actions 43885911566 → test e tre build success; 14 file nella release, `latest.json` incluso
+- IDs: none
