@@ -1,19 +1,19 @@
 /* Design tokens (docs/tasks/design.md, "Strumento" revision).
-   Cold slate instead of green-grey; ultramarine (--human) stays reserved for human authority. */
+   Sage and mint (light), "Menta nel buio" (dark); --human stays reserved for human authority. */
 :root {
   color-scheme: light;
-  --ground: #e4e8f1;
+  --ground: #e4ffe1;
   --surface: #ffffff;
-  --surface-raised: #fafbfc;
-  --surface-sunk: #e9ebf0;
-  --surface-hover: #eef0f4;
-  --ink: #161922;
-  --ink-muted: #565d6e;
-  --ink-faint: #8a90a0;
-  --rule: #dcdfe6;
-  --rule-strong: #c4c8d2;
-  --human: #23389f;
-  --human-wash: #e6e9fb;
+  --surface-raised: #fbfffa;
+  --surface-sunk: #d6f2d2;
+  --surface-hover: #eefcec;
+  --ink: #1d2a20;
+  --ink-muted: #4c6352;
+  --ink-faint: #7a8f80;
+  --rule: #c4e4c0;
+  --rule-strong: #a9cfa4;
+  --human: #4f7459;
+  --human-wash: #d2f5cd;
   --on-human: #ffffff;
   --drift: #a65300;
   --drift-wash: #fbefe1;
@@ -21,10 +21,10 @@
   --error-wash: #fbe9e7;
   --ok: #1f7a4c;
   --ok-wash: #e4f3eb;
-  --focus: #23389f;
+  --focus: #4f7459;
 
-  /* Sidebar "Notte": the icon's night blue frames the app in both themes. */
-  --side-bg: linear-gradient(180deg, #1b2c8f 0%, #0c1650 100%);
+  /* Sidebar: sage (light), near-black green (dark). */
+  --side-bg: linear-gradient(180deg, #6a8d73 0%, #55755e 100%);
   --side-ink: #ffffff;
   --side-muted: rgb(255 255 255 / 0.74);
   --side-faint: rgb(255 255 255 / 0.5);
@@ -32,13 +32,13 @@
   --side-hover: rgb(255 255 255 / 0.08);
   --side-current: rgb(255 255 255 / 0.14);
   --side-count: #ffffff;
-  --side-on-count: #142477;
+  --side-on-count: #3f5c47;
   --side-dirty: #ffcf86;
   --side-focus: #ffffff;
 
   /* Soft content: surfaces share the ground and rise or sink by a light and a dark shadow. */
   --neu-hi: #ffffff;
-  --neu-lo: #b9c1d4;
+  --neu-lo: #b3d4ae;
   --raise: 5px 5px 12px var(--neu-lo), -5px -5px 12px var(--neu-hi);
   --raise-sm: 3px 3px 7px var(--neu-lo), -3px -3px 7px var(--neu-hi);
   --press: inset 3px 3px 7px var(--neu-lo), inset -3px -3px 7px var(--neu-hi);
@@ -66,59 +66,59 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --ground: #1d2130;
-    --surface: #1a1d25;
-    --surface-raised: #20242e;
-    --surface-sunk: #0f1116;
-    --surface-hover: #232733;
-    --ink: #e8eaf0;
-    --ink-muted: #9aa1b1;
-    --ink-faint: #6c7383;
-    --rule: #2a2e3a;
-    --rule-strong: #3a3f4d;
-    --human: #8c9cff;
-    --human-wash: #222a52;
-    --on-human: #0b1030;
+    --ground: #111513;
+    --surface: #19201b;
+    --surface-raised: #1e2620;
+    --surface-sunk: #0c0f0d;
+    --surface-hover: #212a23;
+    --ink: #e4ffe1;
+    --ink-muted: #8fa894;
+    --ink-faint: #66796b;
+    --rule: #28332b;
+    --rule-strong: #36443a;
+    --human: #e4ffe1;
+    --human-wash: #24352a;
+    --on-human: #16221a;
     --drift: #eaa452;
     --drift-wash: #33261a;
     --error: #f27a6e;
     --error-wash: #3a1f1d;
     --ok: #5fc795;
     --ok-wash: #18301f;
-    --focus: #8c9cff;
-    --side-bg: linear-gradient(180deg, #16247a 0%, #0a1240 100%);
-    --side-on-count: #0c1650;
-    --neu-hi: #283046;
-    --neu-lo: #11141e;
+    --focus: #e4ffe1;
+    --side-bg: linear-gradient(180deg, #1f2a23 0%, #151d18 100%);
+    --side-on-count: #1a2a1e;
+    --neu-hi: #1f2922;
+    --neu-lo: #070908;
     --shadow-overlay: 0 16px 48px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --ground: #1d2130;
-  --surface: #1a1d25;
-  --surface-raised: #20242e;
-  --surface-sunk: #0f1116;
-  --surface-hover: #232733;
-  --ink: #e8eaf0;
-  --ink-muted: #9aa1b1;
-  --ink-faint: #6c7383;
-  --rule: #2a2e3a;
-  --rule-strong: #3a3f4d;
-  --human: #8c9cff;
-  --human-wash: #222a52;
-  --on-human: #0b1030;
+  --ground: #111513;
+  --surface: #19201b;
+  --surface-raised: #1e2620;
+  --surface-sunk: #0c0f0d;
+  --surface-hover: #212a23;
+  --ink: #e4ffe1;
+  --ink-muted: #8fa894;
+  --ink-faint: #66796b;
+  --rule: #28332b;
+  --rule-strong: #36443a;
+  --human: #e4ffe1;
+  --human-wash: #24352a;
+  --on-human: #16221a;
   --drift: #eaa452;
   --drift-wash: #33261a;
   --error: #f27a6e;
   --error-wash: #3a1f1d;
   --ok: #5fc795;
   --ok-wash: #18301f;
-  --focus: #8c9cff;
-  --side-bg: linear-gradient(180deg, #16247a 0%, #0a1240 100%);
-  --side-on-count: #0c1650;
-  --neu-hi: #283046;
-  --neu-lo: #11141e;
+  --focus: #e4ffe1;
+  --side-bg: linear-gradient(180deg, #1f2a23 0%, #151d18 100%);
+  --side-on-count: #1a2a1e;
+  --neu-hi: #1f2922;
+  --neu-lo: #070908;
   --shadow-overlay: 0 16px 48px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
 }
