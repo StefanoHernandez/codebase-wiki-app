@@ -1,17 +1,17 @@
 /* Design tokens (docs/tasks/design.md, "Strumento" revision).
-   Cold slate instead of green-grey; ultramarine (--human) stays reserved for human authority. */
+   Warm stone ("Pietra") content; ultramarine (--human) stays reserved for human authority. */
 :root {
   color-scheme: light;
-  --ground: #e4e8f1;
-  --surface: #ffffff;
-  --surface-raised: #fafbfc;
-  --surface-sunk: #e9ebf0;
-  --surface-hover: #eef0f4;
-  --ink: #161922;
-  --ink-muted: #565d6e;
-  --ink-faint: #8a90a0;
-  --rule: #dcdfe6;
-  --rule-strong: #c4c8d2;
+  --ground: #ebe7e2;
+  --surface: #faf8f5;
+  --surface-raised: #fdfcfa;
+  --surface-sunk: #e4dfd8;
+  --surface-hover: #f1ede8;
+  --ink: #1b1d2a;
+  --ink-muted: #5d5953;
+  --ink-faint: #8f8981;
+  --rule: #dcd6ce;
+  --rule-strong: #c7c0b6;
   --human: #23389f;
   --human-wash: #e6e9fb;
   --on-human: #ffffff;
@@ -38,7 +38,7 @@
 
   /* Soft content: surfaces share the ground and rise or sink by a light and a dark shadow. */
   --neu-hi: #ffffff;
-  --neu-lo: #b9c1d4;
+  --neu-lo: #c9c1b6;
   --raise: 5px 5px 12px var(--neu-lo), -5px -5px 12px var(--neu-hi);
   --raise-sm: 3px 3px 7px var(--neu-lo), -3px -3px 7px var(--neu-hi);
   --press: inset 3px 3px 7px var(--neu-lo), inset -3px -3px 7px var(--neu-hi);
@@ -66,16 +66,16 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --ground: #1d2130;
-    --surface: #1a1d25;
-    --surface-raised: #20242e;
-    --surface-sunk: #0f1116;
-    --surface-hover: #232733;
-    --ink: #e8eaf0;
-    --ink-muted: #9aa1b1;
-    --ink-faint: #6c7383;
-    --rule: #2a2e3a;
-    --rule-strong: #3a3f4d;
+    --ground: #1c1b1d;
+    --surface: #262528;
+    --surface-raised: #2b2a2e;
+    --surface-sunk: #141315;
+    --surface-hover: #2e2d31;
+    --ink: #eceae6;
+    --ink-muted: #a5a19b;
+    --ink-faint: #77736d;
+    --rule: #333136;
+    --rule-strong: #44414a;
     --human: #8c9cff;
     --human-wash: #222a52;
     --on-human: #0b1030;
@@ -88,24 +88,24 @@
     --focus: #8c9cff;
     --side-bg: linear-gradient(180deg, #16247a 0%, #0a1240 100%);
     --side-on-count: #0c1650;
-    --neu-hi: #283046;
-    --neu-lo: #11141e;
+    --neu-hi: #2e2c31;
+    --neu-lo: #0f0e10;
     --shadow-overlay: 0 16px 48px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --ground: #1d2130;
-  --surface: #1a1d25;
-  --surface-raised: #20242e;
-  --surface-sunk: #0f1116;
-  --surface-hover: #232733;
-  --ink: #e8eaf0;
-  --ink-muted: #9aa1b1;
-  --ink-faint: #6c7383;
-  --rule: #2a2e3a;
-  --rule-strong: #3a3f4d;
+  --ground: #1c1b1d;
+  --surface: #262528;
+  --surface-raised: #2b2a2e;
+  --surface-sunk: #141315;
+  --surface-hover: #2e2d31;
+  --ink: #eceae6;
+  --ink-muted: #a5a19b;
+  --ink-faint: #77736d;
+  --rule: #333136;
+  --rule-strong: #44414a;
   --human: #8c9cff;
   --human-wash: #222a52;
   --on-human: #0b1030;
@@ -118,7 +118,7 @@
   --focus: #8c9cff;
   --side-bg: linear-gradient(180deg, #16247a 0%, #0a1240 100%);
   --side-on-count: #0c1650;
-  --neu-hi: #283046;
-  --neu-lo: #11141e;
+  --neu-hi: #2e2c31;
+  --neu-lo: #0f0e10;
   --shadow-overlay: 0 16px 48px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
 }
