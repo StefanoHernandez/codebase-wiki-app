@@ -183,3 +183,8 @@ confidence: high
 - What: versione 0.7.2 con i suggerimenti alla prima apertura, i pulsanti pieni leggibili, il banner fisso in alto e il validatore del plugin 0.15.1; tag `v0.7.2`, release pubblicata come `latest`. La build macOS del tag era stata annullata da GitHub (nessun runner macOS arm64 libero) e rilanciata con `gh run rerun --failed`.
 - Evidence: run GitHub Actions 43461020112 → test e tre build success (macOS al secondo tentativo); `latest.json` con `darwin-aarch64`, `windows-x86_64`, `linux-x86_64`
 - IDs: none
+
+## 2026-11-16 · Tema salvia e menta · agent
+- What: scartata la palette "Pietra" (commit annullati, release 0.7.3 fermata prima della pubblicazione: build annullate, tag rimosso). Stefano ha scelto salvia (`#6a8d73`) e menta (`#e4ffe1`) per il chiaro e "Menta nel buio" per lo scuro (barra `#1f2a23`, fondo `#111513`, testo e pulsanti di firma menta). `--human` diventa salvia scura `#4f7459` in chiaro e menta in scuro. Colori di stato invariati: il verde "aggiornato" si distingue poco dal tema.
+- Evidence: `src/styles/tokens.css`; app provata in `tauri dev` @afddb5e
+- IDs: none
