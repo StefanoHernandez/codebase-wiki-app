@@ -183,8 +183,3 @@ confidence: high
 - What: versione 0.7.2 con i suggerimenti alla prima apertura, i pulsanti pieni leggibili, il banner fisso in alto e il validatore del plugin 0.15.1; tag `v0.7.2`, release pubblicata come `latest`. La build macOS del tag era stata annullata da GitHub (nessun runner macOS arm64 libero) e rilanciata con `gh run rerun --failed`.
 - Evidence: run GitHub Actions 43461020112 → test e tre build success (macOS al secondo tentativo); `latest.json` con `darwin-aarch64`, `windows-x86_64`, `linux-x86_64`
 - IDs: none
-
-## 2026-11-16 · Palette "Pietra" per il contenuto · agent
-- What: dopo due giri di palette Stefano ha scelto "Pietra": il contenuto passa dal grigio-azzurro (`#e4e8f1`/`#1d2130`) a un grigio caldo tipo pietra (`#ebe7e2` chiaro, `#1c1b1d` scuro), schede avorio, ombre morbide più calde. Barra "Notte", pulsanti blu e colori di stato invariati; scartata l'ambra come accento perché si confonde con "da aggiornare".
-- Evidence: `src/styles/tokens.css`; app provata in `tauri dev` @33986e1
-- IDs: none
