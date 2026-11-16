@@ -198,3 +198,8 @@ confidence: high
 - What: icona ricolorata come il tema (fondo salvia, anello e lettere menta, stesso disegno di Alessandro Cianfaglione), file rigenerati con `tauri icon`; badge del README e pagine wiki sui colori aggiornati. Versione 0.7.4, tag `v0.7.4`, release pubblicata come `latest`.
 - Evidence: run GitHub Actions 43890727962 → test e tre build success; 14 file nella release
 - IDs: none
+
+## 2026-11-16 · Runtime Visual C++ su Windows, release 0.7.5 · agent
+- What: provata l'app in una VM Windows 11 pulita (quickemu): il sidecar non partiva (exit `-1073741515`, DLL mancante) perché ONNX Runtime richiede il runtime Visual C++. La build Windows ora installa `msvcp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll` accanto agli exe e l'app le copia in `<data>/bin`; suggerimento della lingua e esempio del percorso di Python non parlano più del Mac. In VM l'indicizzazione è veloce: la lentezza segnalata da Alessandro non si riproduce. Versione 0.7.5, release pubblicata come `latest` (build macOS annullata da GitHub e rilanciata).
+- Evidence: run GitHub Actions 43909529781 → test e tre build success; 14 file nella release; prova in VM di Stefano con la build CI @74c0024
+- IDs: none
