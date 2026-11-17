@@ -5,10 +5,16 @@ use serde::{Deserialize, Serialize};
 
 /// `Command::new` for every child the app or the sidecar starts. On Windows a GUI app (and a
 /// sidecar started without a console) gets a visible console window for each console child
-/// (git, python, claude) unless `CREATE_NO_WINDOW` is set. A no-op on macOS and Linux.
+/// (git, python, claude) unless `CREATE_NO_WINDOW` is set.
+/// In an AppImage the runtime's `LD_LIBRARY_PATH` points at the bundled libraries, which break
+/// system programs (git's https helper fails on an older bundled libcrypto): children run without it.
 pub fn no_window_command(program: impl AsRef<OsStr>) -> Command {
     #[allow(unused_mut)]
     let mut cmd = Command::new(program);
+    // ponytail: drops the whole variable, not just the AppImage entries; filter it if a user ever needs their own.
+    if std::env::var_os("APPIMAGE").is_some() {
+        cmd.env_remove("LD_LIBRARY_PATH");
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

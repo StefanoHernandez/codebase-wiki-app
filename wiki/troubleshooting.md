@@ -52,3 +52,11 @@ confidence: high
 - **Verification:** VM Windows 11 pulita senza redist: `codebase-wiki-mcp.exe` exit `-1073741515`; con la build CI @74c0024 il sidecar parte e l'indicizzazione riesce, 2026-11-16 (prova di Stefano)
 - **Limits:** none known
 - **Related:** [CI e release](engineering/operations.md)
+
+## Dall'AppImage Linux il plugin dice "Ultima versione non disponibile (sei offline?)"
+- **Cause:** il runtime AppImage imposta `LD_LIBRARY_PATH` sulle librerie incluse; il `git` di sistema lanciato dall'app carica la libcrypto dell'AppImage, più vecchia, e `git-remote-https` fallisce (`version 'OPENSSL_3.2.0' not found`). Falliscono così `git ls-remote` e il clone del plugin.
+- **Fix:** `no_window_command` in `crates/wiki-core/src/git_ops.rs` toglie `LD_LIBRARY_PATH` ai processi figli quando gira in un AppImage.
+- **Workaround:** aggiornare il plugin dal terminale o usare il pacchetto `.deb`/`.rpm`.
+- **Verification:** `git ls-remote` con l'ambiente del processo AppImage → errore OpenSSL; senza `LD_LIBRARY_PATH` → ok, 2026-11-17. ⚠️ NOT VERIFIED in una build AppImage con il fix
+- **Limits:** un `LD_LIBRARY_PATH` impostato dall'utente non arriva ai processi figli.
+- **Related:** [CI e release](engineering/operations.md)
