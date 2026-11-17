@@ -19,9 +19,9 @@ confidence: high
 
 - Tracker IDs: T1, T2, T3, T4, T5, T13
 - Goal: nessun sottoprogetto aperto; restano le prove a mano (T1–T5; T13 ora provabile: una 0.6.0 installata deve proporre la 0.7.0)
-- Last completed step: release 0.7.5 (runtime Visual C++ incluso nella build Windows; suggerimento lingua e esempio Python neutri)
+- Last completed step: release 0.7.6 (AppImage Linux: i processi figli senza il `LD_LIBRARY_PATH` dell'AppImage, il plugin vede di nuovo l'ultima versione)
 - Current branch: `main`
-- Last commit: `release: 0.7.5`
+- Last commit: `release: 0.7.6`
 - Worktree: clean
 
 ## Baton per il prossimo agente
