@@ -19,9 +19,9 @@ confidence: high
 
 - Tracker IDs: T1, T2, T3, T4, T5, T13
 - Goal: nessun sottoprogetto aperto; restano le prove a mano (T1–T5; T13 ora provabile: una 0.6.0 installata deve proporre la 0.7.0)
-- Last completed step: release 0.7.6 (AppImage Linux: i processi figli senza il `LD_LIBRARY_PATH` dell'AppImage, il plugin vede di nuovo l'ultima versione)
+- Last completed step: 0.7.7 pronta sul ramo `chore/plugin-0.16`: termini privati a parola intera (`=termine`), validator e budget del plugin 0.16.0, riferimenti alla wiki di prova sul campo sostituiti; non pubblicata
 - Current branch: `main`
-- Last commit: `release: 0.7.6`
+- Last commit: `release: 0.7.7`
 - Worktree: clean
 
 ## Baton per il prossimo agente
