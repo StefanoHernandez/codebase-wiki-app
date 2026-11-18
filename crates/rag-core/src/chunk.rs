@@ -275,6 +275,8 @@ pub fn terms_hash(terms: Option<&str>) -> String {
     use sha2::{Digest, Sha256};
     let bytes = terms.unwrap_or("");
     let mut h = Sha256::new();
+    // Matcher version: `=term` became a whole word in 0.7.7, so the same file needs a rebuild.
+    h.update(b"terms-v2\0");
     h.update(bytes.as_bytes());
     format!("{:x}", h.finalize())
 }
@@ -282,6 +284,14 @@ pub fn terms_hash(terms: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terms_hash_changes_with_the_matcher() {
+        // 0.7.7 gave `=term` lines a new meaning: an index built with the same file must rebuild.
+        use sha2::{Digest, Sha256};
+        let old = format!("{:x}", Sha256::digest(b"=acme"));
+        assert_ne!(terms_hash(Some("=acme")), old);
+    }
 
   #[test]
     fn rust_two_functions_two_chunks() {

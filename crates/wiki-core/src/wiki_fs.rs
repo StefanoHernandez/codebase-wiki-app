@@ -180,8 +180,8 @@ pub fn content_has_forbidden_term(terms_content: &str, content: &str) -> bool {
         }
         // `=term` is a whole word, as `git grep -w` in the plugin's check-private-terms.sh.
         if let Some(word) = term.strip_prefix('=') {
-            let word = word.trim().to_lowercase();
-            if !word.is_empty() && has_whole_word(&lower_content, &word) {
+            let word = fold_case(word.trim());
+            if !word.is_empty() && has_whole_word(&fold_case(content), &word) {
                 return true;
             }
         } else if lower_content.contains(&term.to_lowercase()) {
@@ -191,14 +191,36 @@ pub fn content_has_forbidden_term(terms_content: &str, content: &str) -> bool {
     false
 }
 
-/// An occurrence of `word` not preceded or followed by `[A-Za-z0-9_]`.
+/// Lowercase, except a non-ASCII character whose lowercase holds an ASCII letter ('İ', the
+/// Kelvin sign): it stays as is, so lowercasing never turns a boundary into a word character.
+fn fold_case(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if !c.is_ascii() && c.to_lowercase().any(|l| l.is_ascii()) {
+            out.push(c);
+        } else {
+            out.extend(c.to_lowercase());
+        }
+    }
+    out
+}
+
+/// An occurrence of `word` not preceded or followed by `[A-Za-z0-9_]`; overlapping occurrences
+/// count, as in `git grep -w`.
 fn has_whole_word(haystack: &str, word: &str) -> bool {
     let is_word = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
     let bytes = haystack.as_bytes();
-    haystack.match_indices(word).any(|(at, _)| {
+    let mut start = 0;
+    while let Some(found) = haystack[start..].find(word) {
+        let at = start + found;
         let end = at + word.len();
-        (at == 0 || !is_word(bytes[at - 1])) && (end == bytes.len() || !is_word(bytes[end]))
-    })
+        if (at == 0 || !is_word(bytes[at - 1])) && (end == bytes.len() || !is_word(bytes[end])) {
+            return true;
+        }
+        // Retry one character later.
+        start = at + haystack[at..].chars().next().map_or(1, char::len_utf8);
+    }
+    false
 }
 
 struct PendingWrite {
@@ -363,7 +385,7 @@ pub fn read_wiki_file_safe(
 
 /// Writes `content` to `<repo>/<wiki_root>/<wiki_rel_path>`. Refuses paths that
 /// escape the wiki root, any `.private-terms` target, and content containing a
-/// term listed in `<wiki_root>/.private-terms` (case-insensitive).
+/// term listed in `<wiki_root>/.private-terms` (case-insensitive; a `=term` line is a whole word).
 pub fn write_wiki_file_safe(
     repo_path: &Path,
     wiki_root: &str,
@@ -418,6 +440,16 @@ mod tests {
     #[test]
     fn bare_equals_ignored() {
         assert!(!content_has_forbidden_term("=\n=  \n", "anything = here"));
+    }
+    #[test]
+    fn whole_word_lowercase_does_not_create_word_chars() {
+        // 'İ' lowercases to "i" + U+0307 and the Kelvin sign to "k": git grep -w still sees a boundary.
+        assert!(content_has_forbidden_term("=acme", "acme\u{130}"));
+        assert!(content_has_forbidden_term("=acme", "\u{212A}acme"));
+    }
+    #[test]
+    fn whole_word_overlapping_occurrence() {
+        assert!(content_has_forbidden_term("=a.a", "xa.a.a"));
     }
     #[test]
     fn substring_lines_unchanged() {
