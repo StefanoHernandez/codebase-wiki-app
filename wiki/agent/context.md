@@ -2,7 +2,7 @@
 type: AgentNote
 title: Contesto per gli agenti
 description: Obiettivi, regole non negoziabili, comandi e fatti verificati dell'app Codebase Wiki.
-generated: { by: claude-code/claude-opus-5-5, at: 2026-11-11T18:45:00Z }
+generated: { by: antigravity/unknown, at: 2026-11-18T16:33:02Z }
 sources:
   - README.md
   - Cargo.toml
@@ -30,7 +30,7 @@ confidence: high
 1. Mai `git add -A` o `git add .`: aggiungi i file per nome (cartelle locali non tracciate possono finire nel commit).
 2. Crate Rust con versione fissata `=x.y.z`, nessun `cargo update` generale: il toolchain è rustc 1.90 (`Cargo.toml` → `rust-version`).
 3. Testi dell'interfaccia in italiano e inglese (testi in `src/i18n/`); codice, commit e note di release in inglese.
-4. La classe `btn-human` (salvia scura in chiaro, menta in scuro) è solo per azioni con autorità umana ([design](../../docs/tasks/design.md)).
+4. La classe `btn-human` (Cobalto `#3452dd` in chiaro, `#6e8eff` / `#3f5ef3` in scuro) è solo per azioni con autorità umana ([design](../../docs/tasks/design.md)).
 5. `resources/validate-wiki.py` è una copia identica di quello del plugin: si aggiorna copiandolo, mai modificandolo.
 6. Nei test non si scrivono mai le config reali `~/.claude*`, `~/.codex`, `~/.cursor` e non si lancia un vero `claude mcp add`.
 7. Merge su `main`, tag e release solo con l'ok esplicito di Stefano.
@@ -39,9 +39,9 @@ confidence: high
 <!-- wiki:commands -->
 | Scopo | Comando | Verificato |
 | --- | --- | --- |
-| Test frontend | `npm test` | 2026-11-11 @fe7bba6 → 130 pass |
-| Test Rust | `cargo test --workspace` | 2026-11-11 @fe7bba6 → tutti verdi |
-| Build frontend | `npm run build` | 2026-11-11 @fe7bba6 |
+| Test frontend | `node --test tests/*.test.ts` (`npm test`) | 2026-11-18 @710a24c+local → 182 pass |
+| Test Rust | `cargo test --workspace` | 2026-11-18 @710a24c+local → 133 pass (12 + 65 + 56) |
+| Build frontend | `./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vite build` (`npm run build`) | 2026-11-18 @710a24c+local → ok (0 errori TS, Vite built) |
 | App in sviluppo | `npm run tauri dev` | ⚠️ NOT VERIFIED - non lanciato in questa sessione |
 | Bundle macOS locale | `npm run build:app` (senza chiave di firma: `npx tauri build` da solo fallisce) | 2026-11-13 @224232f → `Codebase Wiki.app` 89 MB |
 | Eseguibile di ricerca | `cargo build -p wiki-mcp --release --features embed` | 2026-11-11 @fe7bba6 |

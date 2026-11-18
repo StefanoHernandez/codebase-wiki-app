@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/StefanoHernandez/codebase-wiki-app/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/StefanoHernandez/codebase-wiki-app"></a>
-  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-6a8d73"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3452dd"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/platforms-macOS%20(Apple%20Silicon)%20%7C%20Windows%20%7C%20Linux-lightgrey">
 </p>
 
