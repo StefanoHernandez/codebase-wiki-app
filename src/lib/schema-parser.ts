@@ -3,8 +3,8 @@ import { extractTableFromLines } from './markdown-tables.ts';
 import { fenceMask } from './md-edit.ts';
 
 export const DEFAULT_SCHEMA_BUDGETS: SchemaBudgets = {
-  singlePageBytes: 20 * 1024,
-  coreReadBytes: 60 * 1024,
+  singlePageBytes: 30 * 1024,
+  coreReadBytes: 100 * 1024,
   logBytes: 30 * 1024,
 };
 
@@ -241,9 +241,9 @@ export function parseSchemaMarkdown(markdown: string): SchemaConfig {
       const name = row[0].toLowerCase().trim();
       const val = row[1];
       if (name.includes('single page')) {
-        budgets.singlePageBytes = parseBudgetBytes(val, 20 * 1024);
+        budgets.singlePageBytes = parseBudgetBytes(val, 30 * 1024);
       } else if (name.includes('core read')) {
-        budgets.coreReadBytes = parseBudgetBytes(val, 60 * 1024);
+        budgets.coreReadBytes = parseBudgetBytes(val, 100 * 1024);
       } else if (name.startsWith('log') || name === 'log') {
         budgets.logBytes = parseBudgetBytes(val, 30 * 1024);
       }

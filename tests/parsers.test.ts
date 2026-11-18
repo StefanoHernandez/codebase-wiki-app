@@ -148,8 +148,9 @@ test('parseSchemaMarkdown applies default fallback values when sections are miss
   assert.equal(config.sensitiveData, false);
   assert.equal(config.agentEntryFile, 'none');
   assert.deepEqual(config.coreMap, DEFAULT_CORE_MAP);
-  assert.equal(config.budgets.singlePageBytes, 20 * 1024);
-  assert.equal(config.budgets.coreReadBytes, 60 * 1024);
+  // Plugin 0.16.0 defaults.
+  assert.equal(config.budgets.singlePageBytes, 30 * 1024);
+  assert.equal(config.budgets.coreReadBytes, 100 * 1024);
   assert.equal(config.budgets.logBytes, 30 * 1024);
   assert.deepEqual(config.topics, []);
   assert.deepEqual(config.excludedGlobs, []);
