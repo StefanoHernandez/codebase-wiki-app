@@ -178,11 +178,27 @@ pub fn content_has_forbidden_term(terms_content: &str, content: &str) -> bool {
         if term.is_empty() || term.starts_with('#') {
             continue;
         }
-        if lower_content.contains(&term.to_lowercase()) {
+        // `=term` is a whole word, as `git grep -w` in the plugin's check-private-terms.sh.
+        if let Some(word) = term.strip_prefix('=') {
+            let word = word.trim().to_lowercase();
+            if !word.is_empty() && has_whole_word(&lower_content, &word) {
+                return true;
+            }
+        } else if lower_content.contains(&term.to_lowercase()) {
             return true;
         }
     }
     false
+}
+
+/// An occurrence of `word` not preceded or followed by `[A-Za-z0-9_]`.
+fn has_whole_word(haystack: &str, word: &str) -> bool {
+    let is_word = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+    let bytes = haystack.as_bytes();
+    haystack.match_indices(word).any(|(at, _)| {
+        let end = at + word.len();
+        (at == 0 || !is_word(bytes[at - 1])) && (end == bytes.len() || !is_word(bytes[end]))
+    })
 }
 
 struct PendingWrite {
@@ -371,6 +387,42 @@ pub fn write_wiki_file_safe(
 mod tests {
     use super::*;
     use std::io::Write;
+
+    // `=term` lines match a whole word ([A-Za-z0-9_] are word characters), as the plugin's
+    // check-private-terms.sh does with `git grep -w`; other lines stay substrings.
+    #[test]
+    fn whole_word_matches_word() {
+        assert!(content_has_forbidden_term("=Acme", "we work with acme corp"));
+    }
+    #[test]
+    fn whole_word_skips_longer_words() {
+        assert!(!content_has_forbidden_term("=Acme", "Acmecorp and pacme"));
+    }
+    #[test]
+    fn whole_word_hyphen_boundary() {
+        assert!(content_has_forbidden_term("=Acme", "acme-client"));
+    }
+    #[test]
+    fn whole_word_underscore_is_word() {
+        assert!(!content_has_forbidden_term("=Acme", "acme_client"));
+    }
+    #[test]
+    fn whole_word_later_occurrence() {
+        assert!(content_has_forbidden_term("=Acme", "acmecorp then acme"));
+    }
+    #[test]
+    fn whole_word_trims() {
+        assert!(content_has_forbidden_term("=Acme  \r\n", "the ACME team"));
+        assert!(content_has_forbidden_term("= Acme", "the acme team"));
+    }
+    #[test]
+    fn bare_equals_ignored() {
+        assert!(!content_has_forbidden_term("=\n=  \n", "anything = here"));
+    }
+    #[test]
+    fn substring_lines_unchanged() {
+        assert!(content_has_forbidden_term("Acme", "acmecorp"));
+    }
 
     #[test]
     fn colon_in_a_name_is_only_refused_on_windows() {
