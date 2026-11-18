@@ -243,3 +243,8 @@ confidence: high
 - What: Grafo con tre viste (Mappa a riquadri per cartella colorata dalla copertura della wiki, predefinita; Grafo dei collegamenti con nodi piatti, colori tenui e forme per categoria; Elenco per modulo); prompt per l'agente (documentare file scoperti, riverificare una pagina, verificare una decisione accettata il cui codice è cambiato); Per te con le novità dall'ultima visita; Salute con risposta in testa, cinque carte e livelli di fiducia spiegati, lettura iniziale contata come il plugin (ultime 10 voci del log); Ricerca con mappa dei risultati statica, lista predefinita e pagine della wiki sopra il codice; tolti inclinazione delle card e pila 3D. Branch `feat/human-app`.
 - Evidence: `node --test tests/*.test.ts` → 190 passed; `npm run build` → ok; viste provate da Stefano in `tauri dev`, 2026-11-18
 - IDs: none
+
+## 2026-11-18 · Release 0.8.0 · agent
+- What: `feat/human-app` portato su `main` (fast-forward) e rilasciato come 0.8.0: tema Carbon & Cobalt e "app per l'umano" (Grafo con Mappa / Grafo / Elenco, copertura, prompt per l'agente, Per te con novità, Salute a carte, Ricerca con pagine della wiki, Decisioni con codice cambiato). Release pubblicata come `latest`.
+- Evidence: run GitHub Actions 44376939392 → test e tre build success; release con i file delle tre piattaforme
+- IDs: none
