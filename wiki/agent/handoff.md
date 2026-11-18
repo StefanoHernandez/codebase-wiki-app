@@ -19,9 +19,9 @@ confidence: high
 
 - Tracker IDs: T1, T2, T3, T4, T5, T13
 - Goal: nessun sottoprogetto aperto; restano le prove a mano (T1–T5; T13 ora provabile: una 0.6.0 installata deve proporre la 0.7.0)
-- Last completed step: redesign Carbon & Cobalt e "app per l'umano" (Grafo con Mappa / Grafo / Elenco, copertura, prompt per l'agente, Per te con novità, Salute a carte, Ricerca con pagine della wiki, Decisioni con codice cambiato), provati da Stefano in `tauri dev`; committati sul branch `feat/human-app`, non ancora su `main` né rilasciati
-- Current branch: `feat/human-app`
-- Last commit: `feat: app for the human: code map, coverage, health cards, wiki search`
+- Last completed step: release 0.8.0 (tema Carbon & Cobalt e "app per l'umano": Grafo con Mappa / Grafo / Elenco, copertura, prompt per l'agente, Per te con novità, Salute a carte, Ricerca con pagine della wiki, Decisioni con codice cambiato)
+- Current branch: `main`
+- Last commit: `release: 0.8.0`
 - Worktree: clean dopo i commit
 
 ## Baton per il prossimo agente
