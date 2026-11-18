@@ -213,3 +213,8 @@ confidence: high
 - What: su richiesta di Stefano, i riferimenti al progetto usato come wiki di prova sul campo e un percorso locale del Mac sono sostituiti con diciture generiche nei file attuali (wiki, spec, piani, task); nessun cambio di contenuto, la storia git non è riscritta. Le voci di log e le decisioni toccate cambiano solo in quelle parole. `Sensitive data` passa a `yes`: `wiki/.private-terms` è locale e ignorato da git, e l'hook pre-commit blocca i termini (`=termine` vale a parola intera, come nel plugin 0.16.0).
 - Evidence: `sh .git/hooks/pre-commit --all` → exit 0 @ff59bf9+local
 - IDs: none
+
+## 2026-11-18 · Allineamento al plugin 0.16.0, release 0.7.7 · agent
+- What: termini privati a parola intera (`=termine`) in scrittura della wiki, indice di ricerca e server MCP, con piegatura delle maiuscole che non apre falle (İ, segno Kelvin) e occorrenze sovrapposte; l'indice si ricostruisce una volta per il nuovo criterio. Validator del plugin 0.16.0 e budget di default 30/100/30 KB. Versione 0.7.7, release pubblicata come `latest`.
+- Evidence: run GitHub Actions 44315200732 → test e tre build success; `latest.json` con darwin-aarch64, windows-x86_64, linux-x86_64 @6384ff4
+- IDs: none
