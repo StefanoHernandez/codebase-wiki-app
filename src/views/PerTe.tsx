@@ -6,6 +6,7 @@ import { NextStepsCard } from '../components/NextSteps';
 import { PromoteDialog } from '../components/TrackerDialogs';
 import { useToast } from '../components/Toast';
 import { useProject } from '../state/project';
+import { relativeTime } from '../lib/overview';
 import { useNav } from '../state/nav';
 import { t, tn, type Key } from '../i18n';
 import type { AttentionItem, AttentionKind } from '../lib/attention';
@@ -47,6 +48,7 @@ export default function PerTe() {
       <section className="view">
         <h1 className="view-title">{t('esplora.perte.title')}</h1>
         <UpgradeBanner />
+        <SinceLastVisit />
         <NextStepsCard />
         <Empty title={t('esplora.perte.empty')} />
       </section>
@@ -180,7 +182,8 @@ export default function PerTe() {
     <section className="view">
       <h1 className="view-title">{t('esplora.perte.title')}</h1>
       <UpgradeBanner />
-      <NextStepsCard />
+      <SinceLastVisit />
+        <NextStepsCard />
       {GROUPS.map((group) => {
         const rows = attention.flatMap((a, i) => {
           if (a.kind !== group.kind) return [];
@@ -228,3 +231,28 @@ export default function PerTe() {
   );
 }
 
+
+const NEWS_SHOWN = 6;
+
+/** Wiki changes between the previous visit and this opening of the project. */
+function SinceLastVisit() {
+  const { visitNews } = useProject();
+  if (!visitNews || visitNews.items.length === 0) return null;
+  const { items, since } = visitNews;
+  return (
+    <section className="panel perte-news" aria-label={t('esplora.perte.news.title')}>
+      <h2 className="perte-news-title">
+        {t('esplora.perte.news.title')}
+        {since && <span className="muted"> · {relativeTime(since, Date.now())}</span>}
+      </h2>
+      <ul className="perte-news-list">
+        {items.slice(0, NEWS_SHOWN).map((item, i) => (
+          <li key={i}>{renderInlineCode(item)}</li>
+        ))}
+      </ul>
+      {items.length > NEWS_SHOWN && (
+        <p className="muted perte-news-more">{t('esplora.perte.news.more', { n: items.length - NEWS_SHOWN })}</p>
+      )}
+    </section>
+  );
+}

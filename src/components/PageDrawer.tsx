@@ -2,7 +2,7 @@ import { t } from '../i18n';
 import { fixedValue } from '../lib/labels';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Markdown } from './Markdown';
-import { readSourceFile, sourceDiff } from '../api';
+import { copyText, readSourceFile, sourceDiff } from '../api';
 import type { WikiPage } from '../state/project';
 import type { TrustTier } from '../lib/trust';
 import { diffLineKind } from '../views/grafo-helpers';
@@ -132,6 +132,9 @@ function WikiPanel({
             ))}
           </dl>
         )}
+        {(page.trust === 'stale-verified' || /TO[\s_-]+RE-?VERIFY|NOT[\s_-]+VERIFIED/i.test(page.markdown)) && (
+          <ReverifyButton page={page} sources={sources} />
+        )}
         {sources.length > 0 && (
           <div className="page-drawer-sources">
             <span className="page-drawer-sources-label">{t('esplora.drawer.sources')}</span>
@@ -152,6 +155,27 @@ function WikiPanel({
         <Markdown markdown={page.markdown} pagePath={page.relPath} onOpenPage={onOpenWiki} />
       </div>
     </div>
+  );
+}
+
+/** Copies a prompt that asks an agent to re-check this page against its sources. */
+function ReverifyButton({ page, sources }: { page: WikiPage; sources: string[] }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    await copyText(
+      t('esplora.drawer.reverifyPrompt', {
+        page: page.relPath,
+        sources: sources.join(', ') || '-',
+        commit: page.frontmatter.fields.source_commit || '-',
+      }),
+    );
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+  return (
+    <button type="button" className="btn btn-sm" onClick={copy}>
+      {copied ? t('esplora.copertura.copied') : t('esplora.drawer.reverify')}
+    </button>
   );
 }
 

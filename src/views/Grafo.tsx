@@ -1,642 +1,1052 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MutableRefObject,
-} from 'react';
-import ForceGraph2D, { type ForceGraphMethods, type NodeObject } from 'react-force-graph-2d';
-import { graphHistory } from '../api';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as api from '../api';
 import { Empty } from '../components/Empty';
 import { PageDrawer, type PageDrawerTarget } from '../components/PageDrawer';
+import { t } from '../i18n/index.ts';
 import { buildWikiCodeGraph, filterWikiGraph } from '../lib/graph-builder';
-import { buildTimeline, visibleAt, type GraphHistory } from '../lib/graph-history';
-import { locale, t } from '../i18n';
+import { buildTimeline, type GraphHistory, type Timeline } from '../lib/graph-history';
 import { useProject } from '../state/project';
 import { useTheme } from '../state/theme';
 import type { GraphEdge, GraphNode, GraphNodeCategory } from '../types/wiki';
 import {
   CATEGORIES,
   categoryLabel,
-  LABEL_ZOOM_THRESHOLD,
   neighborIds,
   nodeRadius,
   readCategoryColors,
   withAlpha,
 } from './grafo-helpers';
+import {
+  computeGraphLayout,
+  CATEGORY_SHAPE,
+  drawFlatNode,
+  drawLabelsNoOverlap,
+  readThemePalette,
+  type LabelCandidate,
+  type ThemePalette,
+} from './grafo-3d';
+import { computeCoverage } from '../lib/coverage';
+import { Copertura } from './Copertura';
+import { LensSwitch, Mappa, type GraphLens } from './Mappa';
 import './grafo.css';
 
-type FgNode = GraphNode & { x?: number; y?: number };
-type FgLink = GraphEdge & { source: string | FgNode; target: string | FgNode };
+interface NodeScreenPos {
+  node: GraphNode;
+  sx: number;
+  sy: number;
+  r: number;
+}
 
-/** Categories with their own hue; links pointing at them take that hue. */
-const HUED = new Set<GraphNodeCategory>(['decision', 'tracker', 'agent']);
-const endId = (end: string | FgNode) => (typeof end === 'object' ? end.id : end);
+function scaledNodeRadius(node: GraphNode): number {
+  const base = nodeRadius(node.degree);
+  return node.category === 'core' ? Math.max(7.5, base * 1.48) : base;
+}
 
-
-const LEGEND_KEY = 'grafo.legendOpen';
-/** The whole history plays in about this long, whatever the number of commits. */
-const PLAY_MS = 15_000;
 export default function Grafo() {
   const project = useProject();
   const { theme } = useTheme();
   const snapshot = project.snapshot;
 
-  const viewRef = useRef<HTMLElement>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
-  const fgRef = useRef<ForceGraphMethods<FgNode> | undefined>(undefined);
-
-  const [size, setSize] = useState({ w: 640, h: 480 });
-  const [colors, setColors] = useState<Record<GraphNodeCategory, string>>(() =>
-    Object.fromEntries(CATEGORIES.map((c) => [c, '#888'])) as Record<GraphNodeCategory, string>
+  const [includeCodeSources, setIncludeCodeSources] = useState(true);
+  const [onlyDriftOrErrors, setOnlyDriftOrErrors] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
+  const [enabledCats, setEnabledCats] = useState<Set<GraphNodeCategory>>(
+    () => new Set(CATEGORIES),
   );
-  const [tokenInk, setTokenInk] = useState('#1b2220');
-  const [tokenDrift, setTokenDrift] = useState('#b4540a');
-  const [tokenError, setTokenError] = useState('#b42318');
-  const [tokenMuted, setTokenMuted] = useState('#5f6a66');
-  const [labelFont, setLabelFont] = useState('sans-serif');
-
-  const [includeSources, setIncludeSources] = useState(true);
-  const [onlyDrift, setOnlyDrift] = useState(false);
-  const [localHop, setLocalHop] = useState(false);
-  const [searchDraft, setSearchDraft] = useState('');
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [hoverId, setHoverId] = useState<string | null>(null);
-  const [zoomK, setZoomK] = useState(1);
+  const [explorerOpen, setExplorerOpen] = useState(true);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<GraphNodeCategory>>(
+    () => new Set(),
+  );
   const [drawer, setDrawer] = useState<PageDrawerTarget | null>(null);
-  const [hiddenCats, setHiddenCats] = useState<Set<GraphNodeCategory>>(() => new Set());
-  // Storia: the graph replayed commit by commit. `frame` null = today's graph.
-  const [history, setHistory] = useState<GraphHistory | null>(null);
+  // The code map is the default; the link graph and the coverage list are one click away.
+  const [lens, setLens] = useState<GraphLens>('map');
+
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [frame, setFrame] = useState<number | null>(null);
+  const [historyData, setHistoryData] = useState<GraphHistory | null>(null);
+  const [storyStep, setStoryStep] = useState(0);
   const [playing, setPlaying] = useState(false);
 
-  const pagesByPath = useMemo(
-    () => new Map(project.pages.map((p) => [p.relPath, p])),
-    [project.pages]
-  );
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const fullGraph = useMemo(() => {
-    if (!snapshot?.wikiRoot) return null;
+    if (!snapshot) {
+      return { nodes: [], edges: [], backlinks: {}, uncoveredRepoFiles: [] };
+    }
     return buildWikiCodeGraph({
-      wikiRoot: snapshot.wikiRoot,
-      pages: snapshot.pages,
+      wikiRoot: snapshot.wikiRoot ?? 'wiki',
+      pages: project.pages.map((p) => ({
+        wikiRelPath: p.relPath,
+        content: p.markdown,
+        sizeBytes: p.sizeBytes,
+      })),
       repoFiles: snapshot.repoFiles,
       changedFilesByPage: snapshot.changedFilesByPage,
       dirtyRepoFiles: snapshot.gitState.dirtyFiles,
       lintFindings: project.lint?.findings ?? [],
     });
-  }, [snapshot, project.lint]);
+  }, [snapshot, project.pages, project.lint]);
 
-  const filtered = useMemo(() => {
-    if (!fullGraph) return { nodes: [] as GraphNode[], edges: [] as GraphEdge[] };
-    const focusId = localHop && selectedId ? selectedId : undefined;
-    return filterWikiGraph(fullGraph, {
-      includeCodeSources: includeSources,
-      onlyDriftOrErrors: onlyDrift,
-      searchQuery: '',
-      focusNodeId: focusId,
-      localGraphHops: focusId ? 1 : undefined,
-    });
-  }, [fullGraph, includeSources, onlyDrift, localHop, selectedId]);
-
-  const timeline = useMemo(
-    () => (history && fullGraph && snapshot?.wikiRoot ? buildTimeline(history, fullGraph.nodes, snapshot.wikiRoot) : null),
-    [history, fullGraph, snapshot?.wikiRoot]
+  const coverage = useMemo(
+    () => (lens !== 'links' && snapshot ? computeCoverage(snapshot.repoFiles, fullGraph, snapshot.wikiRoot ?? 'wiki') : []),
+    [lens, snapshot, fullGraph],
   );
-  const current = timeline && frame !== null ? timeline.frames[frame] : null;
+  const coverageFiles = useMemo(() => coverage.flatMap((m) => m.files), [coverage]);
+  const decisionPaths = useMemo(() => {
+    const root = (snapshot?.wikiRoot ?? 'wiki').replace(/\/+$/, '') + '/';
+    return new Set(project.decisions.map((d) => (d.relPath.startsWith(root) ? d.relPath.slice(root.length) : d.relPath)));
+  }, [project.decisions, snapshot?.wikiRoot]);
 
-  // Node objects are kept across renders so positions survive filter changes and each
-  // timeline frame: the graph grows in place instead of re-laying out from scratch.
-  const nodeCache = useRef(new Map<string, FgNode>());
-  const graphData = useMemo(() => {
-    const shown = timeline && frame !== null ? visibleAt(filtered, timeline.birth, frame) : filtered;
-    const nodes = shown.nodes.filter((n) => !hiddenCats.has(n.category));
-    const ids = new Set(nodes.map((n) => n.id));
-    const links = shown.edges.filter((e) => ids.has(e.source) && ids.has(e.target));
-    const cache = nodeCache.current;
-    const out = nodes.map((n) => {
-      const prev = cache.get(n.id);
-      if (prev) return Object.assign(prev, n);
-      // A new node starts next to a neighbour already on screen.
-      const link = links.find((l) => (l.source === n.id && cache.has(l.target)) || (l.target === n.id && cache.has(l.source)));
-      const near = link ? cache.get(link.source === n.id ? link.target : link.source) : undefined;
-      const node: FgNode = { ...n };
-      if (near?.x != null && near.y != null) {
-        node.x = near.x + (Math.random() - 0.5) * 20;
-        node.y = near.y + (Math.random() - 0.5) * 20;
-      }
-      cache.set(n.id, node);
-      return node;
+  const pagesByPath = useMemo(
+    () => new Map(project.pages.map((p) => [p.relPath, p])),
+    [project.pages],
+  );
+
+  const filteredGraph = useMemo(() => {
+    const base = filterWikiGraph(fullGraph, {
+      includeCodeSources,
+      onlyDriftOrErrors,
+      searchQuery,
+      focusNodeId: focusNodeId ?? undefined,
+      localGraphHops: focusNodeId ? 2 : undefined,
     });
-    return { nodes: out, links: links.map((e) => ({ ...e })) };
-  }, [filtered, hiddenCats, timeline, frame]);
+    const nodes = base.nodes.filter((n) => enabledCats.has(n.category));
+    const keep = new Set(nodes.map((n) => n.id));
+    const edges = base.edges.filter((e) => keep.has(e.source) && keep.has(e.target));
+    return { nodes, edges };
+  }, [fullGraph, includeCodeSources, onlyDriftOrErrors, searchQuery, focusNodeId, enabledCats]);
 
-  const startHistory = useCallback(async () => {
+  const layout = useMemo(
+    () => computeGraphLayout(fullGraph.nodes, fullGraph.edges),
+    [fullGraph],
+  );
+
+  const nodeById = useMemo(
+    () => new Map(fullGraph.nodes.map((n) => [n.id, n])),
+    [fullGraph.nodes],
+  );
+
+  const timeline: Timeline | null = useMemo(() => {
+    if (!historyData || !snapshot) return null;
+    return buildTimeline(historyData, fullGraph.nodes, snapshot.wikiRoot ?? 'wiki');
+  }, [historyData, fullGraph.nodes, snapshot]);
+
+  const repoKey = snapshot ? `${snapshot.repoPath}@${snapshot.gitState.headSha}` : '';
+  useEffect(() => {
+    setHistoryData(null);
+    setHistoryError(null);
+    setHistoryOpen(false);
+    setPlaying(false);
+    setStoryStep(0);
+    setFocusNodeId(null);
+    setSelectedId(null);
+    setHoveredId(null);
+  }, [repoKey]);
+
+  const loadHistory = useCallback(async () => {
     if (!snapshot) return;
+    setHistoryLoading(true);
     setHistoryError(null);
     try {
-      const h = history ?? (await graphHistory(snapshot.repoPath));
-      setHistory(h);
-      setFrame(0);
+      const h = await api.graphHistory(snapshot.repoPath);
+      setHistoryData(h);
+      setStoryStep(0);
       setPlaying(true);
     } catch (e) {
-      setHistoryError(String(e));
+      setHistoryError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setHistoryLoading(false);
     }
-  }, [snapshot, history]);
-  const exitHistory = useCallback(() => {
-    setPlaying(false);
-    setFrame(null);
-  }, []);
+  }, [snapshot]);
 
-  useEffect(() => {
-    if (timeline && frame !== null && timeline.frames.length === 0) {
-      setHistoryError(t('esplora.grafo.noHistory'));
-      exitHistory();
-    }
-  }, [timeline, frame, exitHistory]);
-
-  useEffect(() => {
-    if (!playing || !timeline || frame === null) return;
-    if (frame >= timeline.frames.length - 1) {
+  const toggleHistory = useCallback(() => {
+    if (historyOpen) {
+      setHistoryOpen(false);
       setPlaying(false);
       return;
     }
-    const step = Math.min(800, Math.max(80, PLAY_MS / timeline.frames.length));
-    const timer = setTimeout(() => setFrame((f) => (f === null ? f : f + 1)), step);
-    return () => clearTimeout(timer);
-  }, [playing, timeline, frame]);
-
-  const categoryOf = useMemo(() => new Map(filtered.nodes.map((n) => [n.id, n.category])), [filtered.nodes]);
-
-  /** Per-category counts for the legend (before the legend's own toggles). */
-  const counts = useMemo(() => {
-    const out = new Map<GraphNodeCategory, number>();
-    for (const n of filtered.nodes) out.set(n.category, (out.get(n.category) ?? 0) + 1);
-    return out;
-  }, [filtered.nodes]);
-
-  const toggleCat = (c: GraphNodeCategory) =>
-    setHiddenCats((prev) => {
-      const next = new Set(prev);
-      if (next.has(c)) next.delete(c);
-      else next.add(c);
-      return next;
-    });
-
-  const highlight = useMemo(() => {
-    const active = hoverId ?? selectedId;
-    if (!active) return null;
-    return neighborIds(active, filtered.edges);
-  }, [hoverId, selectedId, filtered.edges]);
+    setHistoryOpen(true);
+    if (!historyData && !historyLoading) {
+      void loadHistory();
+    } else if (timeline && timeline.frames.length > 0) {
+      if (storyStep >= timeline.frames.length - 1) setStoryStep(0);
+      setPlaying(true);
+    }
+  }, [historyOpen, historyData, historyLoading, loadHistory, timeline, storyStep]);
 
   useEffect(() => {
-    if (selectedId && !filtered.nodes.some((n) => n.id === selectedId)) {
+    if (!historyOpen || !playing || !timeline || timeline.frames.length === 0) return;
+    if (storyStep >= timeline.frames.length - 1) {
+      setPlaying(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setStoryStep((s) => Math.min(timeline.frames.length - 1, s + 1));
+    }, 1150);
+    return () => window.clearTimeout(timer);
+  }, [historyOpen, playing, timeline, storyStep]);
+
+  // Pan & zoom refs (mutated inside RAF without React re-renders)
+  const panXRef = useRef(0);
+  const panYRef = useRef(0);
+  const panTargetRef = useRef<{ x: number; y: number } | null>(null);
+  const zoomRef = useRef(1.0);
+  const draggingRef = useRef(false);
+  const pointerDownRef = useRef<{ x: number; y: number; moved: number } | null>(null);
+  const screenNodesRef = useRef<NodeScreenPos[]>([]);
+  const hoverIdRef = useRef<string | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
+  const explorerOpenRef = useRef(explorerOpen);
+  const drawerOpenRef = useRef(Boolean(drawer));
+  const storyAnimRef = useRef(0);
+  const paletteRef = useRef<ThemePalette | null>(null);
+  const catColorsRef = useRef<Record<GraphNodeCategory, string> | null>(null);
+
+  useEffect(() => {
+    hoverIdRef.current = hoveredId;
+  }, [hoveredId]);
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
+  useEffect(() => {
+    explorerOpenRef.current = explorerOpen;
+  }, [explorerOpen]);
+
+  useEffect(() => {
+    drawerOpenRef.current = Boolean(drawer);
+  }, [drawer]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    if (!filteredGraph.nodes.some((n) => n.id === selectedId)) {
       setSelectedId(null);
-      setLocalHop(false);
+      return;
     }
-  }, [filtered.nodes, selectedId]);
-
-  const refreshTokens = useCallback(() => {
-    const el = viewRef.current;
-    if (!el) return;
-    setColors(readCategoryColors(el));
-    const cs = getComputedStyle(el);
-    setTokenInk(cs.getPropertyValue('--ink').trim() || '#1b2220');
-    setTokenDrift(cs.getPropertyValue('--drift').trim() || '#b4540a');
-    setTokenError(cs.getPropertyValue('--error').trim() || '#b42318');
-    setTokenMuted(cs.getPropertyValue('--ink-muted').trim() || '#5f6a66');
-    const bodyFont = cs.getPropertyValue('font-family').trim();
-    const mono = cs.getPropertyValue('--font-code').trim();
-    setLabelFont(mono || bodyFont || 'sans-serif');
-  }, []);
-
-  useLayoutEffect(() => {
-    refreshTokens();
-  }, [refreshTokens, theme]);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    const obs = new MutationObserver(() => refreshTokens());
-    obs.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const onScheme = () => refreshTokens();
-    mq.addEventListener('change', onScheme);
-    return () => {
-      obs.disconnect();
-      mq.removeEventListener('change', onScheme);
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !drawer) setSelectedId(null);
     };
-  }, [refreshTokens]);
+    window.addEventListener('keydown', onEsc);
+    return () => window.removeEventListener('keydown', onEsc);
+  }, [selectedId, drawer, filteredGraph.nodes]);
 
-  useEffect(() => {
-    const el = stageRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const cr = entries[0]?.contentRect;
-      if (cr) setSize({ w: Math.max(200, cr.width), h: Math.max(200, cr.height) });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
+  const panToNode = useCallback(
+    (nodeId: string) => {
+      const p = layout.get(nodeId);
+      const wrap = wrapRef.current;
+      if (!p || !wrap) return;
+      const rect = wrap.getBoundingClientRect();
+      const leftInset = explorerOpenRef.current && rect.width >= 721 ? 244 : 0;
+      const rightInset = drawerOpenRef.current && rect.width >= 721 ? Math.min(420, rect.width * 0.92) : 0;
+      const minDim = Math.max(240, Math.min(rect.width - leftInset - rightInset * 0.35, rect.height));
+      const baseScale = (minDim / 560) * zoomRef.current;
+      panTargetRef.current = { x: -p.x2 * baseScale, y: -p.y2 * baseScale };
+    },
+    [layout],
+  );
+
+  const resetView = useCallback(() => {
+    panTargetRef.current = { x: 0, y: 0 };
+    zoomRef.current = 1.0;
   }, []);
 
-  // Spread the layout: stronger repulsion and longer links than the defaults, then fit once it settles.
-  const fitted = useRef(false);
-  // After the first fit, a resized stage (window, sidebar, drawer) refits once it stops changing.
-  useEffect(() => {
-    if (!fitted.current) return;
-    const timer = setTimeout(() => fgRef.current?.zoomToFit(300, 40), 200);
-    return () => clearTimeout(timer);
-  }, [size.w, size.h]);
-  const [legendOpen, setLegendOpen] = useState(() => {
-    try {
-      return localStorage.getItem(LEGEND_KEY) === '1';
-    } catch {
-      return false;
-    }
-  });
-  useEffect(() => {
-    const fg = fgRef.current;
-    if (!fg) return;
-    fg.d3Force('charge')?.strength?.(-70);
-    const link = fg.d3Force('link') as unknown as { distance?: (d: number) => void } | undefined;
-    link?.distance?.(38);
-    fitted.current = false;
-    fg.d3ReheatSimulation();
-  }, [graphData]);
-
-  const centerOn = useCallback((node: FgNode) => {
-    if (node.x == null || node.y == null) return;
-    const fg = fgRef.current;
-    if (!fg) return;
-    fg.centerAt(node.x, node.y, 400);
-    fg.zoom(Math.max(zoomK, LABEL_ZOOM_THRESHOLD), 400);
-  }, [zoomK]);
-
-  const runSearch = useCallback(() => {
-    const q = searchDraft.trim();
-    if (!q || !fullGraph) return;
-    const match = fullGraph.nodes.find(
-      (n) => n.label.toLowerCase().includes(q.toLowerCase()) || n.path.toLowerCase().includes(q.toLowerCase())
-    );
-    if (match) {
-      setSelectedId(match.id);
-      const visible = filtered.nodes.find((n) => n.id === match.id) ?? match;
-      setTimeout(() => centerOn(visible as FgNode), 50);
-    }
-  }, [searchDraft, fullGraph, filtered.nodes, centerOn]);
-
-  /** Like Obsidian: focus lasts while the page is open; closing it returns to the whole graph. */
-  const clearFocus = useCallback(() => {
-    setDrawer(null);
-    setSelectedId(null);
-    setLocalHop(false);
+  const refreshColors = useCallback(() => {
+    const el = wrapRef.current ?? document.documentElement;
+    paletteRef.current = readThemePalette(el);
+    catColorsRef.current = readCategoryColors(el);
   }, []);
 
   useEffect(() => {
+    refreshColors();
+  }, [theme, refreshColors]);
+
+  useEffect(() => {
+    if (!historyOpen || !timeline || timeline.frames.length === 0) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || drawer) return;
-      if (frame !== null) exitHistory();
-      else clearFocus();
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+        setPlaying(false);
+        setStoryStep((s) => Math.min(timeline.frames.length - 1, s + 1));
+      } else if (e.key === 's' || e.key === 'S' || e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+        setPlaying(false);
+        setStoryStep((s) => Math.max(0, s - 1));
+      } else if (e.key === ' ') {
+        e.preventDefault();
+        setPlaying((p) => !p);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [drawer, clearFocus, frame, exitHistory]);
+  }, [historyOpen, timeline]);
 
-  const openDrawerForNode = useCallback((node: GraphNode) => {
-    if (node.kind === 'wiki') {
-      setDrawer({ mode: 'wiki', wikiRelPath: node.path });
-    } else {
-      setDrawer({ mode: 'source', relPath: node.path });
+  // Main 2D canvas renderer; idle while the map or the list covers it.
+  useEffect(() => {
+    if (lens !== 'links') return;
+    const canvas = canvasRef.current;
+    const wrap = wrapRef.current;
+    if (!canvas || !wrap) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    refreshColors();
+    const reducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+    let rafId = 0;
+    let lastTs = performance.now();
+
+    const resize = () => {
+      const rect = wrap.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.max(1, Math.round(rect.width * dpr));
+      canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(wrap);
+
+    const drawFrame = (now: number) => {
+      const dt = Math.min(0.05, (now - lastTs) / 1000);
+      lastTs = now;
+
+      if (!draggingRef.current && panTargetRef.current) {
+        const dx = panTargetRef.current.x - panXRef.current;
+        const dy = panTargetRef.current.y - panYRef.current;
+        if (reducedMotion || (Math.abs(dx) < 0.8 && Math.abs(dy) < 0.8)) {
+          panXRef.current = panTargetRef.current.x;
+          panYRef.current = panTargetRef.current.y;
+          panTargetRef.current = null;
+        } else {
+          panXRef.current += dx * 0.16;
+          panYRef.current += dy * 0.16;
+        }
+      }
+
+      if (historyOpen) {
+        storyAnimRef.current += (storyStep - storyAnimRef.current) * (reducedMotion ? 1 : 0.14);
+      }
+
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const width = canvas.width / dpr;
+      const height = canvas.height / dpr;
+      const leftInset = explorerOpenRef.current && width >= 721 ? 244 : 0;
+      const rightInset = drawerOpenRef.current && width >= 721 ? Math.min(420, width * 0.92) : 0;
+      const cx = leftInset + (width - leftInset - rightInset) / 2 + panXRef.current;
+      const cy = height / 2 + panYRef.current;
+      const minDim = Math.max(240, Math.min(width - leftInset - rightInset * 0.35, height));
+      const baseScale = (minDim / 560) * zoomRef.current;
+
+      const palette = paletteRef.current ?? readThemePalette(wrap);
+
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, width, height);
+
+      const activeTimeline = historyOpen ? timeline : null;
+      const frames = activeTimeline?.frames ?? [];
+      const clampedStep = Math.max(0, Math.min(frames.length - 1, storyStep));
+      const activeFrame = frames[clampedStep];
+      const isStoryMode = Boolean(historyOpen && activeTimeline && frames.length > 0);
+
+      const nodesToRender = isStoryMode
+        ? filteredGraph.nodes.filter((n) => {
+            const b = activeTimeline!.birth.get(n.id);
+            return b !== undefined && b <= clampedStep;
+          })
+        : filteredGraph.nodes;
+
+      const visibleSet = new Set(nodesToRender.map((n) => n.id));
+      const edgesToRender: GraphEdge[] = filteredGraph.edges.filter(
+        (e) => visibleSet.has(e.source) && visibleSet.has(e.target),
+      );
+
+      const activeAnchor = hoverIdRef.current ?? selectedIdRef.current ?? focusNodeId;
+      const activeNbrs = activeAnchor ? neighborIds(activeAnchor, edgesToRender) : null;
+
+      // Project 2D positions
+      const projMap = new Map<string, NodeScreenPos>();
+      for (const node of nodesToRender) {
+        const p = layout.get(node.id);
+        if (!p) continue;
+        const sx = cx + p.x2 * baseScale;
+        const sy = cy + p.y2 * baseScale;
+        const rBase = scaledNodeRadius(node);
+        const birthIdx = isStoryMode ? activeTimeline?.birth.get(node.id) ?? 0 : 0;
+        const age = isStoryMode ? Math.max(0, storyAnimRef.current - birthIdx) : 1;
+        const popScale = isStoryMode ? Math.min(1, 0.45 + age * 0.55) : 1;
+        const isTouchedNow = Boolean(isStoryMode && activeFrame?.touched.has(node.id));
+        const boost = isTouchedNow ? 1.18 : 1;
+        const r = Math.max(3, rBase * Math.max(0.72, Math.min(1.5, zoomRef.current)) * popScale * boost);
+        projMap.set(node.id, { node, sx, sy, r });
+      }
+
+      // 1. Draw edges
+      for (let idx = 0; idx < edgesToRender.length; idx++) {
+        const edge = edgesToRender[idx];
+        const a = projMap.get(edge.source);
+        const b = projMap.get(edge.target);
+        if (!a || !b) continue;
+
+        const isBranchHot = Boolean(
+          activeAnchor && (edge.source === activeAnchor || edge.target === activeAnchor),
+        );
+        const isCommitHot = Boolean(
+          isStoryMode &&
+            activeFrame &&
+            (activeFrame.touched.has(edge.source) || activeFrame.touched.has(edge.target)),
+        );
+        const isHot = isBranchHot || isCommitHot;
+
+        let alpha = edge.kind === 'markdown-link' ? 0.34 : 0.18;
+        if (activeNbrs && !isBranchHot) alpha = 0.04;
+        if (isHot) alpha = 0.85;
+
+        const strokeColor = isHot ? palette.human : palette.ruleStrong;
+
+        ctx.strokeStyle = withAlpha(strokeColor, alpha);
+        ctx.lineWidth = isHot ? 1.4 : edge.kind === 'markdown-link' ? 1.1 : 0.75;
+        ctx.beginPath();
+        ctx.moveTo(a.sx, a.sy);
+        ctx.lineTo(b.sx, b.sy);
+        ctx.stroke();
+
+      }
+
+      // 2. Draw nodes (source cubes first, then wiki spheres on top)
+      const sortedNodes = Array.from(projMap.values()).sort((a, b) => {
+        if (a.node.kind !== b.node.kind) return a.node.kind === 'source' ? -1 : 1;
+        return a.r - b.r;
+      });
+      screenNodesRef.current = sortedNodes;
+
+      const labelCandidates: LabelCandidate[] = [];
+      const q = searchQuery.trim().toLowerCase();
+
+      for (const item of sortedNodes) {
+        const { node, sx, sy, r } = item;
+        if (sx < -40 || sx > width + 40 || sy < -40 || sy > height + 40) continue;
+
+        const isHovered = hoverIdRef.current === node.id;
+        const isSelected = selectedIdRef.current === node.id;
+        const isFocused = focusNodeId === node.id;
+        const isNeighbor = Boolean(activeNbrs?.has(node.id));
+        const isQueryMatch = Boolean(
+          q && (node.label.toLowerCase().includes(q) || node.path.toLowerCase().includes(q)),
+        );
+        const isCommitHot = Boolean(isStoryMode && activeFrame?.touched.has(node.id));
+
+        let dim = false;
+        if (activeNbrs && !isHovered && !isSelected && !isFocused && !isNeighbor) dim = true;
+
+        const alpha = dim ? 0.16 : 1;
+        // Category colour; cobalt marks the node in focus; status rings carry drift and errors.
+        const isActive = isHovered || isSelected || isFocused || isCommitHot;
+        const color = isActive ? palette.human : catColorsRef.current?.[node.category] ?? palette.muted;
+
+        let statusRing: { color: string; dashed?: boolean } | undefined;
+        if (!dim) {
+          if (node.hasLintError) statusRing = { color: palette.error };
+          else if (node.hasDrift) statusRing = { color: palette.drift };
+          else if (node.needsReverify) statusRing = { color: palette.drift, dashed: true };
+          else if (node.isOrphan) statusRing = { color: palette.muted, dashed: true };
+        }
+
+        drawFlatNode(ctx, sx, sy, r, CATEGORY_SHAPE[node.category], color, palette, statusRing, alpha);
+
+        const shouldShowLabel =
+          !dim &&
+          (isHovered ||
+            isSelected ||
+            isFocused ||
+            isNeighbor ||
+            isQueryMatch ||
+            isCommitHot ||
+            node.category === 'core' ||
+            zoomRef.current >= 1.15 ||
+            sortedNodes.length <= 28);
+
+        if (shouldShowLabel) {
+          let priority = node.degree;
+          if (node.category === 'core') priority += 20;
+          if (isQueryMatch || isCommitHot) priority += 40;
+          if (isNeighbor) priority += 60;
+          if (isFocused) priority += 80;
+          if (isSelected) priority += 100;
+          if (isHovered) priority += 120;
+          labelCandidates.push({
+            id: node.id,
+            text: node.label,
+            sx,
+            sy,
+            r,
+            priority,
+            accent: isHovered || isSelected || isFocused || isCommitHot,
+            muted: node.kind === 'source' && !isHovered && !isSelected && !isNeighbor,
+          });
+        }
+      }
+
+      // 3. Anti-collision pill labels
+      drawLabelsNoOverlap(ctx, labelCandidates, width, height, palette, leftInset + 8);
+
+      // 4. Commit card during Storia playback
+      if (isStoryMode && activeFrame) {
+        const cardW = Math.min(340, width - leftInset - 32);
+        const cardX = leftInset + (width - leftInset - rightInset) / 2 - cardW / 2;
+        const cardY = 64;
+        const bornCount = activeFrame.born.size;
+        const touchedCount = activeFrame.touched.size;
+        const badgeText = `${bornCount > 0 ? '+' : '~'} ${activeFrame.sha.slice(0, 7)}`;
+
+        ctx.save();
+        ctx.fillStyle = palette.glass;
+        ctx.strokeStyle = palette.ruleStrong;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.roundRect(cardX, cardY, cardW, 48, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = '600 11px "IBM Plex Mono", ui-monospace, monospace';
+        ctx.fillStyle = palette.human;
+        ctx.fillText(badgeText, cardX + 12, cardY + 18);
+
+        ctx.font = '400 11px "IBM Plex Sans", system-ui, sans-serif';
+        ctx.fillStyle = palette.muted;
+        const stats = `${t('esplora.grafo.commitBorn', { n: bornCount })} · ${t('esplora.grafo.commitTouched', { n: touchedCount })}`;
+        ctx.fillText(stats, cardX + cardW - ctx.measureText(stats).width - 12, cardY + 18);
+
+        ctx.font = '500 12px "IBM Plex Sans", system-ui, sans-serif';
+        ctx.fillStyle = palette.ink;
+        const msg =
+          activeFrame.subject.length > 46
+            ? `${activeFrame.subject.slice(0, 44)}…`
+            : activeFrame.subject;
+        ctx.fillText(msg, cardX + 12, cardY + 36);
+        ctx.restore();
+      }
+
+      ctx.restore();
+      if (!reducedMotion || draggingRef.current || panTargetRef.current) {
+        rafId = requestAnimationFrame(drawFrame);
+      }
+    };
+
+    rafId = requestAnimationFrame(drawFrame);
+    return () => {
+      cancelAnimationFrame(rafId);
+      ro.disconnect();
+    };
+  }, [
+    lens,
+    historyOpen,
+    storyStep,
+    timeline,
+    filteredGraph,
+    layout,
+    focusNodeId,
+    searchQuery,
+    refreshColors,
+  ]);
+
+  const hitTest = useCallback((clientX: number, clientY: number): GraphNode | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const items = screenNodesRef.current;
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      const hitR = Math.max(10, it.r + 5);
+      const dx = x - it.sx;
+      const dy = y - it.sy;
+      if (dx * dx + dy * dy <= hitR * hitR) return it.node;
     }
+    return null;
   }, []);
 
-  const onNodeClick = useCallback(
-    (node: NodeObject<FgNode>) => {
-      setSelectedId(node.id);
-      openDrawerForNode(node);
-    },
-    [openDrawerForNode]
-  );
-
-  const paintNode = useCallback(
-    (node: FgNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
-      const r = nodeRadius(node.degree);
-      const x = node.x ?? 0;
-      const y = node.y ?? 0;
-      const fill = colors[node.category] || tokenInk;
-      const dim =
-        highlight && !highlight.has(node.id)
-          ? 0.18
-          : node.id === selectedId
-            ? 1
-            : node.id === hoverId
-              ? 0.95
-              : 0.75;
-
-      ctx.beginPath();
-      // Code files are squares: shape, not only color, separates them from wiki pages.
-      if (node.kind === 'source') ctx.rect(x - r * 0.85, y - r * 0.85, r * 1.7, r * 1.7);
-      else ctx.arc(x, y, r, 0, 2 * Math.PI);
-      ctx.fillStyle = fill;
-      ctx.globalAlpha = dim;
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      if (node.id === selectedId) {
-        ctx.strokeStyle = tokenInk;
-        ctx.lineWidth = 1.5 / globalScale;
-        ctx.stroke();
+  const openNodeInDrawer = useCallback(
+    (node: GraphNode) => {
+      if (node.kind === 'wiki') {
+        setDrawer({ mode: 'wiki', wikiRelPath: node.path });
+        return;
       }
-      // Storia: a halo for pages born in this commit, a ring for pages it changed.
-      if (current && (current.born.has(node.id) || current.touched.has(node.id))) {
-        const born = current.born.has(node.id);
-        ctx.beginPath();
-        ctx.arc(x, y, r + (born ? 5 : 3) / globalScale + r * 0.4, 0, 2 * Math.PI);
-        ctx.strokeStyle = born ? fill : tokenInk;
-        ctx.globalAlpha = born ? 0.55 : 0.8;
-        ctx.lineWidth = (born ? 3 : 1.4) / globalScale;
-        ctx.stroke();
-        ctx.globalAlpha = 1;
+      const linkedWikiEdge = fullGraph.edges.find(
+        (e) => e.kind === 'source-link' && e.target === node.id,
+      );
+      const fromWiki = linkedWikiEdge ? nodeById.get(linkedWikiEdge.source)?.path : undefined;
+      setDrawer({ mode: 'source', relPath: node.path, fromWikiPath: fromWiki });
+    },
+    [fullGraph.edges, nodeById],
+  );
+
+  const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    draggingRef.current = true;
+    panTargetRef.current = null;
+    pointerDownRef.current = { x: e.clientX, y: e.clientY, moved: 0 };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (draggingRef.current && pointerDownRef.current) {
+      const dx = e.clientX - pointerDownRef.current.x;
+      const dy = e.clientY - pointerDownRef.current.y;
+      pointerDownRef.current.x = e.clientX;
+      pointerDownRef.current.y = e.clientY;
+      pointerDownRef.current.moved += Math.hypot(dx, dy);
+      panXRef.current += dx;
+      panYRef.current += dy;
+      return;
+    }
+    const hit = hitTest(e.clientX, e.clientY);
+    setHoveredId(hit ? hit.id : null);
+  };
+
+  const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const moved = pointerDownRef.current?.moved ?? 0;
+    draggingRef.current = false;
+    pointerDownRef.current = null;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    if (moved < 6) {
+      const hit = hitTest(e.clientX, e.clientY);
+      if (hit) {
+        if (e.altKey || e.shiftKey) {
+          setFocusNodeId((cur) => (cur === hit.id ? null : hit.id));
+        } else {
+          setSelectedId(hit.id);
+          openNodeInDrawer(hit);
+        }
+      } else {
+        setSelectedId(null);
       }
+    }
+  };
 
-      // Drift / lint: a small badge at the top-right, so status never paints over the category fill.
-      const badge = (color: string, dx: number) => {
-        ctx.beginPath();
-        ctx.arc(x + r * 0.75 + dx, y - r * 0.75, Math.max(r * 0.38, 1.4), 0, 2 * Math.PI);
-        ctx.fillStyle = color;
-        ctx.globalAlpha = dim;
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      };
-      if (node.hasDrift) badge(tokenDrift, 0);
-      if (node.hasLintError) badge(tokenError, node.hasDrift ? r * 0.8 : 0);
-
-      const showLabel =
-        node.id === hoverId || node.id === selectedId || globalScale >= LABEL_ZOOM_THRESHOLD;
-      if (showLabel && node.label) {
-        const fontSize = Math.max(10 / globalScale, 3);
-        ctx.font = `${fontSize}px ${labelFont}`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.fillStyle = tokenInk;
-        ctx.globalAlpha = dim;
-        const label = node.label.length > 36 ? `${node.label.slice(0, 34)}…` : node.label;
-        ctx.fillText(label, x, y + r + 1.5 / globalScale);
-        ctx.globalAlpha = 1;
+  const onWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    if (historyOpen && timeline && timeline.frames.length > 0) {
+      setPlaying(false);
+      if (e.deltaY > 0) {
+        setStoryStep((s) => Math.min(timeline.frames.length - 1, s + 1));
+      } else if (e.deltaY < 0) {
+        setStoryStep((s) => Math.max(0, s - 1));
       }
-    },
-    [colors, tokenInk, tokenDrift, tokenError, highlight, selectedId, hoverId, labelFont, current]
-  );
+      return;
+    }
+    const factor = e.deltaY < 0 ? 1.09 : 0.92;
+    zoomRef.current = Math.max(0.35, Math.min(3.2, zoomRef.current * factor));
+  };
 
-  /** A link's state: highlighted (touches the hovered/selected node), dimmed, or normal. */
-  const linkState = useCallback(
-    (link: FgLink): 'on' | 'off' | 'normal' => {
-      if (!highlight) return 'normal';
-      const active = hoverId ?? selectedId;
-      const s = endId(link.source);
-      const t = endId(link.target);
-      return s === active || t === active ? 'on' : 'off';
-    },
-    [highlight, hoverId, selectedId]
-  );
+  const toggleCategory = (cat: GraphNodeCategory) => {
+    setEnabledCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
 
-  const linkBase = useCallback(
-    (link: FgLink) => {
-      if (link.kind === 'source-link') return tokenMuted;
-      const cat = categoryOf.get(endId(link.target));
-      return cat && HUED.has(cat) ? colors[cat] : tokenMuted;
-    },
-    [categoryOf, colors, tokenMuted]
-  );
+  const hoveredNode = hoveredId ? nodeById.get(hoveredId) ?? null : null;
+  const selectedNode = selectedId ? nodeById.get(selectedId) ?? null : null;
+  const highlightedNode = hoveredNode ?? selectedNode;
+  const focusedNode = focusNodeId ? nodeById.get(focusNodeId) ?? null : null;
 
-  const linkColor = useCallback(
-    (link: FgLink) => {
-      const state = linkState(link);
-      return withAlpha(linkBase(link), state === 'on' ? 0.95 : state === 'off' ? 0.06 : 0.4);
-    },
-    [linkState, linkBase]
-  );
+  const explorerGroups = useMemo(() => {
+    const groups: Array<{ category: GraphNodeCategory; nodes: GraphNode[] }> = [];
+    for (const cat of CATEGORIES) {
+      const nodes = filteredGraph.nodes
+        .filter((n) => n.category === cat)
+        .sort((a, b) => a.label.localeCompare(b.label));
+      if (nodes.length > 0) groups.push({ category: cat, nodes });
+    }
+    return groups;
+  }, [filteredGraph.nodes]);
 
-  if (!snapshot?.wikiRoot || !fullGraph) {
-    return (
-      <section className="view grafo-view">
-        <Empty title={t('esplora.grafo.empty')} />
-      </section>
-    );
+  const toggleGroup = (cat: GraphNodeCategory) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
+
+  const hoverHint = useMemo(() => {
+    if (historyOpen) return t('esplora.grafo.hintStory');
+    return t('esplora.grafo.hint2d');
+  }, [historyOpen]);
+
+  if (!snapshot) {
+    return null;
   }
 
-  const showEmpty = graphData.nodes.length === 0;
-  const dateFmt = new Intl.DateTimeFormat(locale(), { day: 'numeric', month: 'short', year: 'numeric' });
-
   return (
-    <section className="grafo-view" ref={viewRef} aria-label={t('esplora.grafo.aria')}>
-      <div className="grafo-stage" ref={stageRef}>
-        <div className="grafo-toolbar toolbar toolbar-floating">
-          <input
-            className="input"
-            placeholder={t('esplora.grafo.searchPlaceholder')}
-            value={searchDraft}
-            onChange={(e) => setSearchDraft(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-            aria-label={t('esplora.grafo.searchAria')}
-          />
-          <button type="button" className="btn" onClick={runSearch}>
-            {t('esplora.grafo.center')}
-          </button>
-          <label className="grafo-toggle">
-            <input
-              type="checkbox"
-              checked={includeSources}
-              onChange={(e) => setIncludeSources(e.target.checked)}
-            />
-            {t('esplora.grafo.sourceFiles')}
-          </label>
-          <label className="grafo-toggle">
-            <input type="checkbox" checked={onlyDrift} onChange={(e) => setOnlyDrift(e.target.checked)} />
-            {t('esplora.grafo.onlyDrift')}
-          </label>
-          <label className="grafo-toggle" title={selectedId ? undefined : t('esplora.grafo.selectNode')}>
-            <input
-              type="checkbox"
-              checked={localHop}
-              disabled={!selectedId}
-              onChange={(e) => setLocalHop(e.target.checked)}
-            />
-            {t('esplora.grafo.local')}
-          </label>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => fgRef.current?.zoomToFit(400, 24)}
-          >
-            {t('esplora.grafo.fit')}
-          </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => (frame === null ? void startHistory() : exitHistory())}
-            title={t('esplora.grafo.historyHint')}
-            aria-pressed={frame !== null}
-          >
-            {frame === null ? t('esplora.grafo.history') : t('esplora.grafo.exitHistory')}
-          </button>
-        </div>
-        {historyError && frame === null && (
-          <p className="grafo-history-error" role="status">
-            {historyError}
-          </p>
-        )}
+    <div
+      className={`grafo${drawer ? ' has-drawer' : ''}${explorerOpen ? ' has-explorer' : ''}`}
+      ref={wrapRef}
+    >
+      <canvas
+        ref={canvasRef}
+        className={`grafo-canvas${hoveredId ? ' is-hovering' : ''}`}
+        tabIndex={0}
+        aria-label={t('esplora.grafo.aria')}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={() => {
+          draggingRef.current = false;
+          setHoveredId(null);
+        }}
+        onDoubleClick={(e) => {
+          const hit = hitTest(e.clientX, e.clientY);
+          if (hit) setFocusNodeId((cur) => (cur === hit.id ? null : hit.id));
+        }}
+        onWheel={onWheel}
+      />
 
-        {showEmpty ? (
-          <div className="grafo-empty">
-            <Empty title={t('esplora.grafo.noNodes')} />
-          </div>
-        ) : (
-          <ForceGraph2D<FgNode>
-            ref={fgRef as MutableRefObject<ForceGraphMethods<FgNode>>}
-            width={size.w}
-            height={size.h}
-            graphData={graphData}
-            backgroundColor="transparent"
-            nodeId="id"
-            linkSource="source"
-            linkTarget="target"
-            nodeCanvasObjectMode={() => 'replace'}
-            nodeCanvasObject={paintNode}
-            nodePointerAreaPaint={(node, color, ctx) => {
-              ctx.beginPath();
-              ctx.arc(node.x ?? 0, node.y ?? 0, nodeRadius(node.degree) + 2, 0, 2 * Math.PI);
-              ctx.fillStyle = color;
-              ctx.fill();
-            }}
-            linkColor={(l) => linkColor(l as FgLink)}
-            linkWidth={(l) => (linkState(l as FgLink) === 'on' ? 1.6 : 0.8)}
-            linkLineDash={(l) => ((l as FgLink).kind === 'source-link' ? [2, 2] : null)}
-            linkDirectionalArrowLength={(l) => (linkState(l as FgLink) === 'on' ? 4 : 0)}
-            linkDirectionalArrowRelPos={0.92}
-            linkDirectionalArrowColor={(l) => linkColor(l as FgLink)}
-            linkCurvature={0.18}
-            linkDirectionalParticles={0}
-            cooldownTicks={200}
-            onEngineStop={() => {
-              if (fitted.current) return;
-              fitted.current = true;
-              fgRef.current?.zoomToFit(400, 40);
-            }}
-            d3VelocityDecay={0.35}
-            onNodeClick={onNodeClick}
-            onBackgroundClick={clearFocus}
-            onNodeHover={(n) => setHoverId(n?.id ?? null)}
-            onZoom={({ k }) => setZoomK(k)}
-          />
-        )}
-        <details
-          className="grafo-legend"
-          open={legendOpen}
-          onToggle={(e) => {
-            const open = e.currentTarget.open;
-            setLegendOpen(open);
-            try {
-              localStorage.setItem(LEGEND_KEY, open ? '1' : '0');
-            } catch {
-              /* per-viewer convenience only */
-            }
-          }}
-        >
-          <summary>
-            {CATEGORIES.filter((c) => counts.has(c)).map((c) => (
-              <span
-                key={c}
-                className={c === 'source' ? 'grafo-swatch grafo-swatch-square' : 'grafo-swatch'}
-                style={{ background: colors[c], opacity: hiddenCats.has(c) ? 0.3 : 1 }}
-                aria-hidden="true"
-              />
-            ))}
-            {t('esplora.grafo.legend')}
-            {hiddenCats.size > 0 && <span className="grafo-legend-count">{t('esplora.grafo.hidden', { n: hiddenCats.size })}</span>}
-          </summary>
-          <div className="grafo-legend-body" role="group" aria-label={t('esplora.grafo.legendAria')}>
-            {CATEGORIES.filter((c) => counts.has(c)).map((c) => (
-              <button key={c} type="button" aria-pressed={!hiddenCats.has(c)} onClick={() => toggleCat(c)}>
-                <span
-                  className={c === 'source' ? 'grafo-swatch grafo-swatch-square' : 'grafo-swatch'}
-                  style={{ background: colors[c] }}
-                  aria-hidden="true"
-                />
-                {categoryLabel(c)}
-                <span className="grafo-legend-count">{counts.get(c)}</span>
-              </button>
-            ))}
-            <hr />
-            <span className="grafo-legend-edge">
-              <span className="grafo-swatch grafo-swatch-line" aria-hidden="true" />
-              {t('esplora.grafo.legendLink')}
-            </span>
-            <span className="grafo-legend-edge">
-              <span className="grafo-swatch grafo-swatch-line grafo-swatch-dash" aria-hidden="true" />
-              {t('esplora.grafo.legendSourceLink')}
-            </span>
-            <hr />
-            <span className="grafo-legend-edge">
-              <span className="grafo-swatch" style={{ background: tokenDrift }} aria-hidden="true" />
-              {t('esplora.grafo.legendDrift')}
-            </span>
-            <span className="grafo-legend-edge">
-              <span className="grafo-swatch" style={{ background: tokenError }} aria-hidden="true" />
-              {t('esplora.grafo.legendLint')}
-            </span>
-          </div>
-        </details>
-        {timeline && current && frame !== null && (
-          <div className="grafo-history" role="group" aria-label={t('esplora.grafo.historyAria')}>
+      {explorerOpen && (
+        <aside className="grafo-explorer" aria-label={t('esplora.grafo.explorer')}>
+          <div className="grafo-explorer-head">
+            <span>{t('esplora.grafo.explorer')}</span>
+            <span className="grafo-explorer-count">{filteredGraph.nodes.length}</span>
             <button
               type="button"
-              className="btn"
-              onClick={() => {
-                if (!playing && frame >= timeline.frames.length - 1) setFrame(0);
-                setPlaying(!playing);
-              }}
-              aria-label={playing ? t('esplora.grafo.pause') : t('esplora.grafo.play')}
+              className="grafo-exp-open"
+              onClick={() => setExplorerOpen(false)}
+              aria-label={t('esplora.grafo.exit')}
             >
-              {playing ? '⏸' : '▶'}
+              ×
             </button>
+          </div>
+          <div className="grafo-explorer-list">
+            {explorerGroups.map((group) => {
+              const collapsed = collapsedGroups.has(group.category);
+              return (
+                <div key={group.category} className="grafo-exp-group">
+                  <button
+                    type="button"
+                    className="grafo-exp-group-btn"
+                    aria-expanded={!collapsed}
+                    onClick={() => toggleGroup(group.category)}
+                  >
+                    <span aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
+                    <span className={`swatch swatch-${CATEGORY_SHAPE[group.category]}`} style={{ color: `var(--graph-cat-${group.category})` }} aria-hidden="true" />
+                    <span>{categoryLabel(group.category)}</span>
+                    <span className="grafo-exp-group-count">{group.nodes.length}</span>
+                  </button>
+                  {!collapsed && (
+                    <ul className="grafo-exp-items">
+                      {group.nodes.map((node) => {
+                        const isSel = selectedId === node.id;
+                        return (
+                          <li
+                            key={node.id}
+                            className={`grafo-exp-row${isSel ? ' is-selected' : ''}`}
+                            onMouseEnter={() => setHoveredId(node.id)}
+                            onMouseLeave={() =>
+                              setHoveredId((cur) => (cur === node.id ? null : cur))
+                            }
+                          >
+                            <button
+                              type="button"
+                              className="grafo-exp-pick"
+                              title={node.path}
+                              onClick={() => {
+                                if (isSel) {
+                                  setSelectedId(null);
+                                  panTargetRef.current = null;
+                                } else {
+                                  setSelectedId(node.id);
+                                  panToNode(node.id);
+                                }
+                              }}
+                            >
+                              <span
+                                className={`grafo-exp-dot${
+                                  node.category === 'core'
+                                    ? ' is-core'
+                                    : node.category === 'source'
+                                      ? ' is-source'
+                                      : ''
+                                }`}
+                              />
+                              <span className="grafo-exp-label">{node.label}</span>
+                              <span className="grafo-exp-deg">{node.degree}</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="grafo-exp-open"
+                              title={t('esplora.grafo.openFile')}
+                              aria-label={`${t('esplora.grafo.openFile')}: ${node.label}`}
+                              onClick={() => {
+                                setSelectedId(node.id);
+                                openNodeInDrawer(node);
+                              }}
+                            >
+                              ↗
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </aside>
+      )}
+
+      <div className="grafo-hud-top">
+        <div className="grafo-toolbar">
+          <LensSwitch value="links" onChange={setLens} />
+          <button
+            type="button"
+            className={`btn btn-sm${explorerOpen ? ' btn-strong' : ''}`}
+            aria-pressed={explorerOpen}
+            onClick={() => setExplorerOpen((o) => !o)}
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden="true"
+            >
+              <path d="M2 3.5h4l1.3 1.4H14v7.6H2z" strokeLinejoin="round" />
+            </svg>
+            <span>{t('esplora.grafo.explorer')}</span>
+          </button>
+
+          <input
+            type="search"
+            className="input"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t('esplora.grafo.searchPlaceholder')}
+            aria-label={t('esplora.grafo.searchPlaceholder')}
+          />
+
+          <label className="grafo-check">
             <input
-              type="range"
-              min={0}
-              max={timeline.frames.length - 1}
-              value={frame}
-              onChange={(e) => {
-                setPlaying(false);
-                setFrame(Number(e.target.value));
-              }}
-              aria-label={t('esplora.grafo.commit')}
+              type="checkbox"
+              checked={includeCodeSources}
+              onChange={(e) => setIncludeCodeSources(e.target.checked)}
             />
-            <div className="grafo-history-label">
-              <span>
-                {dateFmt.format(new Date(current.date))} · {frame + 1}/{timeline.frames.length}
-                {history?.truncated && frame === 0 ? t('esplora.grafo.olderOmitted') : ''}
-              </span>
-              <span className="grafo-history-subject" title={current.subject}>
-                {current.subject}
-              </span>
-            </div>
-            <button type="button" className="btn" onClick={exitHistory}>
-              {t('esplora.grafo.exit')}
+            <span>{t('esplora.grafo.sourceFiles')}</span>
+          </label>
+
+          <label className="grafo-check">
+            <input
+              type="checkbox"
+              checked={onlyDriftOrErrors}
+              onChange={(e) => setOnlyDriftOrErrors(e.target.checked)}
+            />
+            <span>{t('esplora.grafo.onlyDrift')}</span>
+          </label>
+
+
+          <button type="button" className="btn btn-sm" onClick={resetView}>
+            {t('esplora.grafo.fit')}
+          </button>
+
+          {focusedNode && (
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setFocusNodeId(null)}
+            >
+              {t('esplora.grafo.branchFull')} ({focusedNode.label}) ×
             </button>
+          )}
+
+          <button
+            type="button"
+            className={`btn btn-sm${historyOpen ? ' btn-strong' : ''}`}
+            onClick={toggleHistory}
+          >
+            {t('esplora.grafo.history')}
+          </button>
+
+          <span className="grafo-counts">
+            {filteredGraph.nodes.length}/{filteredGraph.edges.length}
+          </span>
+        </div>
+
+        {!drawer && (
+          <div className="grafo-hover-hint">
+            {highlightedNode
+              ? t('esplora.grafo.hintHover', { label: highlightedNode.label })
+              : hoverHint}
           </div>
         )}
       </div>
+
+      {filteredGraph.nodes.length === 0 && (
+        <div className="grafo-empty">
+          <Empty
+            title={t(fullGraph.nodes.length === 0 ? 'esplora.grafo.empty' : 'esplora.grafo.noNodes')}
+            action={
+              (focusNodeId || searchQuery || onlyDriftOrErrors) && (
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => {
+                    setFocusNodeId(null);
+                    setSearchQuery('');
+                    setOnlyDriftOrErrors(false);
+                    setEnabledCats(new Set(CATEGORIES));
+                  }}
+                >
+                  {t('esplora.grafo.branchFull')}
+                </button>
+              )
+            }
+          />
+        </div>
+      )}
+
+      <div className="grafo-hud-bottom">
+        <div className="grafo-legend">
+          {CATEGORIES.map((cat) => {
+            const pressed = enabledCats.has(cat);
+            return (
+              <button
+                key={cat}
+                type="button"
+                className="grafo-leg-btn"
+                aria-pressed={pressed}
+                onClick={() => toggleCategory(cat)}
+              >
+                <span className={`swatch swatch-${CATEGORY_SHAPE[cat]}`} style={{ color: `var(--graph-cat-${cat})` }} aria-hidden="true" />
+                <span>{categoryLabel(cat)}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {historyOpen && (
+          <div className="grafo-history">
+            {historyLoading ? (
+              <span className="muted">{t('esplora.progetti.reading')}</span>
+            ) : historyError ? (
+              <span className="error-text">{historyError}</span>
+            ) : !timeline || timeline.frames.length === 0 ? (
+              <span className="muted">{t('esplora.grafo.noHistory')}</span>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => {
+                    setPlaying(false);
+                    setStoryStep((s) => Math.max(0, s - 1));
+                  }}
+                  disabled={storyStep <= 0}
+                  aria-label="<"
+                >
+                  ◀
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-strong"
+                  onClick={() => {
+                    if (storyStep >= timeline.frames.length - 1) setStoryStep(0);
+                    setPlaying((p) => !p);
+                  }}
+                >
+                  {playing ? t('esplora.grafo.pause') : t('esplora.grafo.play')}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => {
+                    setPlaying(false);
+                    setStoryStep((s) => Math.min(timeline.frames.length - 1, s + 1));
+                  }}
+                  disabled={storyStep >= timeline.frames.length - 1}
+                  aria-label=">"
+                >
+                  ▶
+                </button>
+                <input
+                  type="range"
+                  className="grafo-history-range"
+                  min={0}
+                  max={timeline.frames.length - 1}
+                  value={storyStep}
+                  onChange={(e) => {
+                    setPlaying(false);
+                    setStoryStep(Number(e.target.value));
+                  }}
+                />
+                <span className="mono">
+                  {storyStep + 1}/{timeline.frames.length}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => {
+                    setHistoryOpen(false);
+                    setPlaying(false);
+                  }}
+                >
+                  ×
+                </button>
+                <div className="grafo-history-meta">
+                  <span className="mono">{timeline.frames[storyStep]?.sha.slice(0, 7)}</span>
+                  <span className="grafo-history-msg">
+                    {timeline.frames[storyStep]?.subject}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {lens === 'map' && (
+        <Mappa
+          files={coverageFiles}
+          decisionPaths={decisionPaths}
+          onLens={setLens}
+          onOpenWiki={(wikiRelPath) => setDrawer({ mode: 'wiki', wikiRelPath })}
+          onOpenSource={(relPath, fromWikiPath) => setDrawer({ mode: 'source', relPath, fromWikiPath })}
+        />
+      )}
+
+      {lens === 'coverage' && (
+        <Copertura
+          modules={coverage}
+          onLens={setLens}
+          onOpenWiki={(wikiRelPath) => setDrawer({ mode: 'wiki', wikiRelPath })}
+          onOpenSource={(relPath, fromWikiPath) => setDrawer({ mode: 'source', relPath, fromWikiPath })}
+        />
+      )}
 
       <PageDrawer
         open={drawer !== null}
         target={drawer}
         repo={snapshot.repoPath}
         pagesByPath={pagesByPath}
-        onClose={() => (localHop ? setDrawer(null) : clearFocus())}
+        onClose={() => setDrawer(null)}
         onOpenWiki={(wikiRelPath) => setDrawer({ mode: 'wiki', wikiRelPath })}
-        onOpenSource={(relPath, fromWikiPath) => setDrawer({ mode: 'source', relPath, fromWikiPath })}
+        onOpenSource={(relPath, fromWikiPath) =>
+          setDrawer({ mode: 'source', relPath, fromWikiPath })
+        }
       />
-    </section>
+    </div>
   );
 }

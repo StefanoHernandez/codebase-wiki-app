@@ -218,3 +218,28 @@ confidence: high
 - What: termini privati a parola intera (`=termine`) in scrittura della wiki, indice di ricerca e server MCP, con piegatura delle maiuscole che non apre falle (İ, segno Kelvin) e occorrenze sovrapposte; l'indice si ricostruisce una volta per il nuovo criterio. Validator del plugin 0.16.0 e budget di default 30/100/30 KB. Versione 0.7.7, release pubblicata come `latest`.
 - Evidence: run GitHub Actions 44315200732 → test e tre build success; `latest.json` con darwin-aarch64, windows-x86_64, linux-x86_64 @6384ff4
 - IDs: none
+
+## 2026-11-18 · Integrazione UI Precision Studio 3D (Carbon & Cobalt) · agent
+- What: integrata nell'app la nuova interfaccia **Precision Studio 3D** approvata nel mockup (`docs/design/mockup-precision-2026-11-18.html`): palette **Carbon & Cobalt** (`tokens.css`, `components.css`, `markdown.css`, `decisioni.css`, `README.md`) con icona `00_modern` ripristinata (`src-tauri/icons/`, `src/assets/mark.svg`); Icon Rail sottile (`58px` espandibile a `212px`), header contestuale e `LaunchIntro` (`Shell.tsx`); vista **Grafo** (`Grafo.tsx`, `grafo-3d.ts`, `grafo.css`) su canvas custom 3D Orbit / 2D Piatto + `▶ Storia 3D` verso il Cervello 3D; vista **Ricerca** (`Ricerca.tsx`, `SemanticRadar.tsx`, `ricerca.css`) con ricerca in evidenza, filtri rapidi, chip ultime query MCP, Radar semantico 3D interattivo e risultati **Stack 3D** / **Lista** con `PageDrawer`.
+- Evidence: `node --test tests/*.test.ts` → 182 passed; `tsc --noEmit && vite build` → ok; `detect.mjs --json src` → `[]`; `cargo test --workspace` → 12 + 65 + 56 passed @710a24c+local
+- IDs: none
+
+## 2026-11-18 · Correzioni UI post-prova live: Grafo, badge Rail, HealthRing · agent
+- What: corretti i dettagli segnalati da Stefano durante la prova live: `PageDrawer` portato a `z-index: 30` con spostamento HUD e nascondimento `.grafo-hover-hint` su `has-drawer`; badge notifiche della Rail collassata spostati nell'angolo con `99+` senza coprire l'icona; `HealthRing` allineato sul monogramma `30x30`; colori categorie Grafo ad alto contrasto; nodi wiki resi come documenti e sorgenti come badge estensione (`.rs`, `.tsx`, ecc.); `▶ Storia 3D` trasformata in viaggio su strada prospettica 3D verso il Cervello finale (`grafo-3d.ts`, `Grafo.tsx`).
+- Evidence: `node --test tests/*.test.ts` → 182 passed; `./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vite build` → ok; `detect.mjs --json src` → `[]` @710a24c+local
+- IDs: none
+
+## 2026-11-18 · Nodi colorati, hub core ingranditi ed explorer file nel Grafo · agent
+- What: su feedback di Stefano ripristinati nel Grafo i nodi 3D colorati (sfere lucide per pagine wiki e cubi per sorgenti, mantenendo la palette ad alto contrasto); nodi `core` ingranditi (`1.48×`, min `7.5px`) con alone più visibile; aggiunto pannello laterale stile Obsidian a sinistra (`.grafo-explorer` richiudibile con gruppi per categoria, hover per illuminare il ramo, clic per selezionare e ruotare la camera 3D sul nodo, pulsante `↗` per aprire `PageDrawer`). Aggiunte chiavi bilingui `esplora.grafo.explorer` e `esplora.grafo.openFile`.
+- Evidence: `node --test tests/*.test.ts` → 182 passed; `./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vite build` → ok; `detect.mjs --json src` → `[]` @710a24c+local
+- IDs: none
+
+## 2026-11-18 · Grafo riportato in 2D con Storia e palette sobria · agent
+- What: su richiesta di Stefano rimossa la vista 3D dal Grafo (`Grafo.tsx`, `grafo-3d.ts`), mantenendo il canvas 2D interattivo (pan/zoom/Fit), i nodi colorati con la nuova palette senza viola/neon, i nodi `core` ingranditi, l'esploratore file a sinistra (clic per evidenziare e centrare in 2D) e **▶ Storia** commit per commit (`esplora.ts`).
+- Evidence: `node --test tests/*.test.ts` → 182 passed; `./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vite build` → ok; `detect.mjs --json src` → `[]` @710a24c+local
+- IDs: none
+
+## 2026-11-18 · App per l'umano: mappa del codice, copertura, Salute a carte · agent
+- What: Grafo con tre viste (Mappa a riquadri per cartella colorata dalla copertura della wiki, predefinita; Grafo dei collegamenti con nodi piatti, colori tenui e forme per categoria; Elenco per modulo); prompt per l'agente (documentare file scoperti, riverificare una pagina, verificare una decisione accettata il cui codice è cambiato); Per te con le novità dall'ultima visita; Salute con risposta in testa, cinque carte e livelli di fiducia spiegati, lettura iniziale contata come il plugin (ultime 10 voci del log); Ricerca con mappa dei risultati statica, lista predefinita e pagine della wiki sopra il codice; tolti inclinazione delle card e pila 3D. Branch `feat/human-app`.
+- Evidence: `node --test tests/*.test.ts` → 190 passed; `npm run build` → ok; viste provate da Stefano in `tauri dev`, 2026-11-18
+- IDs: none

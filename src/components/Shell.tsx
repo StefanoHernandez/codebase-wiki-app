@@ -32,12 +32,182 @@ function baseName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
+function LaunchIntro({
+  leaving,
+  onDismiss,
+}: {
+  leaving: boolean;
+  onDismiss(): void;
+}) {
+  return (
+    <div
+      className={`intro-overlay${leaving ? ' is-leaving' : ''}`}
+      role="status"
+      aria-label="Codebase Wiki"
+      onClick={onDismiss}
+    >
+      <div className="intro-emblem" aria-hidden="true">
+        <svg viewBox="0 0 118 118" width="118" height="118">
+          <defs>
+            <linearGradient id="cwIntroGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#607CFF" />
+              <stop offset="55%" stopColor="#3452DD" />
+              <stop offset="100%" stopColor="#142477" />
+            </linearGradient>
+          </defs>
+          <circle
+            className="intro-ring-outer"
+            cx="59"
+            cy="59"
+            r="45"
+            fill="none"
+            stroke="var(--human)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
+          <g className="intro-orbit">
+            <circle
+              cx="59"
+              cy="59"
+              r="53"
+              fill="none"
+              stroke="var(--rule-strong)"
+              strokeWidth="1"
+              strokeDasharray="4 6"
+            />
+            <circle cx="59" cy="6" r="3.2" fill="var(--human)" />
+            <circle cx="105" cy="85" r="2.6" fill="var(--ink-faint)" />
+          </g>
+          <rect
+            x="33"
+            y="33"
+            width="52"
+            height="52"
+            rx="15"
+            fill="url(#cwIntroGrad)"
+          />
+          <text
+            x="59"
+            y="66"
+            textAnchor="middle"
+            fill="#ffffff"
+            fontFamily="var(--font-read)"
+            fontSize="24"
+            fontWeight="700"
+            letterSpacing="-0.03em"
+          >
+            cw
+          </text>
+        </svg>
+      </div>
+      <div className="intro-wordmark">Codebase Wiki</div>
+      <p className="intro-sub">{t('shell.intro.subtitle')}</p>
+      <span className="intro-skip">{t('shell.intro.skip')}</span>
+    </div>
+  );
+}
+
+const SPOT_SELECTOR = '.card, .ricerca-hit, .decisioni-detail, .rows, .panel';
+
 export function Shell() {
   const project = useProject();
   const nav = useNav();
   const toast = useToast();
   const { theme, setTheme, toggleTheme } = useTheme();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [railExpanded, setRailExpanded] = useState(() => {
+    try {
+      return localStorage.getItem('cw.railExpanded') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [introState, setIntroState] = useState<'shown' | 'leaving' | 'done'>(() => {
+    try {
+      const reduced =
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      if (reduced || sessionStorage.getItem('cw.introShown') === '1') {
+        return 'done';
+      }
+    } catch {
+      return 'done';
+    }
+    return 'shown';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('cw.railExpanded', railExpanded ? '1' : '0');
+    } catch {
+      // ignore storage errors
+    }
+  }, [railExpanded]);
+
+  useEffect(() => {
+    if (introState !== 'shown') return;
+    try {
+      sessionStorage.setItem('cw.introShown', '1');
+    } catch {
+      // ignore
+    }
+    const timer = window.setTimeout(() => setIntroState('leaving'), 1750);
+    return () => window.clearTimeout(timer);
+  }, [introState]);
+
+  useEffect(() => {
+    if (introState !== 'leaving') return;
+    const timer = window.setTimeout(() => setIntroState('done'), 380);
+    return () => window.clearTimeout(timer);
+  }, [introState]);
+
+  useEffect(() => {
+    if (introState === 'done') return;
+    const onKey = () => setIntroState('leaving');
+    window.addEventListener('keydown', onKey, { once: true });
+    return () => window.removeEventListener('keydown', onKey);
+  }, [introState]);
+
+  useEffect(() => {
+    if (
+      typeof window === 'undefined' ||
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ) {
+      return;
+    }
+    let activeSurface: HTMLElement | null = null;
+    const resetSurface = (el: HTMLElement | null) => {
+      if (!el) return;
+      el.style.setProperty('--spot-o', '0');
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse') return;
+      const el = (e.target as HTMLElement | null)?.closest<HTMLElement>(SPOT_SELECTOR) ?? null;
+      if (activeSurface && activeSurface !== el) {
+        resetSurface(activeSurface);
+      }
+      activeSurface = el;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const px = (e.clientX - rect.left) / rect.width;
+      const py = (e.clientY - rect.top) / rect.height;
+      el.style.setProperty('--mx', `${(px * 100).toFixed(1)}%`);
+      el.style.setProperty('--my', `${(py * 100).toFixed(1)}%`);
+      el.style.setProperty('--spot-o', '1');
+    };
+    const onPointerLeave = () => {
+      resetSurface(activeSurface);
+      activeSurface = null;
+    };
+    document.addEventListener('pointermove', onPointerMove, { passive: true });
+    document.addEventListener('pointerleave', onPointerLeave, { passive: true });
+    return () => {
+      document.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerleave', onPointerLeave);
+      resetSurface(activeSurface);
+    };
+  }, []);
 
   const addProject = async () => {
     try {
@@ -129,24 +299,71 @@ export function Shell() {
 
   return (
     <div className="shell">
+      {introState !== 'done' && (
+        <LaunchIntro
+          leaving={introState === 'leaving'}
+          onDismiss={() => setIntroState('leaving')}
+        />
+      )}
       <Sidebar
-        onAdd={addProject}
+        expanded={railExpanded}
+        onToggleExpanded={() => setRailExpanded((e) => !e)}
         onPalette={() => setPaletteOpen(true)}
         counts={counts}
         hasWiki={hasWiki}
       />
 
       <main className="content">
+        <header className="context-header">
+          <div className="context-header-left">
+            <ProjectSwitcher onAdd={addProject} />
+          </div>
+          <div className="context-header-actions">
+            {project.current && (
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={project.loading}
+                onClick={() => void project.reload()}
+                title={project.snapshot?.repoPath ?? project.current}
+                aria-label="Reload"
+              >
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  aria-hidden="true"
+                >
+                  <path d="M13.5 8a5.5 5.5 0 1 1-1.3-3.55" strokeLinecap="round" />
+                  <path d="M13.8 2.4v2.9h-2.9" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setPaletteOpen(true)}
+            >
+              <span>{t('shell.commands')}</span>
+              <kbd>{MOD}K</kbd>
+            </button>
+          </div>
+        </header>
         <UpdateBanner />
-        <Guide
-          section={nav.section}
-          showTip={
-            nav.section === "progetti" ||
-            nav.section === "impostazioni" ||
-            (!!project.snapshot && hasWiki && !project.compat.incompatible)
-          }
-          onStart={() => nav.go("primi-passi")}
-        />
+        {introState === 'done' && (
+          <Guide
+            section={nav.section}
+            showTip={
+              nav.section === "progetti" ||
+              nav.section === "impostazioni" ||
+              (!!project.snapshot && hasWiki && !project.compat.incompatible)
+            }
+            onStart={() => nav.go("primi-passi")}
+          />
+        )}
         {nav.section === "primi-passi" ? (
           <div className="content-body">
             <PrimiPassi />
@@ -304,24 +521,59 @@ function Icon({ name }: { name: keyof typeof ICONS }) {
 }
 
 function Sidebar({
-  onAdd,
+  expanded,
+  onToggleExpanded,
   onPalette,
   counts,
   hasWiki,
 }: {
-  onAdd(): void;
+  expanded: boolean;
+  onToggleExpanded(): void;
   onPalette(): void;
   counts: ReturnType<typeof sectionCounts>;
   hasWiki: boolean;
 }) {
   const nav = useNav();
+  const railLabel = expanded ? t('shell.sidebar.collapse') : t('shell.sidebar.expand');
   return (
-    <aside className="sidebar" aria-label={t('shell.sidebar.aria')}>
-      <ProjectSwitcher onAdd={onAdd} />
+    <aside
+      className={expanded ? "sidebar is-expanded" : "sidebar"}
+      aria-label={t('shell.sidebar.aria')}
+    >
+      <button
+        type="button"
+        className="section-link"
+        onClick={onToggleExpanded}
+        aria-expanded={expanded}
+        aria-label={railLabel}
+        data-tooltip={railLabel}
+        title={railLabel}
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          aria-hidden="true"
+        >
+          <rect x="1.75" y="2.25" width="12.5" height="11.5" rx="2.25" />
+          <path d="M5.75 2.5v11" />
+          {expanded ? (
+            <path d="M10.5 6.2 8.7 8l1.8 1.8" strokeLinecap="round" strokeLinejoin="round" />
+          ) : (
+            <path d="M9 6.2 10.8 8 9 9.8" strokeLinecap="round" strokeLinejoin="round" />
+          )}
+        </svg>
+        <span className="rail-label">{railLabel}</span>
+      </button>
       <nav className="sections" aria-label={t('shell.sections.aria')}>
         <ul>
           {SECTIONS.map((s, i) => {
             const count = counts[s.id as keyof typeof counts];
+            const badgeText =
+              count && !expanded && Number(count.text) > 99 ? '99+' : count?.text;
             return (
               <li key={s.id}>
                 <button
@@ -330,16 +582,17 @@ function Sidebar({
                   aria-current={nav.section === s.id ? "page" : undefined}
                   disabled={!hasWiki && s.id !== "progetti"}
                   onClick={() => nav.go(s.id)}
-                  title={`${MOD}${i}`}
+                  data-tooltip={`${s.label}${count ? ` (${count.text})` : ''} (${MOD}${i})`}
+                  title={`${s.label} (${MOD}${i})`}
                 >
                   <Icon name={s.id} />
-                  <span>{s.label}</span>
+                  <span className="rail-label">{s.label}</span>
                   {count && (
                     <span
                       className={`section-count section-count-${count.tone}`}
                       title={count.title}
                     >
-                      <span aria-hidden="true">{count.text}</span>
+                      <span aria-hidden="true">{badgeText}</span>
                       <span className="visually-hidden">{count.title}</span>
                     </span>
                   )}
@@ -355,24 +608,32 @@ function Sidebar({
               className="section-link"
               aria-current={nav.section === "primi-passi" ? "page" : undefined}
               onClick={() => nav.go("primi-passi")}
+              data-tooltip={t('shell.section.primi-passi')}
             >
               <Icon name="primi-passi" />
-              <span>{t('shell.section.primi-passi')}</span>
+              <span className="rail-label">{t('shell.section.primi-passi')}</span>
             </button>
           )}
-          <button type="button" className="section-link" onClick={onPalette} data-hint="palette">
+          <button
+            type="button"
+            className="section-link"
+            onClick={onPalette}
+            data-hint="palette"
+            data-tooltip={`${t('shell.commands')} (${MOD}K)`}
+          >
             <Icon name="comandi" />
-            <span>{t('shell.commands')}</span>
-            <kbd>{MOD}K</kbd>
+            <span className="rail-label">{t('shell.commands')}</span>
+            <kbd className="rail-kbd">{MOD}K</kbd>
           </button>
           <button
             type="button"
             className="section-link"
             aria-current={nav.section === "impostazioni" ? "page" : undefined}
             onClick={() => nav.go("impostazioni")}
+            data-tooltip={t('shell.section.impostazioni')}
           >
             <Icon name="impostazioni" />
-            <span>{t('shell.section.impostazioni')}</span>
+            <span className="rail-label">{t('shell.section.impostazioni')}</span>
           </button>
         </div>
       </nav>
@@ -581,7 +842,7 @@ function HealthRing({
   verified: number;
   total: number;
 }) {
-  const r = 19;
+  const r = 13.5;
   const c = 2 * Math.PI * r;
   const filled = total ? (verified / total) * c : 0;
   const title = total
@@ -589,29 +850,29 @@ function HealthRing({
     : t('shell.ring.none');
   return (
     <span className="health-ring" title={title}>
-      <svg viewBox="0 0 44 44" width="44" height="44" aria-hidden="true">
+      <svg viewBox="0 0 30 30" width="30" height="30" aria-hidden="true">
         <circle
           className="health-ring-track"
-          cx="22"
-          cy="22"
+          cx="15"
+          cy="15"
           r={r}
           fill="none"
-          strokeWidth="3.5"
+          strokeWidth="2.2"
         />
         {filled > 0 && (
           <circle
             className="health-ring-fill"
-            cx="22"
-            cy="22"
+            cx="15"
+            cy="15"
             r={r}
             fill="none"
-            strokeWidth="3.5"
+            strokeWidth="2.2"
             strokeLinecap="round"
             strokeDasharray={`${filled} ${c}`}
           />
         )}
       </svg>
-      <span aria-hidden="true">{label.toLowerCase()}</span>
+      <span aria-hidden="true">{label.toUpperCase()}</span>
       <span className="visually-hidden">{title}</span>
     </span>
   );

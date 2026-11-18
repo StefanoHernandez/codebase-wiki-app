@@ -39,8 +39,8 @@
   background: var(--surface-sunk);
 }
 .decisioni-row.is-selected {
-  background: var(--surface-sunk);
-  box-shadow: inset 3px 0 0 var(--rule);
+  background: var(--surface-active);
+  box-shadow: inset 0 0 0 1px var(--rule-strong);
 }
 .decisioni-row-num {
   flex-shrink: 0;
@@ -95,4 +95,20 @@
   .decisioni-layout {
     grid-template-columns: 1fr;
   }
+}
+
+/* Accepted decision whose governed code changed since. */
+.decisioni-changed {
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-left: 3px solid var(--drift);
+}
+.decisioni-changed p {
+  margin: 0 0 6px;
+  font-size: var(--text-sm);
+}
+.decisioni-changed-files {
+  font-family: var(--font-code);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
 }

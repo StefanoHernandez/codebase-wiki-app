@@ -2,7 +2,7 @@
 type: AgentNote
 title: Passaggio di consegne
 description: Stato del lavoro e prossimo compito per l'agente che riprende l'app Codebase Wiki.
-generated: { by: claude-code/claude-opus-5-5, at: 2026-11-13T20:00:00Z }
+generated: { by: antigravity/unknown, at: 2026-11-18T16:33:02Z }
 sources:
   - wiki/SCHEMA.md
   - wiki/log.md
@@ -19,10 +19,10 @@ confidence: high
 
 - Tracker IDs: T1, T2, T3, T4, T5, T13
 - Goal: nessun sottoprogetto aperto; restano le prove a mano (T1–T5; T13 ora provabile: una 0.6.0 installata deve proporre la 0.7.0)
-- Last completed step: release 0.7.7 pubblicata come `latest`: termini privati a parola intera (`=termine`), validator e budget del plugin 0.16.0, riferimenti alla wiki di prova sul campo sostituiti
-- Current branch: `main`
-- Last commit: `docs(wiki): release 0.7.7 recorded [skip ci]`
-- Worktree: clean
+- Last completed step: redesign Carbon & Cobalt e "app per l'umano" (Grafo con Mappa / Grafo / Elenco, copertura, prompt per l'agente, Per te con novità, Salute a carte, Ricerca con pagine della wiki, Decisioni con codice cambiato), provati da Stefano in `tauri dev`; committati sul branch `feat/human-app`, non ancora su `main` né rilasciati
+- Current branch: `feat/human-app`
+- Last commit: `feat: app for the human: code map, coverage, health cards, wiki search`
+- Worktree: clean dopo i commit
 
 ## Baton per il prossimo agente
 <!-- wiki:baton -->
@@ -52,8 +52,9 @@ confidence: high
 
 | Command | Directory | Result | Evidence / notes |
 | --- | --- | --- | --- |
-| `npm test` | repo | pass @47eaee0 | 140 test |
-| `cargo test --workspace` | repo | pass @47eaee0 | tutti verdi; `cargo test -p wiki-mcp --features embed` 2 test |
+| `node --test tests/*.test.ts` | repo | pass @710a24c+local | 182 test pass |
+| `./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vite build` | repo | pass @710a24c+local | 0 errori TS, Vite built; `detect.mjs --json src` → `[]` |
+| `cargo test --workspace` | repo | pass @710a24c+local | 12 + 65 + 56 pass |
 | `npm run build:app` | repo | pass @224232f | `Codebase Wiki.app` 89 MB; `npx tauri build` senza override ora fallisce per la chiave di firma mancante |
 | CI tag `v0.6.0` | GitHub Actions | pass @80aa12f dopo il rilancio | run 43424572413 |
 
@@ -68,6 +69,6 @@ confidence: high
 ## Traccia delle prove
 <!-- wiki:evidence-trail -->
 
-- `log`: [log.md](../log.md), voci fino al 2026-11-13
+- `log`: [log.md](../log.md), voci fino al 2026-11-18
 - `tracker`: T1–T6, T13 aperti; T9–T12 chiusi
 - `decisions`: [0004](../project/decisions/0004-rag-solo-codice.md), [0005](../project/decisions/0005-reranker-facoltativo.md)

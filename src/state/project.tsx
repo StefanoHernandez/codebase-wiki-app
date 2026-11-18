@@ -15,7 +15,7 @@ import { personId, validateHumanActor } from '../lib/human-actions';
 import { wikiCompat, type WikiCompat } from '../lib/wiki-compat';
 import { parseNextSteps, parseRiskRegister, type NextSteps, type RiskRow } from '../lib/wiki-extras';
 import { clearNavRef } from './nav';
-import { countLogEntries } from '../lib/overview';
+import { countLogEntries, newLogEntries } from '../lib/overview';
 
 export interface WikiPage {
   relPath: string;
@@ -69,6 +69,8 @@ export interface ProjectState extends Derived {
   error: string | null;
   /** Attention counts of projects seen this session, by repo path. */
   attentionCounts: Record<string, number>;
+  /** What changed in the wiki between the previous visit and this opening; null when unknown. */
+  visitNews: { items: string[]; since: number | null } | null;
   reload(): Promise<void>;
   /** `markSeen: false` opens without moving the news baseline (startup reopen). */
   /** Resolves true when this call loaded the project (false on error or when superseded). */
@@ -191,6 +193,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attentionCounts, setAttentionCounts] = useState<Record<string, number>>({});
+  const [visitNews, setVisitNews] = useState<ProjectState['visitNews']>(null);
 
   const current = snapshot?.repoPath ?? null;
   const currentRef = useRef<string | null>(null);
@@ -237,6 +240,21 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         if (opts?.markSeen !== false) {
           const seen = deriveProject(snap, null);
           const logMd = snap.pages.find((pg) => pg.wikiRelPath === (seen.schema?.coreMap.log ?? DEFAULT_CORE_MAP.log))?.content;
+          // Read the news before the baseline moves, so "For you" can say what changed since last time.
+          const news = await api.projectNews(snap.repoPath).catch(() => null);
+          if (seq !== openSeq.current) return false;
+          setVisitNews(
+            news && news.lastSeenAt
+              ? {
+                  items:
+                    news.commits ??
+                    (logMd !== undefined
+                      ? newLogEntries(logMd, news.lastSeenLogEntries, seen.schema?.logOrder ?? 'oldest-first', news.lastSeenAt)
+                      : []),
+                  since: news.lastSeenAt,
+                }
+              : null,
+          );
           // The baseline moves only after the project loaded: news reset on a real visit.
           await api.markProjectSeen(snap.repoPath, logMd !== undefined ? countLogEntries(logMd) : null).catch(() => undefined);
         }
@@ -432,6 +450,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       loading,
       error,
       attentionCounts,
+      visitNews,
       reload,
       open,
       forget,
@@ -453,6 +472,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       loading,
       error,
       attentionCounts,
+      visitNews,
       reload,
       open,
       forget,

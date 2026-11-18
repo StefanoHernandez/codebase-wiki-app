@@ -8,6 +8,8 @@ import { decisionBlockedReason } from '../lib/wiki-compat';
 import { useStamp } from '../components/stamp';
 import { useToast } from '../components/Toast';
 import { parseFrontmatter } from '../lib/frontmatter';
+import { codeChangedSources } from '../lib/attention';
+import { copyText } from '../api';
 import { useProject } from '../state/project';
 import { useNav } from '../state/nav';
 import type { Decision, DecisionStatus } from '../types/wiki';
@@ -73,6 +75,21 @@ export default function Decisioni() {
   const page = active ? project.pages.find((p) => p.relPath === active.relPath) : null;
   const meta = page ? parseFrontmatter(page.markdown) : null;
   const activeBlocked = !!active && project.compat.decisionBlocked.has(active.relPath);
+  const [copied, setCopied] = useState(false);
+
+  // An accepted decision whose governed code changed after it may no longer hold.
+  const changedCode = (d: Decision) => {
+    if (d.status !== 'accepted') return [];
+    const p = project.pages.find((x) => x.relPath === d.relPath);
+    return p ? codeChangedSources(p.changedSources, project.snapshot?.wikiRoot ?? undefined) : [];
+  };
+  const activeChanged = active ? changedCode(active) : [];
+  const copyCheck = async () => {
+    if (!active) return;
+    await copyText(t('revisione.decisions.checkPrompt', { page: active.relPath, files: activeChanged.join(', ') }));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
 
   const openDecisionLink = (relPath: string) => {
     const normalized = relPath.replace(/\\/g, '/');
@@ -127,6 +144,11 @@ export default function Decisioni() {
                 >
                   <span className="decisioni-row-num">{d.number}</span>
                   <span className="decisioni-row-title">{d.title.replace(new RegExp(`^${d.number}\\s*[-–—:]\\s*`), '')}</span>
+                  {changedCode(d).length > 0 && (
+                    <span className="badge badge-drift" title={t('revisione.decisions.codeChangedHint')}>
+                      {t('revisione.decisions.codeChanged')}
+                    </span>
+                  )}
                   {statusChip(d)}
                 </button>
               ))}
@@ -155,6 +177,15 @@ export default function Decisioni() {
                   </div>
                 )}
               </dl>
+              {activeChanged.length > 0 && (
+                <div className="panel decisioni-changed">
+                  <p>{t('revisione.decisions.stillTrue', { n: activeChanged.length })}</p>
+                  <p className="muted decisioni-changed-files">{activeChanged.join(', ')}</p>
+                  <button type="button" className="btn btn-sm" onClick={copyCheck}>
+                    {copied ? t('esplora.copertura.copied') : t('revisione.decisions.copyCheck')}
+                  </button>
+                </div>
+              )}
               <div className="decisioni-detail">
                 <Markdown
                   markdown={page.markdown}

@@ -93,3 +93,79 @@
 .salute-risks {
   max-width: 72ch;
 }
+
+/* Overview cards: one per area; a click opens its details below. */
+.salute-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.salute-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms var(--ease-out), background 140ms var(--ease-out);
+}
+.salute-card:hover {
+  border-color: var(--rule-strong);
+  background: var(--surface-hover);
+}
+.salute-card[aria-pressed='true'] {
+  border-color: var(--human);
+  box-shadow: 0 0 0 1px var(--human-ring);
+}
+.salute-card.is-warn .salute-card-value {
+  color: var(--drift);
+}
+.salute-card-title {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+.salute-card-value {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.salute-card-sub {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+.salute-legend {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 12px;
+  margin: 0 0 14px;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+.salute-legend dd {
+  margin: 0;
+}
+.salute-core-files {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  columns: 2 260px;
+}
+.salute-core-files li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 0;
+  break-inside: avoid;
+}
+.salute-note {
+  margin-top: 8px;
+  font-size: var(--text-xs);
+}
