@@ -11,7 +11,7 @@ confidence: high
 # Log
 
 ## 2026-11-11 · RAG valutato e ristretto al codice · agent
-- What: valutazione del RAG con domande dalla risposta nota su repo del plugin e copia di Versal; corretti indice della wiki ignorata da git, copie generate duplicate, file di dati e log indicizzati; poi indice e server MCP solo sul codice (`search_wiki` rimosso), modelli liberati dopo 5 minuti, reranker non più presentato come più preciso. Tree-sitter esteso a Java, C, C++, C#, Kotlin, Swift, PHP, Ruby, Bash, Scala, Lua.
+- What: valutazione del RAG con domande dalla risposta nota su repo del plugin e copia della wiki di prova sul campo; corretti indice della wiki ignorata da git, copie generate duplicate, file di dati e log indicizzati; poi indice e server MCP solo sul codice (`search_wiki` rimosso), modelli liberati dopo 5 minuti, reranker non più presentato come più preciso. Tree-sitter esteso a Java, C, C++, C#, Kotlin, Swift, PHP, Ruby, Bash, Scala, Lua.
 - Evidence: `cargo test --workspace` → verde; `npm test` → 130 pass @fe7bba6; misure in [0004](project/decisions/0004-rag-solo-codice.md) e [0005](project/decisions/0005-reranker-facoltativo.md)
 - IDs: T8
 
@@ -26,7 +26,7 @@ confidence: high
 - IDs: none
 
 ## 2026-11-11 · Confronto modelli di embedding e reranker · agent
-- What: 34 domande di codice (app 16, plugin 12, Versal 6) con quattro modelli di embedding, ciascuno senza e con reranker. Il reranker abbassa hit@1 con tutti i modelli; `multilingual-e5-small` resta il predefinito. Su richiesta di Stefano il reranker è stato disinstallato dal suo Mac (cartella nel Cestino).
+- What: 34 domande di codice (app 16, plugin 12, wiki di prova sul campo 6) con quattro modelli di embedding, ciascuno senza e con reranker. Il reranker abbassa hit@1 con tutti i modelli; `multilingual-e5-small` resta il predefinito. Su richiesta di Stefano il reranker è stato disinstallato dal suo Mac (cartella nel Cestino).
 - Evidence: script di valutazione locale con `codebase-wiki-mcp search --json` 0.3.0 → tabella in [0005](project/decisions/0005-reranker-facoltativo.md) @99f7caf
 - IDs: none
 
@@ -72,7 +72,7 @@ confidence: high
 
 ## 2026-11-12 · Dipendenze tra lavori nel tracker · agent
 - What: la colonna `Depends on` del tracker ha un significato (plugin 0.14.0, branch `feat/tracker-deps` non ancora unito): ID che il lavoro aspetta e condizioni esterne in testo libero; il validatore segnala ID inesistenti, dipendenze da sé e cicli. L'app copia il validatore 0.14.0, legge la colonna e in Lavori mostra "Pronto" o "Aspetta T5 · TRR".
-- Evidence: plugin `bash scripts/run-tests.sh` → exit 0 (10 casi nuovi), copia della wiki Versal identica a 0.13.1 salvo la versione; app `npm test` → 152 pass, `npm run build` ok; viste non controllate a schermo dall'agente
+- Evidence: plugin `bash scripts/run-tests.sh` → exit 0 (10 casi nuovi), copia della wiki di prova sul campo identica a 0.13.1 salvo la versione; app `npm test` → 152 pass, `npm run build` ok; viste non controllate a schermo dall'agente
 - IDs: none
 
 ## 2026-11-13 · Correzioni rimandate: dipendenze, Progetti, registro MCP · agent
@@ -207,4 +207,9 @@ confidence: high
 ## 2026-11-17 · AppImage e git di sistema, release 0.7.6 · agent
 - What: dall'AppImage Linux il plugin risultava "Ultima versione non disponibile": il `LD_LIBRARY_PATH` del runtime AppImage faceva caricare a `git` la libcrypto inclusa, più vecchia, e `git-remote-https` falliva. `no_window_command` toglie `LD_LIBRARY_PATH` ai processi figli quando l'app gira in un AppImage. Versione 0.7.6, release pubblicata come `latest`.
 - Evidence: errore riprodotto con l'ambiente del processo AppImage; `cargo test -p wiki-core` 46 passed; run GitHub Actions 44049376540 → test e tre build success; 14 file nella release
+- IDs: none
+
+## 2026-11-18 · Correzione di riservatezza: riferimenti alla wiki di prova sul campo · agent
+- What: su richiesta di Stefano, i riferimenti al progetto usato come wiki di prova sul campo e un percorso locale del Mac sono sostituiti con diciture generiche nei file attuali (wiki, spec, piani, task); nessun cambio di contenuto, la storia git non è riscritta. Le voci di log e le decisioni toccate cambiano solo in quelle parole. `Sensitive data` passa a `yes`: `wiki/.private-terms` è locale e ignorato da git, e l'hook pre-commit blocca i termini (`=termine` vale a parola intera, come nel plugin 0.16.0).
+- Evidence: `sh .git/hooks/pre-commit --all` → exit 0 @ff59bf9+local
 - IDs: none

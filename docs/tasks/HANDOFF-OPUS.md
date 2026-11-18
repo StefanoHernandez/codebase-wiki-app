@@ -164,12 +164,12 @@ Il plugin 0.12.0 è rilasciato: `main` e tag `v0.12.0` (commit `a5f0a6d`) nel re
 
 Un unico prompt Composer, dopo il Passo 5 (non prima: tocca gli stessi file). Lavori:
 1. **A0 — Wiki non compatibili.** Copia in `resources/validate-wiki.py` quello del plugin 0.12.0, byte per byte. Lo SCHEMA senza `## Core map` (v1) → schermata "Wiki non compatibile" al posto delle sezioni, senza azioni di scrittura. Le righe `upgrade:` → banner in "Per te" e in Salute con l'elenco, più il bottone "copia prompt" `/wiki-init --adopt <wiki-root>`. Con righe `upgrade:` le azioni che scrivono la tabella Done o le decisioni restano disattivate: la struttura che scriverebbero potrebbe non esistere. Le wiki v1 non si leggono più: è una decisione di Stefano.
-2. **A1 — Ordine del log.** Oggi l'app aggiunge le voci in fondo. Se lo SCHEMA `## Log format` o le regole locali del log dicono newest-first (come Versal), la voce va in cima, sotto le regole. Va scritto un test con entrambi gli ordini.
+2. **A1 — Ordine del log.** Oggi l'app aggiunge le voci in fondo. Se lo SCHEMA `## Log format` o le regole locali del log dicono newest-first (come la wiki di prova sul campo), la voce va in cima, sotto le regole. Va scritto un test con entrambi gli ordini.
 3. **A2 — `## Excluded paths` e `## Page types`.** Grafo e Salute ignorano i path esclusi dallo SCHEMA (stessa semantica glob del validatore) e usano `## Page types` per il ruolo dei nodi.
 4. **A4 — Prossimi passi.** Se il tracker ha `wiki:next`, mostra il blocco in cima a Lavori e in Per te.
 5. **A5 — Registro rischi.** Se la pagina rischi ha `wiki:risk-register`, Salute mostra la tabella. I rischi `critical`/`high` senza owner (`unknown`) entrano in Per te. Owner e severità restano decisioni umane: l'app li mostra e basta.
 
-Per la verifica usa una copia della wiki Versal (`/Users/stefano/Downloads/versal-container-platform-main 2/docs`, mai l'originale). Prima dell'upgrade il validatore dà 7 righe `upgrade:`; dopo l'upgrade simulato, nessuna.
+Per la verifica usa una copia della wiki di prova sul campo (`<copia della wiki di prova sul campo>/docs`, mai l'originale). Prima dell'upgrade il validatore dà 7 righe `upgrade:`; dopo l'upgrade simulato, nessuna.
 
 ### Passo 6 — Merge in `rewrite/tauri-v2` e CI
 Fai il merge in `rewrite/tauri-v2` solo con l'ok di Stefano e solo con tutto verde. Il push di `rewrite/tauri-v2` avvia la CI (`.github/workflows/build.yml`).

@@ -16,15 +16,15 @@ confidence: medium
 
 ## Contesto
 Prima misura del 2026-11-11 con `multilingual-e5-small`, sulle sole domande di codice
-(12 sul plugin, 6 su Versal):
+(12 sul plugin, 6 sulla wiki di prova sul campo):
 
 | Repo | Con reranker hit@1 / MRR | Senza hit@1 / MRR |
 | --- | --- | --- |
 | plugin | 0,67 / 0,79 | 0,83 / 0,88 |
-| Versal | 0,67 / 0,75 | 0,67 / 0,75 |
+| Wiki di prova sul campo | 0,67 / 0,75 | 0,67 / 0,75 |
 
 Seconda misura, lo stesso giorno: 34 domande di codice dalla risposta nota (16 sull'app,
-in parte in italiano; 12 sul plugin; 6 su Versal), quattro modelli di embedding, ciascuno
+in parte in italiano; 12 sul plugin; 6 sulla wiki di prova sul campo), quattro modelli di embedding, ciascuno
 senza e con `jina-reranker-v2-base-multilingual` (pool 20). Stesso binario 0.3.0,
 indici separati per modello.
 

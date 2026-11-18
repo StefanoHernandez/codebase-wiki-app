@@ -77,7 +77,7 @@ Progetti                                              [+ Apri cartella]
   codebase-wiki-app     main @36f9599                                  ›
   3 per te · indice aggiornato · 2 novità · ultimo agente: claude-code 5 min fa
 
-  versal-test           main @65cd050                                  ›
+  field-test           main @65cd050                                  ›
   1 per te · indice indietro (4 file) · nessuna novità · nessun agente
 
   vecchio-repo          cartella non trovata              [Rimuovi]

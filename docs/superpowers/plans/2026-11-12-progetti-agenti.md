@@ -167,5 +167,5 @@ Behaviour: row click → `open(path)` then `nav.go('per-te')`; news count is a t
 
 **Files:** `wiki/modules/rag-mcp.md` (activity log), the app UI page that lists views, `wiki/log.md`, `wiki/project/work-tracker.md`, `wiki/agent/handoff.md`.
 
-- [ ] **Step 1:** Update pages; run `python3 resources/validate-wiki.py --json wiki` (0 findings) and `python3 /Users/stefano/Documents/Progetti_personali/codebase-wiki-llm/scripts/validate-agent-handoff.py wiki` (pass).
+- [ ] **Step 1:** Update pages; run `python3 resources/validate-wiki.py --json wiki` (0 findings) and `python3 <plugin repo>/scripts/validate-agent-handoff.py wiki` (pass).
 - [ ] **Step 2: Commit** `docs(wiki): Progetti view and agent activity log`

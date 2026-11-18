@@ -1,6 +1,6 @@
 # Global constraints (bind every task)
 
-Project: rewrite of `codebase-wiki-app` as a Tauri v2 + React 18 + TypeScript + Vite desktop **control panel for a person** over wikis written in the Codebase Wiki LLM plugin format (plugin source: `/Users/stefano/Documents/Progetti_personali/codebase-wiki-llm`, templates in `canonical/codebase/references/`, schema in `canonical/codebase/default-schema.md`). Branch `rewrite/tauri-v2`. Cross-platform: Windows, macOS, Linux.
+Project: rewrite of `codebase-wiki-app` as a Tauri v2 + React 18 + TypeScript + Vite desktop **control panel for a person** over wikis written in the Codebase Wiki LLM plugin format (plugin source: `<plugin repo>`, templates in `canonical/codebase/references/`, schema in `canonical/codebase/default-schema.md`). Branch `rewrite/tauri-v2`. Cross-platform: Windows, macOS, Linux.
 
 ## Architecture (fixed)
 - Cargo workspace at repo root: `crates/wiki-core` (pure Rust lib: resolver, git, guarded fs, validator, watcher) and `src-tauri` (Tauri v2 app; thin `#[tauri::command]`s over wiki-core). A future `crates/wiki-mcp` will reuse wiki-core: keep wiki-core free of any Tauri dependency.

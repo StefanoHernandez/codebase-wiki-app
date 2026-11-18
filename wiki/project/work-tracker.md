@@ -24,7 +24,7 @@ aperti sotto sono stati aperti da Stefano il 2026-11-11, nella sessione con Clau
 **In una riga:** 0.7.1 pubblicata il 2026-11-13 (interfaccia in inglese, aspetto "Notte", aggiornamento del plugin per Claude Code e Antigravity); l'aggiornamento automatico funziona (T13). Mancano le prove a mano su Windows e con un agente vero; due correzioni di stile non ancora rilasciate.
 
 1. Provare l'app installata e un agente vero collegato via MCP (T1, T5) e lo scarico della memoria (T4)
-2. Adopt della copia di prova di Versal e azioni umane su una wiki 0.13 (T3)
+2. Adopt della copia della wiki di prova sul campo e azioni umane su una wiki 0.13 (T3)
 3. Test su Windows, anche "Installa plugin" (T2)
 
 ## Aperti
@@ -34,7 +34,7 @@ aperti sotto sono stati aperti da Stefano il 2026-11-11, nella sessione con Clau
 | --- | --- | --- | --- | --- | --- | --- |
 | T1 | ⚪ | Prova a mano della 0.3.1 installata dal `.dmg` | aperta dal Finder: trova Python ≥3.10 (o lo dice in Salute); Ricerca indicizza e cerca; "Collega" scrive la config; con la firma ad-hoc Gatekeeper propone "Apri comunque" e non "danneggiata" | Stefano | prova a mano | ⚠️ NOT VERIFIED - non ancora fatta |
 | T2 | ⚪ | Prova su Windows | installer `.exe` funziona; azioni umane e ricerca vanno; "Collega Claude Code" e "Installa plugin" trovano `claude.cmd`/`codex.cmd` o mostrano il comando | Stefano | prova a mano su Windows | ⚠️ NOT VERIFIED - prima prova 2026-11-13 (0.5.1): una console a ogni processo e apertura del progetto senza risposta; correzione sul branch `fix/windows-console`, Rust non ancora compilato ([log](../log.md)) |
-| T3 | ⚪ | Adopt della copia di prova di Versal alla 0.13.1 e prova delle azioni umane | copia adottata con `50-benchmark/results/**` in Excluded paths; promuovi, chiudi ⚫, accetta decisione, firma; `validate-wiki.py --json` senza finding nuovi e `git diff` solo righe attese + log | Claude (agente) | `python3 resources/validate-wiki.py --json versal-test/docs` | ⚠️ NOT VERIFIED - copia pronta, adopt non fatto |
+| T3 | ⚪ | Adopt della copia della wiki di prova sul campo alla 0.13.1 e prova delle azioni umane | copia adottata con `50-benchmark/results/**` in Excluded paths; promuovi, chiudi ⚫, accetta decisione, firma; `validate-wiki.py --json` senza finding nuovi e `git diff` solo righe attese + log | Claude (agente) | `python3 resources/validate-wiki.py --json field-test/docs` | ⚠️ NOT VERIFIED - copia pronta, adopt non fatto |
 | T4 | ⚪ | Verificare che il server MCP liberi i modelli dopo 5 minuti senza ricerche | in Monitoraggio Attività `codebase-wiki-mcp serve` scende da ~1–2 GB a pochi MB | unknown | Monitoraggio Attività dopo una ricerca + 6 minuti | ⚠️ NOT VERIFIED - codice in `crates/wiki-mcp/src/serve.rs` (`unload_when_idle`), mai osservato |
 | T5 | ⚪ | Prova di un agente reale collegato alla 0.3.1 | una domanda dove/come usa `search_code` con una query in inglese; una su stato o rischi apre la wiki da `index.md` | Stefano | sessione Claude Code o Codex dopo il riavvio | ⚠️ NOT VERIFIED - provato solo con il server 0.2.0 |
 | T6 | ⚪ | Prova di privacy del RAG | un termine di `.private-terms` messo in un file di codice non compare mai nei risultati di `search_code` | unknown | `codebase-wiki-mcp search` su repo di prova | ⚠️ NOT VERIFIED - coperto solo da test unitari (`filter_private_chunks`) |

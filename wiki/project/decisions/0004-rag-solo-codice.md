@@ -15,7 +15,7 @@ confidence: high
 
 ## Contesto
 Il 2026-11-11 il RAG è stato valutato con domande dalla risposta nota sul repo del plugin
-(17 domande) e su una copia di Versal (14). Sulle domande di stato, rischi e handoff,
+(17 domande) e su una copia della wiki di prova sul campo (14). Sulle domande di stato, rischi e handoff,
 `search_wiki` restituiva piani vecchi, spec e template con lo stesso peso delle pagine
 attuali; un agente di prova ha dovuto aprire a mano tracker e handoff. La wiki ha già una
 mappa per gli agenti (Core map, `index.md`), il codice no.

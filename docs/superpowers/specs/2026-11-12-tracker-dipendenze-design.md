@@ -6,7 +6,7 @@ Date: 2026-11-12. Status: approved in chat, spec to review.
 
 Make the tracker say which open work can start now. A person opening Lavori sees, on each card,
 either "Pronto" or what the task still waits for; agents writing `## Next steps` and the handoff
-baton put ready work first. Success: on the Versal wiki, T28–T30 (which depend on T17) show
+baton put ready work first. Success: on the field-test wiki, T28–T30 (which depend on T17) show
 "Aspetta T17", T24 waits for T23 and the external `TRR`, T31 shows its external condition, and the validator catches a dependency on an
 ID that does not exist.
 
@@ -16,7 +16,7 @@ handoff baton for tasks that are not ready, dependencies between proposals.
 ## 1. Format (plugin `codebase-wiki-llm`)
 
 The optional `Depends on` column of the tracker tables (already allowed by
-`references/work-tracker-template.md`, already used by the Versal wiki) gets a defined meaning.
+`references/work-tracker-template.md`, already used by the field-test wiki) gets a defined meaning.
 
 - The cell is a comma-separated list. An item that matches `T[1-9]\d*` is a dependency on that
   tracker task; any other item is an **external condition** in free text (e.g. `distribution
@@ -57,7 +57,7 @@ plugin release becomes 0.14.0.
 
 Fixture wikis under the plugin's test suite (`scripts/run-tests.sh`): unknown ID, self
 dependency, two-task cycle, external text accepted, column in Done accepted, a tracker without
-the column unchanged. The Versal tracker shape (English header, `T17` and free text) validates
+the column unchanged. The field-test wiki's tracker shape (English header, `T17` and free text) validates
 clean.
 
 ## 2. App (`codebase-wiki-app`)
@@ -97,6 +97,6 @@ clean.
 
 - A wiki that used `Depends on` for something else (e.g. a sentence that mentions an ID that no
   longer exists) gets new errors. Mitigation: the message names the ID; the fix is one cell.
-  Only Versal is known to use the column, and its IDs all exist.
+  Only the field-test wiki is known to use the column, and its IDs all exist.
 - An agent may write dependencies that are really a sequence preference. The rule says to add one
   only when work order matters; a person can delete it.

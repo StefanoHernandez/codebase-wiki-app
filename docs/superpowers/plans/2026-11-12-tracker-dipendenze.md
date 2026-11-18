@@ -4,7 +4,7 @@
 
 **Goal:** Give the tracker's `Depends on` column a defined meaning, check it in the plugin validator, and show ready/waiting on Lavori cards in the app.
 
-**Architecture:** Two repos, plugin first. The plugin (`/Users/stefano/Documents/Progetti_personali/codebase-wiki-llm`) defines the cell, adds three validator errors and the agent rules, released as 0.14.0. The app (`/Users/stefano/Documents/Progetti_personali/codebase-wiki-app`) copies the new validator, parses the column into `dependsOn`, computes readiness in a pure module and renders it on Lavori.
+**Architecture:** Two repos, plugin first. The plugin (`<plugin repo>`) defines the cell, adds three validator errors and the agent rules, released as 0.14.0. The app (`<app repo>`) copies the new validator, parses the column into `dependsOn`, computes readiness in a pure module and renders it on Lavori.
 
 **Tech Stack:** Python 3.10+ stdlib (validator, tests), React + TypeScript (app), node:test.
 
@@ -72,7 +72,7 @@
 - [ ] **Step 3: Version** to `0.14.0` in the files above; `FORMAT_VERSION` unchanged.
 - [ ] **Step 4: Regenerate** `python3 scripts/generate-codebase-packages.py && python3 scripts/generate-host-packages.py`; check the four validator copies: `shasum canonical/codebase/scripts/validate-wiki.py plugins/*/skills/*/scripts/validate-wiki.py skills/codebase-wiki-llm/scripts/validate-wiki.py` — Expected: one hash.
 - [ ] **Step 5: Full suite** `PATH="$PWD/.venv/bin:$PATH" bash scripts/run-tests.sh` (create `.venv` with Python ≥3.10 if missing) — Expected: exit 0.
-- [ ] **Step 6: Versal check** — `python3 canonical/codebase/scripts/validate-wiki.py "/Users/stefano/Downloads/versal-container-platform-main 2/docs"` before/after on a copy — Expected: no `depends on` / `dependency cycle` lines; other output unchanged from 0.13.1.
+- [ ] **Step 6: field-test wiki check** — `python3 canonical/codebase/scripts/validate-wiki.py "<copy of the field-test wiki>/docs"` before/after on a copy — Expected: no `depends on` / `dependency cycle` lines; other output unchanged from 0.13.1.
 - [ ] **Step 7: Commit** each file by name — `feat: define tracker dependencies (0.14.0)`. Push the branch; merge, tag `v0.14.0` and release only on Stefano's ok.
 
 ### Task 3 (app): validator copy and parser

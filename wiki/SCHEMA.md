@@ -36,7 +36,7 @@ Level 1 tells what the system does now, not what it should do: code can hold a b
 | Log order | oldest first |
 | Language | Italiano (titoli e testo; i token fissi restano come in Conventions) |
 | Project division | releases |
-| Sensitive data | no |
+| Sensitive data | yes |
 | Agent entry file | CLAUDE.md · AGENTS.md |
 
 ## Core map
@@ -131,8 +131,11 @@ failure. Never write invented output "by way of example" next to real output.
 Off by default. When `Sensitive data` is `yes`:
 
 - forbidden terms are listed one per line in `<wiki-root>/.private-terms`,
-  which is git-ignored and never committed; this page records only the
-  generic wording to use instead (e.g. "the partner");
+  which is git-ignored and never committed; a line matches as a substring,
+  and a line `=term` matches only the whole word; case is ignored. This page
+  records only the generic wording to use instead. Here: the real wiki used
+  for field tests of the plugin is written "wiki di prova sul campo"
+  (Italian) or "field-test wiki" (English);
 - local-only paths must be git-ignored (`git check-ignore -v <path>`): in
   `.gitignore`, or in `.git/info/exclude` (never committed) when the path's
   name contains a forbidden term; the table below describes each with generic
