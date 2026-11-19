@@ -1,10 +1,10 @@
 ---
 title: Log
-generated: { by: antigravity/unknown, at: 2026-11-19T11:33:00Z }
+generated: { by: antigravity/unknown, at: 2026-11-19T17:38:24Z }
 sources:
   - wiki/project/work-tracker.md
   - .github/workflows/build.yml
-source_commit: 42c195f
+source_commit: 59ea984
 confidence: high
 ---
 
@@ -130,4 +130,9 @@ confidence: high
 ## 2026-11-19 · Release 0.8.1 · agent
 - What: su conferma di Stefano (dopo prova live in `tauri dev`), versione portata a `0.8.1`, tag `v0.8.1` e release pubblicata come `latest` con note in inglese, 14 asset firmati per Windows (`x64`), macOS (`aarch64`) e Linux (`amd64`: AppImage, `.deb`, `.rpm`) e `latest.json` verificato.
 - Evidence: run GitHub Actions 44510633067 → `test` e tre `build` (`ubuntu-24.04`, `windows-latest`, `macos-latest`) success @42c195f; `latest.json` con `darwin-aarch64`, `windows-x86_64`, `linux-x86_64`; release https://github.com/StefanoHernandez/codebase-wiki-app/releases/tag/v0.8.1
+- IDs: none
+
+## 2026-11-19 · Release 0.8.2 · agent
+- What: su conferma di Stefano (dopo prova live in `tauri dev`), vista grafo ampliata in stile Obsidian con trascinamento rami via fisica a molle (`src/lib/graph-physics.ts`), versione portata a `0.8.2`, tag `v0.8.2` e release pubblicata come `latest` con note in inglese, 14 asset firmati per Windows (`x64`), macOS (`aarch64`) e Linux (`amd64`: AppImage, `.deb`, `.rpm`) e `latest.json` verificato (`darwin-aarch64`, `windows-x86_64`, `linux-x86_64`).
+- Evidence: run GitHub Actions 44572670263 → `test` e tre `build` (`ubuntu-24.04`, `windows-latest`, `macos-latest`) success @59ea984; `latest.json` con `darwin-aarch64`, `windows-x86_64`, `linux-x86_64`; release https://github.com/StefanoHernandez/codebase-wiki-app/releases/tag/v0.8.2
 - IDs: none
