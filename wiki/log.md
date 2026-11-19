@@ -1,10 +1,10 @@
 ---
 title: Log
-generated: { by: antigravity/unknown, at: 2026-11-19T10:45:00Z }
+generated: { by: antigravity/unknown, at: 2026-11-19T11:33:00Z }
 sources:
   - wiki/project/work-tracker.md
   - .github/workflows/build.yml
-source_commit: 0763ea1
+source_commit: 42c195f
 confidence: high
 ---
 
@@ -125,4 +125,9 @@ confidence: high
 ## 2026-11-19 · Revisione completa e correzioni sicurezza, prestazioni e qualità · agent
 - What: su richiesta di Stefano, revisione completa del codebase post-0.8.0 e correzione dei problemi emersi senza toccare il comportamento atteso di `LaunchIntro` (animazione d'avvio mantenuta come identità dell'app). In `wiki-core`: percorso `handoff` letto da `SCHEMA.md` (`parse_core_map_role`), `collect_repo_files` git-aware con fallback filtrato e `load_wiki_snapshot_opts` con `repo_files` opzionale. In `rag-core` / `wiki-mcp`: `status_json` e `models_list_json` sempre disponibili in-process, recovery da mutex poison su `CUSTOM_CACHE`, supporto `--` nel parser CLI, verifica `.private-terms` su path e testo anche in `run.rs`, messaggi CLI/MCP interamente in inglese. In `src-tauri`: `commands.rs` suddiviso in `commands/{mod,python,rag,plugin}.rs`, gate `opened_repo` esteso a tutti i comandi `rag_*`, arresto sidecar in `RagJobs::shutdown()` su `RunEvent::Exit`, cache TTL 15 min (+ `force`) su `latest_plugin_version` e messaggi localizzati via `tr`. Nel frontend: `@tauri-apps/*` centralizzato in `src/api.ts` con test guardrail, `ErrorBoundary` globale e per vista, viste lazy (`React.lazy` + `<Suspense>`), subset `@fontsource` solo `latin`/`latin-ext`, rimossa `react-force-graph-2d`, `Progetti` più leggera (`includeRepoFiles: false`, 3 worker), filtri estensione dinamici in `Ricerca`, filtro `[riservata]`/`[private]` condiviso, `<Dialog>` al posto di `window.confirm`, `Grafo` 2D on-demand (`grafo-canvas.ts`), spotlight throttled via rAF. Tolti i 6 avvisi Clippy residui; aggiornate le pagine della wiki e archiviate le voci 0.3–0.6 in [releases-0.3-0.6.md](log/releases-0.3-0.6.md).
 - Evidence: `cargo test --workspace` → 140 pass (14 app + 67 rag-core + 58 wiki-core + 1 wiki-mcp); `cargo clippy --workspace --all-targets` → 0 avvisi; `node --test tests/*.test.ts` → 193 pass; `./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vite build` → ok (chunk JS max 223.51 kB); `python3 resources/validate-wiki.py --json wiki` → exit 0; `sh .git/hooks/pre-commit --all` → exit 0 @0763ea1+local
+- IDs: none
+
+## 2026-11-19 · Release 0.8.1 · agent
+- What: su conferma di Stefano (dopo prova live in `tauri dev`), versione portata a `0.8.1`, tag `v0.8.1` e release pubblicata come `latest` con note in inglese, 14 asset firmati per Windows (`x64`), macOS (`aarch64`) e Linux (`amd64`: AppImage, `.deb`, `.rpm`) e `latest.json` verificato.
+- Evidence: run GitHub Actions 44510633067 → `test` e tre `build` (`ubuntu-24.04`, `windows-latest`, `macos-latest`) success @42c195f; `latest.json` con `darwin-aarch64`, `windows-x86_64`, `linux-x86_64`; release https://github.com/StefanoHernandez/codebase-wiki-app/releases/tag/v0.8.1
 - IDs: none

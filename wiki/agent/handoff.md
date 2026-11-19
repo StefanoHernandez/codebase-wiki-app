@@ -2,13 +2,13 @@
 type: AgentNote
 title: Passaggio di consegne
 description: Stato del lavoro e prossimo compito per l'agente che riprende l'app Codebase Wiki.
-generated: { by: antigravity/unknown, at: 2026-11-19T10:56:00Z }
+generated: { by: antigravity/unknown, at: 2026-11-19T11:33:00Z }
 sources:
   - wiki/SCHEMA.md
   - wiki/log.md
   - wiki/project/work-tracker.md
   - crates/wiki-mcp/src/serve.rs
-source_commit: 0fd018d
+source_commit: 42c195f
 confidence: high
 ---
 
@@ -18,10 +18,10 @@ confidence: high
 <!-- wiki:state -->
 
 - Tracker IDs: T1, T2, T3, T4, T5, T6
-- Goal: nessun sottoprogetto aperto; 0.8.1 pronta per la pubblicazione (`v0.8.1`), restano le prove a mano e sul campo (T1–T6)
-- Last completed step: release 0.8.1 (correzioni IPC/RAG/UI, 0 avvisi Clippy, `LaunchIntro` preservata e provata in `tauri dev`)
+- Goal: nessun sottoprogetto aperto; 0.8.1 pubblicata (`v0.8.1`), restano le prove a mano e sul campo (T1–T6)
+- Last completed step: release 0.8.1 pubblicata su GitHub (correzioni IPC/RAG/UI, 0 avvisi Clippy, `LaunchIntro` preservata e provata in `tauri dev`)
 - Current branch: `main`
-- Last commit: `release: 0.8.1`
+- Last commit: `docs(wiki): release 0.8.1 recorded [skip ci]`
 - Worktree: clean dopo i commit
 
 ## Baton per il prossimo agente
@@ -52,12 +52,12 @@ confidence: high
 
 | Command | Directory | Result | Evidence / notes |
 | --- | --- | --- | --- |
-| `cargo test --workspace` | repo | pass @0763ea1+local | 140 pass (14 app + 67 rag-core + 58 wiki-core + 1 wiki-mcp), 0 warning |
-| `cargo clippy --workspace --all-targets` | repo | pass @0763ea1+local | 0 warning |
-| `node --test tests/*.test.ts` | repo | pass @0763ea1+local | 193 pass, 0 fail |
-| `./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vite build` | repo | pass @0763ea1+local | 0 errori TS, Vite ok, chunk JS max 223.51 kB |
+| `cargo test --workspace` | repo | pass @42c195f | 140 pass (14 app + 67 rag-core + 58 wiki-core + 1 wiki-mcp), 0 warning |
+| `cargo clippy --workspace --all-targets` | repo | pass @42c195f | 0 warning |
+| `node --test tests/*.test.ts` | repo | pass @42c195f | 193 pass, 0 fail |
+| `./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vite build` | repo | pass @42c195f | 0 errori TS, Vite ok, chunk JS max 223.51 kB |
 | `npm run build:app` | repo | pass @224232f | `Codebase Wiki.app` 89 MB; `npx tauri build` senza override ora fallisce per la chiave di firma mancante |
-| CI tag `v0.8.0` | GitHub Actions | pass | run 44376939392 → test e 3 build success |
+| CI tag `v0.8.1` | GitHub Actions | pass @42c195f | run 44510633067 → test e 3 build success, release con 14 asset e `latest.json` |
 
 ## Da non rifare
 <!-- wiki:do-not-redo -->
