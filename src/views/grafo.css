@@ -54,7 +54,10 @@
   cursor: grabbing;
 }
 .grafo-canvas.is-hovering {
-  cursor: pointer;
+  cursor: grab;
+}
+.grafo-canvas.is-grabbing {
+  cursor: grabbing;
 }
 
 .grafo-hud-top {

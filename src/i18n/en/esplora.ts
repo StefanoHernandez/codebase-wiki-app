@@ -216,7 +216,7 @@ export const esplora: Record<keyof typeof it, string> = {
   'esplora.grafo.mode2d': '2D Flat',
   'esplora.grafo.branchFull': 'Branch',
   'esplora.grafo.hint3d': 'Drag to rotate in 3D · Hover a node to light up its branch',
-  'esplora.grafo.hint2d': 'Drag to pan · Scroll to zoom · Hover a node to light up its branch',
+  'esplora.grafo.hint2d': 'Drag a node to move its branch · Drag background to pan · Scroll to zoom',
   'esplora.grafo.hintHover': 'Lit branch: {label}',
   'esplora.grafo.hintStory': 'History: graph growth commit by commit · Scroll or W/S to step',
   'esplora.grafo.hintBrain': 'Full 3D Brain: drag to rotate · Hover a node to light up synapses',

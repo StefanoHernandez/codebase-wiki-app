@@ -1,10 +1,15 @@
-import type { GraphEdge, GraphNode, GraphNodeCategory } from '../types/wiki';
+import type { GraphNodeCategory } from '../types/wiki';
 import { withAlpha } from './grafo-helpers';
 
-export interface NodePosition {
-  x2: number;
-  y2: number;
-}
+export {
+  computeGraphLayout,
+  computeViewport,
+  GraphSimulation,
+  screenToWorld,
+  worldToScreen,
+  type GraphViewport,
+  type NodePosition,
+} from '../lib/graph-physics';
 
 export interface ThemePalette {
   ink: string;
@@ -31,101 +36,6 @@ export interface LabelCandidate {
   priority: number;
   accent?: boolean;
   muted?: boolean;
-}
-
-function hashStr(input: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0) / 4294967296;
-}
-
-const SHELL_RADII: Record<GraphNodeCategory, [number, number]> = {
-  core: [22, 68],
-  agent: [86, 140],
-  decision: [104, 164],
-  tracker: [110, 170],
-  topic: [132, 204],
-  source: [195, 275],
-};
-
-/**
- * Deterministic 2D radial + force-relaxed layout for arbitrary repository graphs.
- * Core pages sit near the center; connected nodes pull together while nearby nodes repel.
- */
-export function computeGraphLayout(
-  nodes: GraphNode[],
-  edges: GraphEdge[],
-): Map<string, NodePosition> {
-  const out = new Map<string, NodePosition>();
-  if (nodes.length === 0) return out;
-
-  const grouped = new Map<GraphNodeCategory, GraphNode[]>();
-  for (const n of nodes) {
-    const arr = grouped.get(n.category) ?? [];
-    arr.push(n);
-    grouped.set(n.category, arr);
-  }
-
-  const pos = new Map<string, [number, number]>();
-  for (const [cat, list] of grouped) {
-    const sorted = [...list].sort((a, b) => a.id.localeCompare(b.id));
-    const [rMin, rMax] = SHELL_RADII[cat];
-    const count = sorted.length;
-    sorted.forEach((n, idx) => {
-      const jitter = hashStr(n.id);
-      const angle = (idx / Math.max(1, count)) * Math.PI * 2 + jitter * 0.45;
-      const radius = rMin + (rMax - rMin) * (0.3 + 0.7 * jitter);
-      pos.set(n.id, [Math.cos(angle) * radius, Math.sin(angle) * radius]);
-    });
-  }
-
-  const nodeIds = nodes.map((n) => n.id);
-  const iters = nodes.length <= 400 ? 32 : 12;
-  for (let it = 0; it < iters; it++) {
-    for (const e of edges) {
-      const a = pos.get(e.source);
-      const b = pos.get(e.target);
-      if (!a || !b) continue;
-      const dx = b[0] - a[0];
-      const dy = b[1] - a[1];
-      const dist = Math.hypot(dx, dy) || 1;
-      const targetDist = e.kind === 'source-link' ? 76 : 62;
-      const pull = ((dist - targetDist) / dist) * 0.065;
-      a[0] += dx * pull;
-      a[1] += dy * pull;
-      b[0] -= dx * pull;
-      b[1] -= dy * pull;
-    }
-
-    if (nodeIds.length <= 280) {
-      for (let i = 0; i < nodeIds.length; i++) {
-        const a = pos.get(nodeIds[i])!;
-        for (let j = i + 1; j < nodeIds.length; j++) {
-          const b = pos.get(nodeIds[j])!;
-          const dx = b[0] - a[0];
-          const dy = b[1] - a[1];
-          const d2 = dx * dx + dy * dy;
-          if (d2 > 0 && d2 < 960) {
-            const d = Math.sqrt(d2);
-            const push = ((31 - d) / d) * 0.22;
-            a[0] -= dx * push;
-            a[1] -= dy * push;
-            b[0] += dx * push;
-            b[1] += dy * push;
-          }
-        }
-      }
-    }
-  }
-
-  for (const n of nodes) {
-    const p = pos.get(n.id) ?? [0, 0];
-    out.set(n.id, { x2: p[0], y2: p[1] });
-  }
-  return out;
 }
 
 export function readThemePalette(el: Element): ThemePalette {
@@ -247,14 +157,14 @@ export function drawLabelsNoOverlap(
   for (const c of sorted) {
     const label = c.text.length > 26 ? `${c.text.slice(0, 24)}…` : c.text;
     const tw = ctx.measureText(label).width;
-    const pw = tw + 12;
-    const ph = 19;
+    const pw = tw + 10;
+    const ph = 18;
     const px = Math.round(c.sx - pw / 2);
-    const py = Math.round(c.sy + c.r + 7);
+    const py = Math.round(c.sy + c.r + 6);
     if (px < minLeft || px + pw > width - 8 || py < 56 || py + ph > height - 54) continue;
 
     const overlaps = placed.some(
-      ([x1, y1, x2, y2]) => !(px + pw + 6 < x1 || px - 6 > x2 || py + ph + 4 < y1 || py - 4 > y2),
+      ([x1, y1, x2, y2]) => !(px + pw + 5 < x1 || px - 5 > x2 || py + ph + 3 < y1 || py - 3 > y2),
     );
     if (overlaps) continue;
     placed.push([px, py, px + pw, py + ph]);
@@ -268,7 +178,7 @@ export function drawLabelsNoOverlap(
     ctx.stroke();
 
     ctx.fillStyle = c.muted ? palette.muted : palette.ink;
-    ctx.fillText(label, px + 6, py + ph / 2 + 0.5);
+    ctx.fillText(label, px + 5, py + ph / 2 + 0.5);
   }
   ctx.restore();
 }

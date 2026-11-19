@@ -214,7 +214,7 @@ export const esplora = {
   'esplora.grafo.mode2d': '2D Piatto',
   'esplora.grafo.branchFull': 'Ramo',
   'esplora.grafo.hint3d': 'Trascina per ruotare in 3D · Passa su un nodo per accendere il ramo',
-  'esplora.grafo.hint2d': 'Trascina per spostare · Rotella per zoom · Passa su un nodo per illuminare il ramo',
+  'esplora.grafo.hint2d': 'Trascina un nodo per spostare il ramo · Trascina lo sfondo per muoverti · Rotella per zoom',
   'esplora.grafo.hintHover': 'Ramo acceso: {label}',
   'esplora.grafo.hintStory': 'Storia: crescita del grafo commit per commit · Rotella o W/S per scorrere',
   'esplora.grafo.hintBrain': 'Cervello 3D completo: trascina per ruotare · Passa su un nodo per illuminare le sinapsi',

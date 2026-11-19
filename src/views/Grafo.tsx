@@ -17,11 +17,14 @@ import {
   withAlpha,
 } from './grafo-helpers';
 import {
-  computeGraphLayout,
   CATEGORY_SHAPE,
+  computeViewport,
   drawFlatNode,
   drawLabelsNoOverlap,
+  GraphSimulation,
   readThemePalette,
+  screenToWorld,
+  worldToScreen,
   type LabelCandidate,
   type ThemePalette,
 } from './grafo-canvas';
@@ -121,9 +124,14 @@ export default function Grafo() {
     return { nodes, edges };
   }, [fullGraph, includeCodeSources, onlyDriftOrErrors, searchQuery, focusNodeId, enabledCats]);
 
-  const layout = useMemo(
-    () => computeGraphLayout(fullGraph.nodes, fullGraph.edges),
+  const simulation = useMemo(
+    () => new GraphSimulation(fullGraph.nodes, fullGraph.edges),
     [fullGraph],
+  );
+
+  const visibleIdSet = useMemo(
+    () => new Set(filteredGraph.nodes.map((n) => n.id)),
+    [filteredGraph.nodes],
   );
 
   const nodeById = useMemo(
@@ -137,6 +145,7 @@ export default function Grafo() {
   }, [historyData, fullGraph.nodes, snapshot]);
 
   const repoKey = snapshot ? `${snapshot.repoPath}@${snapshot.gitState.headSha}` : '';
+  const fittedRepoKeyRef = useRef<string>('');
   useEffect(() => {
     setHistoryData(null);
     setHistoryError(null);
@@ -146,6 +155,7 @@ export default function Grafo() {
     setFocusNodeId(null);
     setSelectedId(null);
     setHoveredId(null);
+    fittedRepoKeyRef.current = '';
   }, [repoKey]);
 
   const loadHistory = useCallback(async () => {
@@ -191,12 +201,15 @@ export default function Grafo() {
     return () => window.clearTimeout(timer);
   }, [historyOpen, playing, timeline, storyStep]);
 
-  // Pan & zoom refs (mutated inside RAF without React re-renders)
+  // Pan, zoom & interactive drag refs (mutated inside RAF without React re-renders)
   const panXRef = useRef(0);
   const panYRef = useRef(0);
   const panTargetRef = useRef<{ x: number; y: number } | null>(null);
   const zoomRef = useRef(1.0);
-  const draggingRef = useRef(false);
+  const zoomTargetRef = useRef<number | null>(null);
+  const dragModeRef = useRef<'node' | 'pan' | null>(null);
+  const draggedNodeIdRef = useRef<string | null>(null);
+  const [grabbing, setGrabbing] = useState(false);
   const pointerDownRef = useRef<{ x: number; y: number; moved: number } | null>(null);
   const screenNodesRef = useRef<NodeScreenPos[]>([]);
   const hoverIdRef = useRef<string | null>(null);
@@ -243,25 +256,89 @@ export default function Grafo() {
 
   const panToNode = useCallback(
     (nodeId: string) => {
-      const p = layout.get(nodeId);
+      const p = simulation.getPosition(nodeId);
       const wrap = wrapRef.current;
       if (!p || !wrap) return;
       const rect = wrap.getBoundingClientRect();
-      const leftInset = explorerOpenRef.current && rect.width >= 721 ? 244 : 0;
-      const rightInset = drawerOpenRef.current && rect.width >= 721 ? Math.min(420, rect.width * 0.92) : 0;
-      const minDim = Math.max(240, Math.min(rect.width - leftInset - rightInset * 0.35, rect.height));
-      const baseScale = (minDim / 560) * zoomRef.current;
-      panTargetRef.current = { x: -p.x2 * baseScale, y: -p.y2 * baseScale };
+      const vp = computeViewport(
+        rect.width,
+        rect.height,
+        explorerOpenRef.current,
+        drawerOpenRef.current,
+        0,
+        0,
+        zoomRef.current,
+      );
+      zoomTargetRef.current = null;
+      panTargetRef.current = { x: -p.x2 * vp.baseScale, y: -p.y2 * vp.baseScale };
       scheduleDrawRef.current();
     },
-    [layout],
+    [simulation],
+  );
+
+  const fitVisibleGraph = useCallback(
+    (immediate = false) => {
+      const wrap = wrapRef.current;
+      if (!wrap) return false;
+      const rect = wrap.getBoundingClientRect();
+      const width = rect.width || wrap.clientWidth;
+      const height = rect.height || wrap.clientHeight;
+      if (width <= 0 || height <= 0) return false;
+
+      const vpUnit = computeViewport(
+        width,
+        height,
+        explorerOpenRef.current,
+        drawerOpenRef.current,
+        0,
+        0,
+        1,
+      );
+      const availW = Math.max(180, width - vpUnit.leftInset - vpUnit.rightInset);
+      const availH = Math.max(180, height - 110);
+      const bounds =
+        simulation.computeBounds(visibleIdSet.size > 0 ? visibleIdSet : undefined) ??
+        simulation.computeBounds();
+      if (!bounds) {
+        panXRef.current = 0;
+        panYRef.current = 0;
+        zoomRef.current = 1.0;
+        panTargetRef.current = null;
+        zoomTargetRef.current = null;
+        scheduleDrawRef.current();
+        return true;
+      }
+
+      const fitScaleX = (availW * 0.88) / Math.max(bounds.width, 160);
+      const fitScaleY = (availH * 0.88) / Math.max(bounds.height, 160);
+      const unitScale = vpUnit.baseScale || 1e-6;
+      const targetZoom = Math.max(0.45, Math.min(1.35, Math.min(fitScaleX, fitScaleY) / unitScale));
+      const targetScale = unitScale * targetZoom;
+      const targetPanX = -bounds.cx * targetScale;
+      const targetPanY = -bounds.cy * targetScale;
+
+      const reduced =
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      if (immediate || reduced) {
+        zoomRef.current = targetZoom;
+        panXRef.current = targetPanX;
+        panYRef.current = targetPanY;
+        zoomTargetRef.current = null;
+        panTargetRef.current = null;
+      } else {
+        zoomTargetRef.current = targetZoom;
+        panTargetRef.current = { x: targetPanX, y: targetPanY };
+      }
+      scheduleDrawRef.current();
+      return true;
+    },
+    [simulation, visibleIdSet],
   );
 
   const resetView = useCallback(() => {
-    panTargetRef.current = { x: 0, y: 0 };
-    zoomRef.current = 1.0;
-    scheduleDrawRef.current();
-  }, []);
+    fitVisibleGraph(false);
+  }, [fitVisibleGraph]);
 
   const refreshColors = useCallback(() => {
     const el = wrapRef.current ?? document.documentElement;
@@ -294,6 +371,16 @@ export default function Grafo() {
     return () => window.removeEventListener('keydown', onKey);
   }, [historyOpen, timeline]);
 
+  const fitVisibleRef = useRef(fitVisibleGraph);
+  fitVisibleRef.current = fitVisibleGraph;
+
+  useEffect(() => {
+    if (lens !== 'links' || fullGraph.nodes.length === 0) return;
+    if (fittedRepoKeyRef.current !== repoKey && fitVisibleGraph(true)) {
+      fittedRepoKeyRef.current = repoKey;
+    }
+  }, [lens, fullGraph.nodes.length, repoKey, fitVisibleGraph]);
+
   // Main 2D canvas renderer; idle while the map or the list covers it.
   useEffect(() => {
     if (lens !== 'links') return;
@@ -321,7 +408,7 @@ export default function Grafo() {
     const drawFrame = () => {
       rafId = 0;
 
-      if (!draggingRef.current && panTargetRef.current) {
+      if (dragModeRef.current === null && panTargetRef.current) {
         const dx = panTargetRef.current.x - panXRef.current;
         const dy = panTargetRef.current.y - panYRef.current;
         if (reducedMotion || (Math.abs(dx) < 0.8 && Math.abs(dy) < 0.8)) {
@@ -333,6 +420,17 @@ export default function Grafo() {
           panYRef.current += dy * 0.16;
         }
       }
+      if (dragModeRef.current === null && zoomTargetRef.current !== null) {
+        const dz = zoomTargetRef.current - zoomRef.current;
+        if (reducedMotion || Math.abs(dz) < 0.005) {
+          zoomRef.current = zoomTargetRef.current;
+          zoomTargetRef.current = null;
+        } else {
+          zoomRef.current += dz * 0.16;
+        }
+      }
+
+      const physicsActive = reducedMotion ? false : simulation.step();
 
       if (historyOpen) {
         if (reducedMotion) {
@@ -345,12 +443,16 @@ export default function Grafo() {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const width = canvas.width / dpr;
       const height = canvas.height / dpr;
-      const leftInset = explorerOpenRef.current && width >= 721 ? 244 : 0;
-      const rightInset = drawerOpenRef.current && width >= 721 ? Math.min(420, width * 0.92) : 0;
-      const cx = leftInset + (width - leftInset - rightInset) / 2 + panXRef.current;
-      const cy = height / 2 + panYRef.current;
-      const minDim = Math.max(240, Math.min(width - leftInset - rightInset * 0.35, height));
-      const baseScale = (minDim / 560) * zoomRef.current;
+      const vp = computeViewport(
+        width,
+        height,
+        explorerOpenRef.current,
+        drawerOpenRef.current,
+        panXRef.current,
+        panYRef.current,
+        zoomRef.current,
+      );
+      const { leftInset, rightInset } = vp;
 
       const palette = paletteRef.current ?? readThemePalette(wrap);
 
@@ -376,16 +478,16 @@ export default function Grafo() {
         (e) => visibleSet.has(e.source) && visibleSet.has(e.target),
       );
 
-      const activeAnchor = hoverIdRef.current ?? selectedIdRef.current ?? focusNodeId;
+      const activeAnchor =
+        draggedNodeIdRef.current ?? hoverIdRef.current ?? selectedIdRef.current ?? focusNodeId;
       const activeNbrs = activeAnchor ? neighborIds(activeAnchor, edgesToRender) : null;
 
       // Project 2D positions
       const projMap = new Map<string, NodeScreenPos>();
       for (const node of nodesToRender) {
-        const p = layout.get(node.id);
+        const p = simulation.getPosition(node.id);
         if (!p) continue;
-        const sx = cx + p.x2 * baseScale;
-        const sy = cy + p.y2 * baseScale;
+        const { sx, sy } = worldToScreen(p.x2, p.y2, vp);
         const rBase = scaledNodeRadius(node);
         const birthIdx = isStoryMode ? activeTimeline?.birth.get(node.id) ?? 0 : 0;
         const age = isStoryMode ? Math.max(0, storyAnimRef.current - birthIdx) : 1;
@@ -442,7 +544,7 @@ export default function Grafo() {
         const { node, sx, sy, r } = item;
         if (sx < -40 || sx > width + 40 || sy < -40 || sy > height + 40) continue;
 
-        const isHovered = hoverIdRef.current === node.id;
+        const isHovered = hoverIdRef.current === node.id || draggedNodeIdRef.current === node.id;
         const isSelected = selectedIdRef.current === node.id;
         const isFocused = focusNodeId === node.id;
         const isNeighbor = Boolean(activeNbrs?.has(node.id));
@@ -478,8 +580,8 @@ export default function Grafo() {
             isQueryMatch ||
             isCommitHot ||
             node.category === 'core' ||
-            zoomRef.current >= 1.15 ||
-            sortedNodes.length <= 28);
+            zoomRef.current >= 0.78 ||
+            sortedNodes.length <= 60);
 
         if (shouldShowLabel) {
           let priority = node.degree;
@@ -545,8 +647,9 @@ export default function Grafo() {
       ctx.restore();
       const storyAnimating =
         historyOpen && !reducedMotion && Math.abs(storyStep - storyAnimRef.current) > 0.005;
-      const panAnimating = !reducedMotion && panTargetRef.current !== null;
-      if (draggingRef.current || panAnimating || storyAnimating) {
+      const panAnimating =
+        !reducedMotion && (panTargetRef.current !== null || zoomTargetRef.current !== null);
+      if (dragModeRef.current !== null || physicsActive || panAnimating || storyAnimating) {
         rafId = requestAnimationFrame(drawFrame);
       } else if (historyOpen) {
         storyAnimRef.current = storyStep;
@@ -560,6 +663,9 @@ export default function Grafo() {
 
     const ro = new ResizeObserver(() => {
       resize();
+      if (fittedRepoKeyRef.current !== repoKey && filteredGraph.nodes.length > 0) {
+        if (fitVisibleRef.current(true)) fittedRepoKeyRef.current = repoKey;
+      }
       scheduleDraw();
     });
     ro.observe(wrap);
@@ -572,11 +678,12 @@ export default function Grafo() {
     };
   }, [
     lens,
+    repoKey,
     historyOpen,
     storyStep,
     timeline,
     filteredGraph,
-    layout,
+    simulation,
     focusNodeId,
     searchQuery,
     refreshColors,
@@ -615,15 +722,53 @@ export default function Grafo() {
   );
 
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    draggingRef.current = true;
+    const hit = hitTest(e.clientX, e.clientY);
     panTargetRef.current = null;
+    zoomTargetRef.current = null;
     pointerDownRef.current = { x: e.clientX, y: e.clientY, moved: 0 };
+    if (hit) {
+      dragModeRef.current = 'node';
+      draggedNodeIdRef.current = hit.id;
+      hoverIdRef.current = hit.id;
+      setHoveredId(hit.id);
+    } else {
+      dragModeRef.current = 'pan';
+      draggedNodeIdRef.current = null;
+    }
+    setGrabbing(true);
     e.currentTarget.setPointerCapture(e.pointerId);
     scheduleDrawRef.current();
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (draggingRef.current && pointerDownRef.current) {
+    const mode = dragModeRef.current;
+    if (mode === 'node' && draggedNodeIdRef.current && pointerDownRef.current) {
+      const dx = e.clientX - pointerDownRef.current.x;
+      const dy = e.clientY - pointerDownRef.current.y;
+      pointerDownRef.current.x = e.clientX;
+      pointerDownRef.current.y = e.clientY;
+      pointerDownRef.current.moved += Math.hypot(dx, dy);
+      if (pointerDownRef.current.moved >= 3) {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const vp = computeViewport(
+          rect.width,
+          rect.height,
+          explorerOpenRef.current,
+          drawerOpenRef.current,
+          panXRef.current,
+          panYRef.current,
+          zoomRef.current,
+        );
+        const { wx, wy } = screenToWorld(e.clientX - rect.left, e.clientY - rect.top, vp);
+        simulation.movePinnedNode(draggedNodeIdRef.current, wx, wy);
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+          simulation.settleNow(6);
+        }
+      }
+      scheduleDrawRef.current();
+      return;
+    }
+    if (mode === 'pan' && pointerDownRef.current) {
       const dx = e.clientX - pointerDownRef.current.x;
       const dy = e.clientY - pointerDownRef.current.y;
       pointerDownRef.current.x = e.clientX;
@@ -635,30 +780,44 @@ export default function Grafo() {
       return;
     }
     const hit = hitTest(e.clientX, e.clientY);
-    setHoveredId(hit ? hit.id : null);
+    const next = hit ? hit.id : null;
+    setHoveredId((cur) => (cur === next ? cur : next));
   };
 
-  const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+  const finishPointer = (e: React.PointerEvent<HTMLCanvasElement>, isCancel: boolean) => {
+    const mode = dragModeRef.current;
+    const nodeId = draggedNodeIdRef.current;
     const moved = pointerDownRef.current?.moved ?? 0;
-    draggingRef.current = false;
+
+    dragModeRef.current = null;
+    draggedNodeIdRef.current = null;
     pointerDownRef.current = null;
+    setGrabbing(false);
+
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
-    scheduleDrawRef.current();
-    if (moved < 6) {
-      const hit = hitTest(e.clientX, e.clientY);
-      if (hit) {
-        if (e.altKey || e.shiftKey) {
-          setFocusNodeId((cur) => (cur === hit.id ? null : hit.id));
-        } else {
-          setSelectedId(hit.id);
-          openNodeInDrawer(hit);
-        }
-      } else {
-        setSelectedId(null);
+
+    if (mode === 'node' && nodeId) {
+      simulation.unpinNode(nodeId);
+      if (moved >= 6 && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+        simulation.settleNow(24);
       }
+      if (!isCancel && moved < 6) {
+        const hit = nodeById.get(nodeId) ?? hitTest(e.clientX, e.clientY);
+        if (hit) {
+          if (e.altKey || e.shiftKey) {
+            setFocusNodeId((cur) => (cur === hit.id ? null : hit.id));
+          } else {
+            setSelectedId(hit.id);
+            openNodeInDrawer(hit);
+          }
+        }
+      }
+    } else if (mode === 'pan' && !isCancel && moved < 6) {
+      setSelectedId(null);
     }
+    scheduleDrawRef.current();
   };
 
   const onWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -671,8 +830,38 @@ export default function Grafo() {
       }
       return;
     }
-    const factor = e.deltaY < 0 ? 1.09 : 0.92;
-    zoomRef.current = Math.max(0.35, Math.min(3.2, zoomRef.current * factor));
+    const rect = e.currentTarget.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const prevZoom = zoomRef.current;
+    const factor = e.deltaY < 0 ? 1.1 : 0.91;
+    const nextZoom = Math.max(0.22, Math.min(3.5, prevZoom * factor));
+
+    const vpBefore = computeViewport(
+      rect.width,
+      rect.height,
+      explorerOpenRef.current,
+      drawerOpenRef.current,
+      panXRef.current,
+      panYRef.current,
+      prevZoom,
+    );
+    const { wx, wy } = screenToWorld(sx, sy, vpBefore);
+    const vpAfter = computeViewport(
+      rect.width,
+      rect.height,
+      explorerOpenRef.current,
+      drawerOpenRef.current,
+      0,
+      0,
+      nextZoom,
+    );
+
+    zoomRef.current = nextZoom;
+    zoomTargetRef.current = null;
+    panTargetRef.current = null;
+    panXRef.current = sx - (vpAfter.cx + wx * vpAfter.baseScale);
+    panYRef.current = sy - (vpAfter.cy + wy * vpAfter.baseScale);
     scheduleDrawRef.current();
   };
 
@@ -726,15 +915,15 @@ export default function Grafo() {
     >
       <canvas
         ref={canvasRef}
-        className={`grafo-canvas${hoveredId ? ' is-hovering' : ''}`}
+        className={`grafo-canvas${hoveredId ? ' is-hovering' : ''}${grabbing ? ' is-grabbing' : ''}`}
         tabIndex={0}
         aria-label={t('esplora.grafo.aria')}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
+        onPointerUp={(e) => finishPointer(e, false)}
+        onPointerCancel={(e) => finishPointer(e, true)}
         onPointerLeave={() => {
-          draggingRef.current = false;
-          setHoveredId(null);
+          if (!dragModeRef.current) setHoveredId(null);
         }}
         onDoubleClick={(e) => {
           const hit = hitTest(e.clientX, e.clientY);
