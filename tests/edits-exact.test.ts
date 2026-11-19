@@ -243,6 +243,27 @@ test('no browser code imports Node modules (they are empty in the Tauri webview)
   assert.deepEqual(offenders, []);
 });
 
+test('only src/api.ts imports @tauri-apps packages', () => {
+  const srcRoot = path.resolve(process.cwd(), 'src');
+  const allowed = path.join(srcRoot, 'api.ts');
+  const offenders: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (
+        /\.(ts|tsx)$/.test(entry.name) &&
+        full !== allowed &&
+        /from ['"]@tauri-apps\//.test(fs.readFileSync(full, 'utf8'))
+      ) {
+        offenders.push(path.relative(srcRoot, full));
+      }
+    }
+  };
+  walk(srcRoot);
+  assert.deepEqual(offenders, []);
+});
+
 test('newest-first log: one blank line between the new entry and the next one', () => {
   const log = '---\ntitle: Log\n---\n# Log\n\n## 2026-11-01 · Old · agent\n- What: x\n';
   const out = appendLogEntry({ logMarkdown: log, date: '2026-11-11', title: 'New', what: 'w', evidence: 'e', ids: [], order: 'newest-first' });

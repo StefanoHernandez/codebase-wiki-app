@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { useTheme } from '../state/theme';
-import { drawFlatNode, readThemePalette, type ThemePalette } from './grafo-3d';
+import { drawFlatNode, readThemePalette, type ThemePalette } from './grafo-canvas';
 import { withAlpha } from './grafo-helpers';
 
 export interface RadarHit {

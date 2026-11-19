@@ -63,7 +63,7 @@ pub fn read_all(dir: &Path, limit: usize) -> Vec<ActivityLine> {
         .filter_map(|p| fs::read_to_string(p).ok())
         .flat_map(|t| t.lines().filter_map(|l| serde_json::from_str(l).ok()).collect::<Vec<_>>())
         .collect();
-    out.sort_by(|a, b| b.ts.cmp(&a.ts));
+    out.sort_by_key(|a| std::cmp::Reverse(a.ts));
     out.truncate(limit);
     out
 }

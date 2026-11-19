@@ -22,6 +22,8 @@ export const shell = {
   'shell.sections.aria': 'Sezioni',
   'shell.intro.subtitle': 'Il pannello umano per governare la conoscenza scritta dagli agenti.',
   'shell.intro.skip': 'Clicca o attendi un istante…',
+  'shell.error.title': 'Qualcosa è andato storto in questa vista.',
+  'shell.error.retry': 'Riprova',
   'shell.commands': 'Comandi',
   'shell.noProject': 'Nessun progetto',
   'shell.detachedHead': 'HEAD staccato',

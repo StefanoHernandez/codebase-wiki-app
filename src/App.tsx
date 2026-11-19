@@ -1,3 +1,4 @@
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Shell } from "./components/Shell";
 import { ToastProvider } from "./components/Toast";
 import { NavProvider } from "./state/nav";
@@ -15,7 +16,9 @@ export default function App() {
             <NavProvider>
               <UpdatesProvider>
                 <LangKeyed>
-                  <Shell />
+                  <ErrorBoundary>
+                    <Shell />
+                  </ErrorBoundary>
                 </LangKeyed>
               </UpdatesProvider>
             </NavProvider>

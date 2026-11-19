@@ -2,15 +2,16 @@
 type: AgentNote
 title: Contesto per gli agenti
 description: Obiettivi, regole non negoziabili, comandi e fatti verificati dell'app Codebase Wiki.
-generated: { by: antigravity/unknown, at: 2026-11-18T16:33:02Z }
+generated: { by: antigravity/unknown, at: 2026-11-19T10:45:00Z }
 sources:
   - README.md
   - Cargo.toml
   - package.json
+  - src-tauri/tauri.conf.json
   - .github/workflows/build.yml
   - wiki/index.md
   - wiki/SCHEMA.md
-source_commit: 206cc3c
+source_commit: 0763ea1
 confidence: high
 ---
 
@@ -29,7 +30,7 @@ confidence: high
 <!-- wiki:rules -->
 1. Mai `git add -A` o `git add .`: aggiungi i file per nome (cartelle locali non tracciate possono finire nel commit).
 2. Crate Rust con versione fissata `=x.y.z`, nessun `cargo update` generale: il toolchain è rustc 1.90 (`Cargo.toml` → `rust-version`).
-3. Testi dell'interfaccia in italiano e inglese (testi in `src/i18n/`); codice, commit e note di release in inglese.
+3. Interfaccia in italiano e inglese (testi in `src/i18n/`); codice, commit e note di release in inglese.
 4. La classe `btn-human` (Cobalto `#3452dd` in chiaro, `#6e8eff` / `#3f5ef3` in scuro) è solo per azioni con autorità umana ([design](../../docs/tasks/design.md)).
 5. `resources/validate-wiki.py` è una copia identica di quello del plugin: si aggiorna copiandolo, mai modificandolo.
 6. Nei test non si scrivono mai le config reali `~/.claude*`, `~/.codex`, `~/.cursor` e non si lancia un vero `claude mcp add`.
@@ -39,9 +40,10 @@ confidence: high
 <!-- wiki:commands -->
 | Scopo | Comando | Verificato |
 | --- | --- | --- |
-| Test frontend | `node --test tests/*.test.ts` (`npm test`) | 2026-11-18 @710a24c+local → 182 pass |
-| Test Rust | `cargo test --workspace` | 2026-11-18 @710a24c+local → 133 pass (12 + 65 + 56) |
-| Build frontend | `./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vite build` (`npm run build`) | 2026-11-18 @710a24c+local → ok (0 errori TS, Vite built) |
+| Test frontend | `node --test tests/*.test.ts` (`npm test`) | 2026-11-19 @0763ea1+local → 193 pass |
+| Test Rust | `cargo test --workspace` | 2026-11-19 @0763ea1+local → 140 pass (14 app + 67 rag-core + 58 wiki-core + 1 wiki-mcp) |
+| Clippy Rust | `cargo clippy --workspace --all-targets` | 2026-11-19 @0763ea1+local → 0 avvisi |
+| Build frontend | `./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vite build` (`npm run build`) | 2026-11-19 @0763ea1+local → ok (0 errori TS, max chunk 223.51 kB) |
 | App in sviluppo | `npm run tauri dev` | ⚠️ NOT VERIFIED - non lanciato in questa sessione |
 | Bundle macOS locale | `npm run build:app` (senza chiave di firma: `npx tauri build` da solo fallisce) | 2026-11-13 @224232f → `Codebase Wiki.app` 89 MB |
 | Eseguibile di ricerca | `cargo build -p wiki-mcp --release --features embed` | 2026-11-11 @fe7bba6 |
@@ -52,8 +54,8 @@ Non ricavarli di nuovo. Ricontrolla un fatto solo se la sua prova è cambiata o 
 
 | Fatto | Valore | Prova | Verificato |
 | --- | --- | --- | --- |
-| Versione | 0.3.1 | `package.json`, `src-tauri/tauri.conf.json`, tag `v0.3.1` | 2026-11-12 @9a19fdd |
-| Validatore incluso | plugin 0.13.1, formato 0.12.0 | `python3 resources/validate-wiki.py --version` | 2026-11-11 @206cc3c |
+| Versione | 0.8.0 | `package.json`, `Cargo.toml`, `src-tauri/tauri.conf.json` | 2026-11-18 @0763ea1 |
+| Validatore incluso | plugin 0.16.0, formato 0.12.0 | `python3 resources/validate-wiki.py --version` | 2026-11-19 @0763ea1 |
 | Cartella dati RAG | `<data_local_dir>/com.codebasewiki.app/rag`, sovrascrivibile con `CODEBASE_WIKI_DATA_DIR` | `crates/rag-core/src/paths.rs` (`data_dir`) | 2026-11-11 @206cc3c |
 | L'indice contiene | solo codice e config: niente cartella wiki, Markdown, testo, dati e log | `crates/rag-core/src/files.rs` (`list_files`) | 2026-11-11 @206cc3c |
 | Tool MCP | `search_code`, `index_status`, `list_repos` | `crates/wiki-mcp/src/serve.rs` | 2026-11-11 @206cc3c |

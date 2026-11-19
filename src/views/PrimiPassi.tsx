@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import * as api from '../api';
 import { CopyAdoptButton } from '../components/Compat';
 import { useToast } from '../components/Toast';
-import { FIRST_RUN_KEY, firstRunSteps, type FirstRunState, type FirstRunStepId } from '../lib/first-run';
+import {
+  firstRunDone,
+  firstRunSteps,
+  markFirstRunDone,
+  type FirstRunState,
+  type FirstRunStepId,
+} from '../lib/first-run';
 import { formatBytes, parseIndexStatus, type IndexStatus } from '../lib/rag-format';
 import { useNav } from '../state/nav';
 import { useProject } from '../state/project';
 import { useRag } from '../state/rag';
-import { agentReady, type PluginRow } from '../lib/plugin';
+import { agentReady } from '../lib/plugin';
 import { t } from '../i18n';
 import './primi-passi.css';
 
@@ -16,22 +21,7 @@ const DEFAULT_MODEL = 'multilingual-e5-small';
 const PLUGIN_URL = 'https://github.com/StefanoHernandez/codebase-wiki-llm';
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function markFirstRunDone(done: boolean) {
-  try {
-    if (done) localStorage.setItem(FIRST_RUN_KEY, '1');
-    else localStorage.removeItem(FIRST_RUN_KEY);
-  } catch {
-    /* per-viewer convenience only */
-  }
-}
-
-export function firstRunDone(): boolean {
-  try {
-    return localStorage.getItem(FIRST_RUN_KEY) === '1';
-  } catch {
-    return true;
-  }
-}
+export { firstRunDone, markFirstRunDone };
 
 export default function PrimiPassi() {
   const project = useProject();
@@ -46,21 +36,20 @@ export default function PrimiPassi() {
   const refresh = useCallback(async () => {
     if (repo) {
       setStatus(
-        await invoke('rag_status', { repo })
-          .then((r) => parseIndexStatus(r as Record<string, unknown>))
+        await api
+          .ragStatus(repo)
+          .then((r) => parseIndexStatus(r))
           .catch((e) => ({ indexed: false, error: message(e) })),
       );
     }
-    await invoke('rag_models')
+    await api
+      .ragModels()
       .then((m) => {
-        const rows = ((m as { catalog?: Array<Record<string, unknown>> }).catalog ?? []).map((r) => [String(r.id), r.installed === true]);
+        const rows = (m.catalog ?? []).map((r) => [String(r.id), r.installed === true]);
         setInstalled(Object.fromEntries(rows));
       })
       .catch(() => undefined);
-    await Promise.all([
-      invoke<Array<{ id: string; status: string }>>('rag_harness_state'),
-      invoke<PluginRow[]>('plugin_state'),
-    ])
+    await Promise.all([api.ragHarnessState(), api.pluginState()])
       .then(([mcp, plugins]) => setAgent(agentReady(mcp, plugins)))
       .catch(() => undefined);
   }, [repo]);

@@ -42,7 +42,7 @@ pub fn run_index(repo: Option<&Path>, json: bool) -> i32 {
     };
     let spec = match model_by_id(&cfg.model) {
         Some(s) => s,
-        None => return err("Modello sconosciuto"),
+        None => return err("Unknown model"),
     };
     if !rag_core::models::is_installed(spec) {
         return err("No model installed: open Codebase Wiki → Search");
@@ -128,14 +128,14 @@ fn run_index_with_store(
     let mut done_code = 0usize;
     for entry in code_files {
         if index_one(&store, &root, entry, &mut embedder, &tok, terms.as_deref(), &mut skipped_private).is_err() {
-            return err("Indicizzazione file codice fallita");
+            return err("Code file indexing failed");
         }
         done_code += 1;
         emit(serde_json::json!({"event":"progress","phase":"code","done":done_code,"total":code_files.len()}));
     }
     let paths: Vec<String> = all.iter().map(|e| e.rel_path.clone()).collect();
     if store.remove_missing(&paths).is_err() {
-        return err("remove_missing fallito");
+        return err("remove_missing failed");
     }
     if let Some(h) = head_sha(&root) {
         let _ = store.meta_set("indexed_head", &h);
@@ -238,7 +238,10 @@ fn search_hits(
     };
     let mut out = Vec::new();
     for h in hits {
-        if terms.as_deref().is_some_and(|t| wiki_core::content_has_forbidden_term(t, &h.text)) {
+        if terms.as_deref().is_some_and(|t| {
+            wiki_core::content_has_forbidden_term(t, &h.path)
+                || wiki_core::content_has_forbidden_term(t, &h.text)
+        }) {
             continue;
         }
         let stale = match store.file_record(&h.path)? {
@@ -253,7 +256,7 @@ fn search_hits(
 #[cfg(all(feature = "embed", feature = "download"))]
 fn active_spec() -> Result<&'static rag_core::ModelSpec, String> {
     let cfg = read_config().unwrap_or(rag_core::RagConfig { model: rag_core::default_model_id().to_string() });
-    let spec = model_by_id(&cfg.model).ok_or_else(|| format!("Modello sconosciuto: {}", cfg.model))?;
+    let spec = model_by_id(&cfg.model).ok_or_else(|| format!("Unknown model: {}", cfg.model))?;
     if !rag_core::models::is_installed(spec) {
         return Err("No model installed: open Codebase Wiki → Search".into());
     }
@@ -263,65 +266,7 @@ fn active_spec() -> Result<&'static rag_core::ModelSpec, String> {
 /// `status --json`: never creates or rebuilds the index (reader only).
 #[cfg(all(feature = "embed", feature = "download"))]
 pub fn status_json(root: &Path) -> serde_json::Value {
-    let id = repo_id(root);
-    let cfg = read_config().unwrap_or(rag_core::RagConfig { model: rag_core::default_model_id().to_string() });
-    let mut out = serde_json::json!({
-        "repo": root.display().to_string(),
-        "repo_id": id,
-        "model": cfg.model,
-        "index_path": index_path(&id).display().to_string(),
-        "head": head_sha(root),
-        "indexed": false,
-        "indexed_head": null,
-        "indexed_model": null,
-        "files": 0,
-        "chunks": 0,
-        "changed_since_index": 0,
-        "error": null,
-        "reranker": rag_core::models::is_installed(rag_core::catalog::reranker_spec())
-            .then_some(rag_core::catalog::reranker_spec().id),
-    });
-    // Size on disk (db + WAL) and last write time, from the files themselves.
-    let mut size = 0u64;
-    let mut modified: Option<std::time::SystemTime> = None;
-    for suffix in ["", "-wal"] {
-        let mut p = index_path(&id).into_os_string();
-        p.push(suffix);
-        if let Ok(m) = std::fs::metadata(&p) {
-            size += m.len();
-            modified = modified.max(m.modified().ok());
-        }
-    }
-    out["size_bytes"] = size.into();
-    out["indexed_at"] = modified
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs())
-        .into();
-    let Some(spec) = model_by_id(&cfg.model) else {
-        out["error"] = "Modello sconosciuto".into();
-        return out;
-    };
-    match Store::open_reader(&index_path(&id), spec.dims, spec.id) {
-        Ok(store) => {
-            out["indexed"] = true.into();
-            out["indexed_model"] = spec.id.into();
-            out["indexed_head"] = store.meta_get("indexed_head").ok().flatten().into();
-            if let Ok((f, c)) = store.counts() {
-                out["files"] = f.into();
-                out["chunks"] = c.into();
-            }
-            if let Ok(rows) = store.counts_by_source() {
-                out["by_source"] = rows
-                    .into_iter()
-                    .map(|(src, f, c)| (src, serde_json::json!({"files": f, "chunks": c})))
-                    .collect::<serde_json::Map<_, _>>()
-                    .into();
-            }
-            out["changed_since_index"] = store.count_changed(root).unwrap_or(0).into();
-        }
-        Err(e) => out["error"] = e.into(),
-    }
-    out
+    rag_core::status_json(root)
 }
 
 #[cfg(all(feature = "embed", feature = "download"))]

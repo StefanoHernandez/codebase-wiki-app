@@ -20,12 +20,12 @@ pub use validator::{
 };
 pub use watcher::{watch_repo, watch_repo_reporting, WatchHandle};
 pub use wiki_fs::{
-    collect_repo_files_recursive, content_has_forbidden_term, is_private_terms_name,
-    load_wiki_snapshot, read_private_terms, read_repo_file_safe, read_wiki_file_safe,
-    write_wiki_file_safe, write_wiki_files_safe, wiki_content_sha256, RepoFilePayload,
-    WikiFileWrite, WikiPageEntry, WikiSnapshot,
+    collect_repo_files, collect_repo_files_recursive, content_has_forbidden_term,
+    is_private_terms_name, load_wiki_snapshot, load_wiki_snapshot_opts, read_private_terms,
+    read_repo_file_safe, read_wiki_file_safe, write_wiki_file_safe, write_wiki_files_safe,
+    wiki_content_sha256, RepoFilePayload, WikiFileWrite, WikiPageEntry, WikiSnapshot,
 };
-pub use wiki_schema::{glob_match, parse_excluded_globs};
+pub use wiki_schema::{glob_match, parse_core_map_role, parse_excluded_globs};
 pub use wiki_resolver::{
     ensure_wiki_inside_repo, is_valid_wiki_folder_name, resolve_wiki_root, WikiResolution,
     WIKI_OUTSIDE_REPO,
@@ -245,7 +245,7 @@ mod tests {
             .to_string();
 
         let state1 = inspect_git_state(repo, None);
-        assert_eq!(state1.is_dirty, false);
+        assert!(!state1.is_dirty);
         assert!(!state1.head_sha.is_empty());
         assert_eq!(state1.handoff_commits_behind, 0);
 
@@ -526,5 +526,49 @@ sources:
         let report = serde_json::to_value(&report).unwrap();
         assert!(report.get("exitCode").is_some() && report.get("rawOutput").is_some());
         assert!(report["findings"][0].get("wikiRelPath").is_some());
+    }
+
+    #[test]
+    fn test_relocated_handoff_and_snapshot_opts_and_git_repo_files() {
+        let td = TestDir::new("core_map_handoff");
+        let repo = td.path();
+        init_repo(repo);
+
+        fs::write(repo.join(".gitignore"), "dist/\n").unwrap();
+        fs::create_dir_all(repo.join("dist")).unwrap();
+        fs::write(repo.join("dist/bundle.js"), "console.log(1)").unwrap();
+        fs::write(repo.join("Cargo.lock"), "lock").unwrap();
+        fs::write(repo.join("icon.png"), [0x89, b'P', b'N', b'G']).unwrap();
+        fs::create_dir_all(repo.join("src")).unwrap();
+        fs::write(repo.join("src/main.rs"), "fn main() {}\n").unwrap();
+        fs::create_dir_all(repo.join(".github/workflows")).unwrap();
+        fs::write(repo.join(".github/workflows/build.yml"), "name: CI\n").unwrap();
+
+        fs::create_dir_all(repo.join("wiki/notes")).unwrap();
+        fs::write(
+            repo.join("wiki/SCHEMA.md"),
+            "## Core map\n<!-- wiki:core-map -->\n| Role | Path |\n| --- | --- |\n| handoff | `notes/next.md` |\n",
+        )
+        .unwrap();
+        fs::write(repo.join("wiki/notes/next.md"), "# Next\n").unwrap();
+        git(repo, &["add", "wiki/SCHEMA.md", "wiki/notes/next.md", "src/main.rs", ".github/workflows/build.yml", ".gitignore"]);
+        git(repo, &["commit", "-qm", "add relocated handoff"]);
+
+        fs::write(repo.join("src/main.rs"), "fn main() { println!(\"hi\"); }\n").unwrap();
+        git(repo, &["add", "src/main.rs"]);
+        git(repo, &["commit", "-qm", "code commit after handoff"]);
+
+        let snap = load_wiki_snapshot(repo, "wiki").unwrap();
+        assert_eq!(snap.git_state.handoff_commits_behind, 1);
+        assert!(snap.repo_files.contains(&"src/main.rs".to_string()));
+        assert!(snap.repo_files.contains(&".github/workflows/build.yml".to_string()));
+        assert!(!snap.repo_files.contains(&"dist/bundle.js".to_string()));
+        assert!(!snap.repo_files.contains(&"Cargo.lock".to_string()));
+        assert!(!snap.repo_files.contains(&"icon.png".to_string()));
+
+        let light = load_wiki_snapshot_opts(repo, "wiki", false).unwrap();
+        assert!(light.repo_files.is_empty());
+        assert_eq!(light.git_state.handoff_commits_behind, 1);
+        assert_eq!(light.pages.len(), snap.pages.len());
     }
 }

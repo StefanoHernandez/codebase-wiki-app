@@ -24,14 +24,23 @@ struct Args {
 fn parse(raw: &[String]) -> Result<Args, String> {
     let mut a = Args { positional: Vec::new(), json: false, repo: None, k: None, glob: None };
     let mut it = raw.iter();
+    let mut end_of_opts = false;
     while let Some(arg) = it.next() {
-        let mut value = |name: &str| it.next().cloned().ok_or(format!("{name} vuole un valore"));
+        if end_of_opts {
+            a.positional.push(arg.clone());
+            continue;
+        }
+        if arg == "--" {
+            end_of_opts = true;
+            continue;
+        }
+        let mut value = |name: &str| it.next().cloned().ok_or(format!("{name} requires a value"));
         match arg.as_str() {
             "--json" => a.json = true,
-                "--repo" => a.repo = Some(value("--repo")?),
+            "--repo" => a.repo = Some(value("--repo")?),
             "--glob" => a.glob = Some(value("--glob")?),
-            "-k" => a.k = Some(value("-k")?.parse().map_err(|_| "-k vuole un numero".to_string())?),
-            s if s.starts_with('-') && s.len() > 1 => return Err(format!("opzione sconosciuta: {s}")),
+            "-k" => a.k = Some(value("-k")?.parse().map_err(|_| "-k requires a number".to_string())?),
+            s if s.starts_with('-') && s.len() > 1 => return Err(format!("unknown option: {s}")),
             _ => a.positional.push(arg.clone()),
         }
     }
@@ -56,6 +65,7 @@ fn main() {
     let json_hint = raw.iter().any(|a| a == "--json");
     let args = parse(&raw).unwrap_or_else(|e| fail(json_hint, &format!("{e}\n{USAGE}")));
     let Some(cmd) = args.positional.first().cloned() else { fail(false, USAGE) };
+    #[cfg_attr(not(all(feature = "embed", feature = "download")), allow(unused_variables))]
     let repo = args.repo.as_deref().map(Path::new);
     match cmd.as_str() {
         #[cfg(all(feature = "embed", feature = "download"))]
@@ -64,7 +74,7 @@ fn main() {
         "search" => {
             let query = args.positional[1..].join(" ");
             if query.trim().is_empty() {
-                fail(args.json, "search vuole una domanda");
+                fail(args.json, "search requires a query");
             }
             std::process::exit(run::run_search(repo, args.k.unwrap_or(8), args.glob.as_deref(), &query, args.json));
         }
@@ -79,7 +89,7 @@ fn main() {
         }
         #[cfg(feature = "download")]
         "models" => models_cmd(&args),
-        _ => fail(args.json, &format!("comando sconosciuto o non compilato in questo binario: {cmd}\n{USAGE}")),
+        _ => fail(args.json, &format!("unknown or uncompiled command: {cmd}\n{USAGE}")),
     }
 }
 
@@ -88,38 +98,17 @@ fn models_cmd(args: &Args) {
     let json = args.json;
     match args.positional.get(1).map(String::as_str) {
         Some("list") => {
-            let installed = rag_core::models::installed_ids();
             if json {
-                let mut catalog: Vec<_> = rag_core::catalog()
-                    .iter()
-                    .map(|m| {
-                        serde_json::json!({"id": m.id, "dims": m.dims, "size_mb": m.size_mb, "languages": m.languages,
-                            "note": m.note, "tested": m.tested, "installed": installed.iter().any(|i| i == m.id)})
-                    })
-                    .collect();
-                for custom in rag_core::models::custom_catalog_rows() {
-                    catalog.push(serde_json::json!({
-                        "id": custom.id,
-                        "dims": custom.dims,
-                        "size_mb": custom.size_mb,
-                        "languages": custom.languages,
-                        "note": custom.note,
-                        "tested": custom.tested,
-                        "installed": installed.iter().any(|i| i == &custom.id),
-                    }));
-                }
-                let r = rag_core::catalog::reranker_spec();
-                let reranker = serde_json::json!({"id": r.id, "size_mb": r.size_mb, "languages": r.languages,
-                    "installed": installed.iter().any(|i| i == r.id)});
-                println!("{}", serde_json::json!({"installed": installed, "catalog": catalog, "reranker": reranker}));
+                println!("{}", rag_core::models_list_json());
             } else {
-                println!("Installati: {}", installed.join(", "));
+                let installed = rag_core::models::installed_ids();
+                println!("Installed: {}", installed.join(", "));
             }
         }
         Some("pull") => {
-            let Some(id) = args.positional.get(2) else { fail(json, "models pull vuole un id") };
+            let Some(id) = args.positional.get(2) else { fail(json, "models pull requires an id") };
             let reranker = rag_core::catalog::reranker_spec();
-            let Some(spec) = rag_core::model_by_id(id).or((id == reranker.id).then_some(reranker)) else { fail(json, &format!("modello sconosciuto: {id}")) };
+            let Some(spec) = rag_core::model_by_id(id).or((id == reranker.id).then_some(reranker)) else { fail(json, &format!("unknown model: {id}")) };
             let res = rag_core::models::pull(spec, |ev| {
                 if json {
                     println!("{}", serde_json::json!({"event":"download","file":ev.file,"done":ev.done,"total":ev.total}));
@@ -134,7 +123,7 @@ fn models_cmd(args: &Args) {
         Some("search") => {
             let q = args.positional[2..].join(" ");
             if q.trim().is_empty() {
-                fail(json, "models search vuole un testo");
+                fail(json, "models search requires a query");
             }
             match rag_core::models::hf_search(&q) {
                 Ok(hits) if json => println!("{}", serde_json::to_string(&hits).unwrap_or_default()),
@@ -144,14 +133,42 @@ fn models_cmd(args: &Args) {
         }
         Some("add") => {
             let Some(repo_name) = args.positional.get(2) else {
-                fail(json, "models add vuole un repo Hugging Face");
+                fail(json, "models add requires a Hugging Face repo");
             };
             match rag_core::models::add_custom(repo_name) {
                 Ok(id) if json => println!("{}", serde_json::json!({"event":"done","model":id})),
-                Ok(id) => println!("Aggiunto modello {id}"),
+                Ok(id) => println!("Added model {id}"),
                 Err(e) => fail(json, &e.to_string()),
             }
         }
         _ => fail(json, USAGE),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_supports_end_of_options_for_flag_like_queries() {
+        let raw: Vec<String> = [
+            "search", "--repo", "/r", "-k", "8", "--json", "--", "--no-renames", "-Wall",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let a = parse(&raw).unwrap();
+        assert_eq!(a.repo.as_deref(), Some("/r"));
+        assert_eq!(a.k, Some(8));
+        assert!(a.json);
+        assert_eq!(a.positional, vec!["search", "--no-renames", "-Wall"]);
+
+        let single: Vec<String> = ["search", "--", "-k"].iter().map(|s| s.to_string()).collect();
+        let b = parse(&single).unwrap();
+        assert_eq!(b.k, None);
+        assert_eq!(b.positional, vec!["search", "-k"]);
+
+        let bad: Vec<String> = ["search", "--no-renames"].iter().map(|s| s.to_string()).collect();
+        assert!(parse(&bad).is_err());
     }
 }

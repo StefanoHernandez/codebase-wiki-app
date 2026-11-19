@@ -1,6 +1,5 @@
 //! Local code + wiki index (paths, store, search).
 
-#[cfg(feature = "download")]
 pub mod models;
 #[cfg(feature = "embed")]
 pub mod embed;
@@ -23,6 +22,7 @@ pub use paths::{
     read_config, write_config, RagConfig,
 };
 pub use repo::{head_sha, repo_id, resolve_repo, wiki_root};
-pub use store::{delete_index, file_changed, indexed_repos, Hit, IndexedRepo, Store, NO_INDEX_MSG};
+pub use store::{delete_index, file_changed, indexed_repos, status_json, Hit, IndexedRepo, Store, NO_INDEX_MSG};
+pub use models::{custom_catalog_rows, installed_ids, is_installed, models_list_json};
 #[cfg(feature = "download")]
-pub use models::{installed_ids, pull, DownloadEvent, is_installed};
+pub use models::{pull, DownloadEvent};

@@ -7,6 +7,7 @@ mod rag_sidecar;
 
 use std::sync::{Arc, Mutex};
 
+use tauri::Manager;
 use wiki_core::WatchHandle;
 
 fn main() {
@@ -71,6 +72,11 @@ fn main() {
             commands::rag_models_search,
             commands::rag_models_add,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Codebase Wiki");
+        .build(tauri::generate_context!())
+        .expect("error while building Codebase Wiki")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                app.state::<Arc<rag_jobs::RagJobs>>().shutdown();
+            }
+        });
 }

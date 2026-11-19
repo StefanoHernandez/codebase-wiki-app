@@ -24,7 +24,7 @@ import {
   readThemePalette,
   type LabelCandidate,
   type ThemePalette,
-} from './grafo-3d';
+} from './grafo-canvas';
 import { computeCoverage } from '../lib/coverage';
 import { Copertura } from './Copertura';
 import { LensSwitch, Mappa, type GraphLens } from './Mappa';
@@ -204,23 +204,28 @@ export default function Grafo() {
   const explorerOpenRef = useRef(explorerOpen);
   const drawerOpenRef = useRef(Boolean(drawer));
   const storyAnimRef = useRef(0);
+  const scheduleDrawRef = useRef<() => void>(() => {});
   const paletteRef = useRef<ThemePalette | null>(null);
   const catColorsRef = useRef<Record<GraphNodeCategory, string> | null>(null);
 
   useEffect(() => {
     hoverIdRef.current = hoveredId;
+    scheduleDrawRef.current();
   }, [hoveredId]);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
+    scheduleDrawRef.current();
   }, [selectedId]);
 
   useEffect(() => {
     explorerOpenRef.current = explorerOpen;
+    scheduleDrawRef.current();
   }, [explorerOpen]);
 
   useEffect(() => {
     drawerOpenRef.current = Boolean(drawer);
+    scheduleDrawRef.current();
   }, [drawer]);
 
   useEffect(() => {
@@ -247,6 +252,7 @@ export default function Grafo() {
       const minDim = Math.max(240, Math.min(rect.width - leftInset - rightInset * 0.35, rect.height));
       const baseScale = (minDim / 560) * zoomRef.current;
       panTargetRef.current = { x: -p.x2 * baseScale, y: -p.y2 * baseScale };
+      scheduleDrawRef.current();
     },
     [layout],
   );
@@ -254,12 +260,14 @@ export default function Grafo() {
   const resetView = useCallback(() => {
     panTargetRef.current = { x: 0, y: 0 };
     zoomRef.current = 1.0;
+    scheduleDrawRef.current();
   }, []);
 
   const refreshColors = useCallback(() => {
     const el = wrapRef.current ?? document.documentElement;
     paletteRef.current = readThemePalette(el);
     catColorsRef.current = readCategoryColors(el);
+    scheduleDrawRef.current();
   }, []);
 
   useEffect(() => {
@@ -301,7 +309,6 @@ export default function Grafo() {
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
     let rafId = 0;
-    let lastTs = performance.now();
 
     const resize = () => {
       const rect = wrap.getBoundingClientRect();
@@ -310,12 +317,9 @@ export default function Grafo() {
       canvas.height = Math.max(1, Math.round(rect.height * dpr));
     };
     resize();
-    const ro = new ResizeObserver(resize);
-    ro.observe(wrap);
 
-    const drawFrame = (now: number) => {
-      const dt = Math.min(0.05, (now - lastTs) / 1000);
-      lastTs = now;
+    const drawFrame = () => {
+      rafId = 0;
 
       if (!draggingRef.current && panTargetRef.current) {
         const dx = panTargetRef.current.x - panXRef.current;
@@ -331,7 +335,11 @@ export default function Grafo() {
       }
 
       if (historyOpen) {
-        storyAnimRef.current += (storyStep - storyAnimRef.current) * (reducedMotion ? 1 : 0.14);
+        if (reducedMotion) {
+          storyAnimRef.current = storyStep;
+        } else {
+          storyAnimRef.current += (storyStep - storyAnimRef.current) * 0.14;
+        }
       }
 
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -535,14 +543,31 @@ export default function Grafo() {
       }
 
       ctx.restore();
-      if (!reducedMotion || draggingRef.current || panTargetRef.current) {
+      const storyAnimating =
+        historyOpen && !reducedMotion && Math.abs(storyStep - storyAnimRef.current) > 0.005;
+      const panAnimating = !reducedMotion && panTargetRef.current !== null;
+      if (draggingRef.current || panAnimating || storyAnimating) {
         rafId = requestAnimationFrame(drawFrame);
+      } else if (historyOpen) {
+        storyAnimRef.current = storyStep;
       }
     };
 
-    rafId = requestAnimationFrame(drawFrame);
+    const scheduleDraw = () => {
+      if (!rafId) rafId = requestAnimationFrame(drawFrame);
+    };
+    scheduleDrawRef.current = scheduleDraw;
+
+    const ro = new ResizeObserver(() => {
+      resize();
+      scheduleDraw();
+    });
+    ro.observe(wrap);
+
+    scheduleDraw();
     return () => {
-      cancelAnimationFrame(rafId);
+      scheduleDrawRef.current = () => {};
+      if (rafId) cancelAnimationFrame(rafId);
       ro.disconnect();
     };
   }, [
@@ -594,6 +619,7 @@ export default function Grafo() {
     panTargetRef.current = null;
     pointerDownRef.current = { x: e.clientX, y: e.clientY, moved: 0 };
     e.currentTarget.setPointerCapture(e.pointerId);
+    scheduleDrawRef.current();
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -605,6 +631,7 @@ export default function Grafo() {
       pointerDownRef.current.moved += Math.hypot(dx, dy);
       panXRef.current += dx;
       panYRef.current += dy;
+      scheduleDrawRef.current();
       return;
     }
     const hit = hitTest(e.clientX, e.clientY);
@@ -618,6 +645,7 @@ export default function Grafo() {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
+    scheduleDrawRef.current();
     if (moved < 6) {
       const hit = hitTest(e.clientX, e.clientY);
       if (hit) {
@@ -645,6 +673,7 @@ export default function Grafo() {
     }
     const factor = e.deltaY < 0 ? 1.09 : 0.92;
     zoomRef.current = Math.max(0.35, Math.min(3.2, zoomRef.current * factor));
+    scheduleDrawRef.current();
   };
 
   const toggleCategory = (cat: GraphNodeCategory) => {

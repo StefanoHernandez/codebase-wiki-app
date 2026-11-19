@@ -11,7 +11,7 @@ use crate::files::{FileEntry, FileSource};
 const SCHEMA_VERSION: &str = "3";
 
 /// Shown when a reader finds no index for this repo.
-pub const NO_INDEX_MSG: &str = "Indice assente per questo repo: apri Codebase Wiki → Ricerca → Indicizza";
+pub const NO_INDEX_MSG: &str = "No index for this repo: open Codebase Wiki → Search → Index";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hit {
@@ -140,8 +140,8 @@ impl Store {
             && s.meta_get("schema_version").ok().flatten().as_deref() == Some(SCHEMA_VERSION);
         if !ok {
             return Err(format!(
-                "L'indice è stato creato con un altro modello o formato ({}): apri Codebase Wiki → Ricerca → Indicizza",
-                model.unwrap_or_else(|| "sconosciuto".into())
+                "Index was built with another model or format ({}): open Codebase Wiki → Search → Index",
+                model.unwrap_or_else(|| "unknown".into())
             ));
         }
         s.dims = dims;
@@ -537,6 +537,70 @@ fn vector_to_blob(vec: &[f32]) -> Vec<u8> {
     vec.iter().flat_map(|f| f.to_le_bytes()).collect()
 }
 
+/// `status --json` payload: never creates or rebuilds the index (reader only).
+pub fn status_json(root: &Path) -> serde_json::Value {
+    let id = crate::repo_id(root);
+    let cfg = crate::read_config().unwrap_or(crate::RagConfig {
+        model: crate::default_model_id().to_string(),
+    });
+    let reranker_spec = crate::catalog::reranker_spec();
+    let mut out = serde_json::json!({
+        "repo": root.display().to_string(),
+        "repo_id": id,
+        "model": cfg.model,
+        "index_path": crate::index_path(&id).display().to_string(),
+        "head": crate::head_sha(root),
+        "indexed": false,
+        "indexed_head": null,
+        "indexed_model": null,
+        "files": 0,
+        "chunks": 0,
+        "changed_since_index": 0,
+        "error": null,
+        "reranker": crate::models::is_installed(reranker_spec).then_some(reranker_spec.id),
+    });
+    let mut size = 0u64;
+    let mut modified: Option<std::time::SystemTime> = None;
+    for suffix in ["", "-wal"] {
+        let mut p = crate::index_path(&id).into_os_string();
+        p.push(suffix);
+        if let Ok(m) = std::fs::metadata(&p) {
+            size += m.len();
+            modified = modified.max(m.modified().ok());
+        }
+    }
+    out["size_bytes"] = size.into();
+    out["indexed_at"] = modified
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .into();
+    let Some(spec) = crate::model_by_id(&cfg.model) else {
+        out["error"] = "Unknown model".into();
+        return out;
+    };
+    match Store::open_reader(&crate::index_path(&id), spec.dims, spec.id) {
+        Ok(store) => {
+            out["indexed"] = true.into();
+            out["indexed_model"] = spec.id.into();
+            out["indexed_head"] = store.meta_get("indexed_head").ok().flatten().into();
+            if let Ok((f, c)) = store.counts() {
+                out["files"] = f.into();
+                out["chunks"] = c.into();
+            }
+            if let Ok(rows) = store.counts_by_source() {
+                out["by_source"] = rows
+                    .into_iter()
+                    .map(|(src, f, c)| (src, serde_json::json!({"files": f, "chunks": c})))
+                    .collect::<serde_json::Map<_, _>>()
+                    .into();
+            }
+            out["changed_since_index"] = store.count_changed(root).unwrap_or(0).into();
+        }
+        Err(e) => out["error"] = e.into(),
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -616,7 +680,7 @@ mod tests {
             embed_text: "x".into(),
         };
         store
-            .replace_file(&entry, "s1", &[c.clone()], &[fake_vec(0.5)])
+            .replace_file(&entry, "s1", std::slice::from_ref(&c), &[fake_vec(0.5)])
             .unwrap();
         store
             .replace_file(&entry, "s2", &[c], &[fake_vec(0.6)])
@@ -702,5 +766,13 @@ mod tests {
         assert!(Store::open_reader(&path, 8, "other").is_err());
         let r = Store::open_reader(&path, 4, "m").unwrap();
         assert_eq!(r.counts().unwrap(), (1, 1), "a reader with another model must not wipe the index");
+    }
+
+    #[test]
+    fn status_json_works_with_default_features() {
+        let td = tempfile::tempdir().unwrap();
+        let v = status_json(td.path());
+        assert_eq!(v["indexed"], false);
+        assert!(v.get("model").is_some());
     }
 }

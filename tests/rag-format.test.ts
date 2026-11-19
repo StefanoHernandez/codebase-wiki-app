@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatIndexState, parseIndexStatus, reduceRagProgress, shouldAutoIndex } from '../src/lib/rag-format.ts';
+import {
+  availableExtensions,
+  formatIndexState,
+  isMaskedPrivateQuery,
+  parseIndexStatus,
+  reduceRagProgress,
+  shouldAutoIndex,
+} from '../src/lib/rag-format.ts';
 
 test('formatIndexState formats counters and shas', () => {
   const s = formatIndexState({
@@ -59,4 +66,41 @@ test('parseIndexStatus reads the sidecar snake_case JSON', () => {
   assert.equal(s.staleInstall, true);
   assert.equal(shouldAutoIndex(s, false, false, true), true);
   assert.equal(parseIndexStatus({ indexed: false, error: 'Nessun indice' }).error, 'Nessun indice');
+});
+
+test('isMaskedPrivateQuery recognizes Italian and English markers', () => {
+  assert.equal(isMaskedPrivateQuery('[riservata]'), true);
+  assert.equal(isMaskedPrivateQuery('[private]'), true);
+  assert.equal(isMaskedPrivateQuery(' [riservata] '), true);
+  assert.equal(isMaskedPrivateQuery('where is watcher'), false);
+  assert.equal(isMaskedPrivateQuery(null), false);
+  assert.equal(isMaskedPrivateQuery(undefined), false);
+});
+
+test('availableExtensions ranks extensions from hits or repoFiles excluding wiki and prose', () => {
+  const repoFiles = [
+    'wiki/index.md',
+    'README.md',
+    'notes.txt',
+    '.gitignore',
+    'app/a.py',
+    'app/b.py',
+    'app/c.py',
+    'cmd/main.go',
+    'cmd/run.go',
+    'pkg/x.ts',
+    'pkg/y.tsx',
+    'cfg/a.json',
+    'cfg/b.yaml',
+    'cfg/c.toml',
+  ];
+  // From repoFiles when hits are absent: excludes wiki/*, md/txt, dotfiles; sorted by frequency then name, capped at 5.
+  assert.deepEqual(availableExtensions(null, repoFiles, 'wiki'), ['py', 'go', 'json', 'toml', 'ts']);
+
+  // From active hits when present: reflects hit extensions only.
+  const hits = [{ path: 'src/a.rs' }, { path: 'src/b.tsx' }, { path: 'src/c.rs' }];
+  assert.deepEqual(availableExtensions(hits, repoFiles, 'wiki'), ['rs', 'tsx']);
+
+  // Empty inputs yield [].
+  assert.deepEqual(availableExtensions([], [], 'wiki'), []);
 });

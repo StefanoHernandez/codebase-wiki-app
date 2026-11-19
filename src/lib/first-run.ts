@@ -15,6 +15,23 @@ export type FirstRunState = {
 
 export const FIRST_RUN_KEY = 'firstRun.done';
 
+export function markFirstRunDone(done: boolean) {
+  try {
+    if (done) localStorage.setItem(FIRST_RUN_KEY, '1');
+    else localStorage.removeItem(FIRST_RUN_KEY);
+  } catch {
+    /* per-viewer convenience only */
+  }
+}
+
+export function firstRunDone(): boolean {
+  try {
+    return localStorage.getItem(FIRST_RUN_KEY) === '1';
+  } catch {
+    return true;
+  }
+}
+
 export function firstRunSteps(s: FirstRunState): {
   steps: { id: FirstRunStepId; done: boolean }[];
   current: FirstRunStepId | null;

@@ -1,7 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { listen } from '@tauri-apps/api/event';
-import { invoke } from '@tauri-apps/api/core';
-import { onWikiChanged } from '../api';
+import {
+  onRagProgress,
+  onWikiChanged,
+  ragIndexCancel,
+  ragIndexStart,
+  ragModelPull,
+  ragStatus,
+} from '../api';
 import {
   parseIndexStatus,
   reduceRagProgress,
@@ -77,7 +82,7 @@ export function RagProvider({ children }: { children: ReactNode }) {
     async (target: string) => {
       patchJob(target, { running: true, error: null, progress: null });
       try {
-        await invoke('rag_index_start', { repo: target });
+        await ragIndexStart(target);
       } catch (e) {
         patchJob(target, { running: false, error: message(e) });
       }
@@ -87,7 +92,7 @@ export function RagProvider({ children }: { children: ReactNode }) {
 
   const cancelIndex = useCallback(async (target: string) => {
     try {
-      await invoke('rag_index_cancel', { repo: target });
+      await ragIndexCancel(target);
     } catch {
       /* already finished: the exit event resets the state */
     }
@@ -97,7 +102,7 @@ export function RagProvider({ children }: { children: ReactNode }) {
     setDownloadError(null);
     setDownload({ id, file: '', done: 0, total: 0 });
     try {
-      await invoke('rag_model_pull', { id });
+      await ragModelPull(id);
     } catch (e) {
       setDownload(null);
       setDownloadError(message(e));
@@ -105,10 +110,10 @@ export function RagProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const un = listen<string>('rag://progress', (e) => {
+    const un = onRagProgress((payload) => {
       let j: Line;
       try {
-        j = JSON.parse(e.payload) as Line;
+        j = JSON.parse(payload) as Line;
       } catch {
         return;
       }
@@ -127,7 +132,7 @@ export function RagProvider({ children }: { children: ReactNode }) {
       const key = j.repo;
       setJobs((prev) => {
         const cur = prev[key] ?? IDLE;
-        const r = reduceRagProgress(cur.progress, e.payload);
+        const r = reduceRagProgress(cur.progress, payload);
         const next: RagJobState = r.done
           ? { running: false, progress: null, error: r.error ?? cur.error }
           : { ...cur, running: true, progress: r.progress };
@@ -148,7 +153,7 @@ export function RagProvider({ children }: { children: ReactNode }) {
       if (!autoRef.current || downloadRef.current || jobsRef.current[repo]?.running) return;
       let status: IndexStatus;
       try {
-        status = parseIndexStatus((await invoke('rag_status', { repo })) as Record<string, unknown>);
+        status = parseIndexStatus(await ragStatus(repo));
       } catch {
         return;
       }

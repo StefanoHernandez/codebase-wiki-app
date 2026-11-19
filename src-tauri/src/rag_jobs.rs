@@ -20,7 +20,7 @@ impl RagJobs {
     }
 
     pub fn index_running(&self, repo: &str) -> bool {
-        let mut map = self.index.lock().unwrap();
+        let mut map = self.index.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(child) = map.get_mut(repo) {
             match child.try_wait() {
                 Ok(None) => return true,
@@ -45,7 +45,7 @@ impl RagJobs {
         let mut child = spawn_sidecar(bin, &["index", "--repo", &repo, "--json"])?;
         let stdout = child.stdout.take().ok_or("stdout")?;
         let pid = child.id();
-        self.index.lock().unwrap().insert(repo.clone(), child);
+        self.index.lock().unwrap_or_else(|e| e.into_inner()).insert(repo.clone(), child);
         let jobs = Arc::clone(self);
         std::thread::spawn(move || read_stdout(app, jobs, repo, pid, stdout, JobKind::Index));
         Ok(())
@@ -55,7 +55,7 @@ impl RagJobs {
         let mut child = self
             .index
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .remove(repo)
             .ok_or_else(|| wiki_core::tr("Nessuna indicizzazione in corso per questo repo", "No indexing in progress for this repo"))?;
         let _ = child.kill();
@@ -64,12 +64,12 @@ impl RagJobs {
     }
 
     pub fn any_index_running(&self) -> bool {
-        let repos: Vec<String> = self.index.lock().unwrap().keys().cloned().collect();
+        let repos: Vec<String> = self.index.lock().unwrap_or_else(|e| e.into_inner()).keys().cloned().collect();
         repos.iter().any(|r| self.index_running(r))
     }
 
     pub fn pull_running(&self) -> bool {
-        let mut slot = self.pull.lock().unwrap();
+        let mut slot = self.pull.lock().unwrap_or_else(|e| e.into_inner());
         if let Some((_, child)) = slot.as_mut() {
             match child.try_wait() {
                 Ok(None) => return true,
@@ -94,10 +94,27 @@ impl RagJobs {
         let mut child = spawn_sidecar(bin, &["models", "pull", &model_id, "--json"])?;
         let stdout = child.stdout.take().ok_or("stdout")?;
         let pid = child.id();
-        *self.pull.lock().unwrap() = Some((model_id.clone(), child));
+        *self.pull.lock().unwrap_or_else(|e| e.into_inner()) = Some((model_id.clone(), child));
         let jobs = Arc::clone(self);
         std::thread::spawn(move || read_stdout(app, jobs, model_id, pid, stdout, JobKind::Pull));
         Ok(())
+    }
+
+    /// Terminates every running index and download sidecar when the application exits.
+    pub fn shutdown(&self) {
+        let index_children: Vec<Child> = {
+            let mut map = self.index.lock().unwrap_or_else(|e| e.into_inner());
+            map.drain().map(|(_, c)| c).collect()
+        };
+        for mut child in index_children {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        let pull_child = self.pull.lock().unwrap_or_else(|e| e.into_inner()).take();
+        if let Some((_, mut child)) = pull_child {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 }
 
@@ -141,14 +158,14 @@ impl RagJobs {
     fn reap(&self, kind: &JobKind, key: &str, pid: u32) -> i32 {
         let child = match kind {
             JobKind::Index => {
-                let mut map = self.index.lock().unwrap();
+                let mut map = self.index.lock().unwrap_or_else(|e| e.into_inner());
                 match map.get(key) {
                     Some(c) if c.id() == pid => map.remove(key),
                     _ => None,
                 }
             }
             JobKind::Pull => {
-                let mut slot = self.pull.lock().unwrap();
+                let mut slot = self.pull.lock().unwrap_or_else(|e| e.into_inner());
                 match slot.as_ref() {
                     Some((_, c)) if c.id() == pid => slot.take().map(|(_, c)| c),
                     _ => None,
@@ -209,5 +226,17 @@ mod tests {
         assert_eq!(v["model"], "e5");
         let raw: Value = serde_json::from_str(&enrich_line(("index", "repo"), "/r", "boom")).unwrap();
         assert_eq!(raw["raw"], "boom");
+    }
+
+    #[test]
+    fn shutdown_kills_all_active_jobs() {
+        let jobs = RagJobs::new();
+        jobs.index.lock().unwrap_or_else(|e| e.into_inner()).insert("/repo".into(), sleeper());
+        *jobs.pull.lock().unwrap_or_else(|e| e.into_inner()) = Some(("e5".into(), sleeper()));
+        assert!(jobs.any_index_running());
+        assert!(jobs.pull_running());
+        jobs.shutdown();
+        assert!(!jobs.any_index_running());
+        assert!(!jobs.pull_running());
     }
 }

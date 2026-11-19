@@ -1,22 +1,16 @@
-#[cfg(feature = "download")]
 use std::collections::HashMap;
-#[cfg(feature = "download")]
 use std::fs;
 #[cfg(feature = "download")]
 use std::io::{Read, Write};
-#[cfg(feature = "download")]
 use std::sync::{Mutex, OnceLock};
 #[cfg(feature = "download")]
 use std::time::Duration;
 
-#[cfg(feature = "download")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "download")]
 use serde_json::Value;
 
-#[cfg(feature = "download")]
 use crate::catalog::{ModelSpec, Pooling};
-#[cfg(feature = "download")]
 use crate::paths::model_dir;
 
 #[cfg(feature = "download")]
@@ -27,7 +21,6 @@ pub struct DownloadEvent {
     pub total: u64,
 }
 
-#[cfg(feature = "download")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredSpec {
     pub id: String,
@@ -41,15 +34,12 @@ pub struct StoredSpec {
     pub tested: bool,
 }
 
-#[cfg(feature = "download")]
 static CUSTOM_CACHE: OnceLock<Mutex<HashMap<String, &'static ModelSpec>>> = OnceLock::new();
 
-#[cfg(feature = "download")]
 fn custom_cache() -> &'static Mutex<HashMap<String, &'static ModelSpec>> {
     CUSTOM_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-#[cfg(feature = "download")]
 pub fn installed_ids() -> Vec<String> {
     let root = crate::paths::models_dir();
     let Ok(rd) = fs::read_dir(root) else {
@@ -59,6 +49,10 @@ pub fn installed_ids() -> Vec<String> {
         .filter(|e| e.path().join(".complete").is_file())
         .filter_map(|e| e.file_name().into_string().ok())
         .collect()
+}
+
+pub fn is_installed(spec: &ModelSpec) -> bool {
+    model_dir(spec.id).join(".complete").is_file()
 }
 
 #[cfg(feature = "download")]
@@ -89,7 +83,7 @@ pub fn infer_from_config(config: &Value, pooling_cfg: Option<&Value>) -> Result<
     let dims = config
         .get("hidden_size")
         .and_then(|v| v.as_u64())
-        .ok_or("hidden_size mancante in config.json")? as u32;
+        .ok_or("hidden_size missing in config.json")? as u32;
     let cls = pooling_cfg
         .and_then(|p| p.get("pooling_mode_cls_token"))
         .and_then(|v| v.as_bool())
@@ -113,7 +107,6 @@ fn pick_onnx_remote(hf_repo: &str) -> Result<String, String> {
     Err(wiki_core::tr("Nessun file ONNX trovato nel repo", "No ONNX file found in the repo"))
 }
 
-#[cfg(feature = "download")]
 fn leak_str(s: &str) -> &'static str {
     Box::leak(s.to_owned().into_boxed_str())
 }
@@ -129,11 +122,17 @@ pub fn custom_id(hf_repo: &str) -> Result<String, String> {
     };
     let parts: Vec<&str> = hf_repo.split('/').collect();
     if parts.len() != 2 || !parts.iter().all(|p| ok(p)) {
-        return Err(wiki_core::tr(&format!("repo Hugging Face non valido: {hf_repo} (atteso proprietario/nome)"), &format!("invalid Hugging Face repo: {hf_repo} (expected owner/name)")));
+        return Err(wiki_core::tr(
+            &format!("repo Hugging Face non valido: {hf_repo} (atteso proprietario/nome)"),
+            &format!("invalid Hugging Face repo: {hf_repo} (expected owner/name)"),
+        ));
     }
     let id = parts[1].replace('.', "-");
     if crate::catalog::catalog().iter().any(|m| m.id == id) {
-        return Err(wiki_core::tr(&format!("{id} è già nel catalogo: usa Scarica"), &format!("{id} is already in the catalog: use Download")));
+        return Err(wiki_core::tr(
+            &format!("{id} è già nel catalogo: usa Scarica"),
+            &format!("{id} is already in the catalog: use Download"),
+        ));
     }
     Ok(id)
 }
@@ -172,11 +171,13 @@ pub fn add_custom(hf_repo: &str) -> Result<String, String> {
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let text = serde_json::to_string_pretty(&spec).map_err(|e| e.to_string())?;
     fs::write(dir.join("spec.json"), text).map_err(|e| e.to_string())?;
-    custom_cache().lock().unwrap().remove(&id);
+    custom_cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&id);
     Ok(id)
 }
 
-#[cfg(feature = "download")]
 pub fn custom_catalog_rows() -> Vec<StoredSpec> {
     let root = crate::paths::models_dir();
     let Ok(rd) = fs::read_dir(root) else {
@@ -194,7 +195,6 @@ pub fn custom_catalog_rows() -> Vec<StoredSpec> {
         .collect()
 }
 
-#[cfg(feature = "download")]
 fn stored_to_static(spec: &StoredSpec) -> &'static ModelSpec {
     let pooling = if spec.pooling == "cls" {
         Pooling::Cls
@@ -225,17 +225,60 @@ fn stored_to_static(spec: &StoredSpec) -> &'static ModelSpec {
     }))
 }
 
-#[cfg(feature = "download")]
 pub fn custom_model_spec(id: &str) -> Option<&'static ModelSpec> {
-    if let Some(&spec) = custom_cache().lock().unwrap().get(id) {
-        return Some(spec);
+    {
+        let cache = custom_cache().lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(&spec) = cache.get(id) {
+            return Some(spec);
+        }
     }
     let path = model_dir(id).join("spec.json");
     let text = fs::read_to_string(&path).ok()?;
     let stored: StoredSpec = serde_json::from_str(&text).ok()?;
     let leaked = stored_to_static(&stored);
-    custom_cache().lock().unwrap().insert(id.to_string(), leaked);
+    custom_cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(id.to_string(), leaked);
     Some(leaked)
+}
+
+/// `models list --json` payload.
+pub fn models_list_json() -> serde_json::Value {
+    let installed = installed_ids();
+    let mut catalog: Vec<_> = crate::catalog()
+        .iter()
+        .map(|m| {
+            serde_json::json!({
+                "id": m.id,
+                "dims": m.dims,
+                "size_mb": m.size_mb,
+                "languages": m.languages,
+                "note": m.note,
+                "tested": m.tested,
+                "installed": installed.iter().any(|i| i == m.id),
+            })
+        })
+        .collect();
+    for custom in custom_catalog_rows() {
+        catalog.push(serde_json::json!({
+            "id": custom.id,
+            "dims": custom.dims,
+            "size_mb": custom.size_mb,
+            "languages": custom.languages,
+            "note": custom.note,
+            "tested": custom.tested,
+            "installed": installed.iter().any(|i| i == &custom.id),
+        }));
+    }
+    let r = crate::catalog::reranker_spec();
+    let reranker = serde_json::json!({
+        "id": r.id,
+        "size_mb": r.size_mb,
+        "languages": r.languages,
+        "installed": installed.iter().any(|i| i == r.id),
+    });
+    serde_json::json!({"installed": installed, "catalog": catalog, "reranker": reranker})
 }
 
 #[cfg(feature = "download")]
@@ -278,17 +321,15 @@ pub fn pull(
         }
         drop(file);
         if total > 0 && done != total {
-            return Err(wiki_core::tr(&format!("dimensione scaricata errata per {local}: {done} != {total}"), &format!("wrong downloaded size for {local}: {done} != {total}")));
+            return Err(wiki_core::tr(
+                &format!("dimensione scaricata errata per {local}: {done} != {total}"),
+                &format!("wrong downloaded size for {local}: {done} != {total}"),
+            ));
         }
         fs::rename(&part, &final_path).map_err(|e| e.to_string())?;
     }
     fs::write(complete, b"ok").map_err(|e| e.to_string())?;
     Ok(())
-}
-
-#[cfg(feature = "download")]
-pub fn is_installed(spec: &ModelSpec) -> bool {
-    model_dir(spec.id).join(".complete").is_file()
 }
 
 #[cfg(feature = "download")]
@@ -322,10 +363,8 @@ pub struct HfModelHit {
 }
 
 #[cfg(test)]
-#[cfg(feature = "download")]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn complete_marker_required_for_installed() {
@@ -338,22 +377,32 @@ mod tests {
     }
 
     #[test]
+    fn models_list_json_contains_catalog_and_reranker() {
+        let v = models_list_json();
+        assert!(v.get("catalog").and_then(|c| c.as_array()).is_some_and(|a| !a.is_empty()));
+        assert!(v.get("reranker").and_then(|r| r.get("id")).is_some());
+    }
+
+    #[cfg(feature = "download")]
+    #[test]
     fn infer_cls_pooling() {
-        let cfg = json!({"hidden_size": 384});
-        let pool = json!({"pooling_mode_cls_token": true});
+        let cfg = serde_json::json!({"hidden_size": 384});
+        let pool = serde_json::json!({"pooling_mode_cls_token": true});
         let (dims, p) = infer_from_config(&cfg, Some(&pool)).unwrap();
         assert_eq!(dims, 384);
         assert_eq!(p, Pooling::Cls);
     }
 
+    #[cfg(feature = "download")]
     #[test]
     fn infer_mean_default() {
-        let cfg = json!({"hidden_size": 768});
+        let cfg = serde_json::json!({"hidden_size": 768});
         let (dims, p) = infer_from_config(&cfg, None).unwrap();
         assert_eq!(dims, 768);
         assert_eq!(p, Pooling::Mean);
     }
 
+    #[cfg(feature = "download")]
     #[test]
     fn custom_id_validates_repo_names() {
         assert_eq!(custom_id("BAAI/bge-m3").unwrap(), "bge-m3");
@@ -363,8 +412,9 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "download")]
     #[test]
     fn infer_missing_hidden_size_errors() {
-        assert!(infer_from_config(&json!({}), None).is_err());
+        assert!(infer_from_config(&serde_json::json!({}), None).is_err());
     }
 }

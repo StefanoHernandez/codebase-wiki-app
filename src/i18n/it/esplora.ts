@@ -63,8 +63,6 @@ export const esplora = {
   'esplora.ricerca.beforeRerank': 'prima del reranker #{rank}',
   'esplora.ricerca.score': 'punteggio {score}',
   'esplora.ricerca.filterAll': 'Tutti i file',
-  'esplora.ricerca.filterRust': '.rs (Rust)',
-  'esplora.ricerca.filterTs': '.ts / .tsx',
   'esplora.ricerca.filterNoTest': 'Escludi test',
   'esplora.ricerca.recentQueries': 'Ultime query MCP:',
   'esplora.ricerca.inWiki': 'Nella wiki',

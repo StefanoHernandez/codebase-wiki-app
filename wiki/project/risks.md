@@ -2,14 +2,16 @@
 type: Project
 title: Rischi
 description: Cosa può andare storto nell'app Codebase Wiki e cosa lo segnalerebbe.
-generated: { by: claude-code/claude-opus-5-5, at: 2026-11-11T18:45:00Z }
+generated: { by: antigravity/unknown, at: 2026-11-19T10:45:00Z }
 sources:
   - wiki/project/work-tracker.md
-  - src-tauri/src/commands.rs
+  - src-tauri/src/commands/mod.rs
+  - src-tauri/src/commands/plugin.rs
+  - src-tauri/src/commands/python.rs
   - crates/wiki-mcp/src/serve.rs
   - crates/rag-core/src/files.rs
   - resources/validate-wiki.py
-source_commit: 206cc3c
+source_commit: 0763ea1
 confidence: medium
 ---
 

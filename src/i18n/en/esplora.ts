@@ -65,8 +65,6 @@ export const esplora: Record<keyof typeof it, string> = {
   'esplora.ricerca.beforeRerank': 'before reranker #{rank}',
   'esplora.ricerca.score': 'score {score}',
   'esplora.ricerca.filterAll': 'All files',
-  'esplora.ricerca.filterRust': '.rs (Rust)',
-  'esplora.ricerca.filterTs': '.ts / .tsx',
   'esplora.ricerca.filterNoTest': 'Exclude tests',
   'esplora.ricerca.recentQueries': 'Recent MCP queries:',
   'esplora.ricerca.inWiki': 'In the wiki',

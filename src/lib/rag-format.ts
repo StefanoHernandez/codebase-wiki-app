@@ -133,3 +133,48 @@ export function formatBytes(n: number): string {
   }
   return `${v.toLocaleString(locale(), { maximumFractionDigits: 1 })} ${units[i]}`;
 }
+
+export function isMaskedPrivateQuery(query: string | null | undefined): boolean {
+  const q = query?.trim();
+  return q === '[riservata]' || q === '[private]';
+}
+
+export function pathExtension(path: string): string | null {
+  const file = path.split(/[\\/]/).pop() ?? '';
+  const dot = file.lastIndexOf('.');
+  if (dot <= 0 || dot === file.length - 1) return null;
+  return file.slice(dot + 1).toLowerCase();
+}
+
+const PROSE_EXTS = new Set(['md', 'mdx', 'markdown', 'rst', 'txt', 'adoc']);
+
+/**
+ * Top extensions to offer as search filter chips: from the active hits when present,
+ * otherwise from the repository's code files (excluding wiki pages and prose).
+ */
+export function availableExtensions(
+  hits: Array<{ path: string }> | null,
+  repoFiles: string[],
+  wikiRoot?: string | null,
+  limit = 5,
+): string[] {
+  const counts = new Map<string, number>();
+  if (hits && hits.length > 0) {
+    for (const h of hits) {
+      const ext = pathExtension(h.path);
+      if (ext) counts.set(ext, (counts.get(ext) ?? 0) + 1);
+    }
+  } else {
+    const wikiPrefix = wikiRoot ? wikiRoot.replace(/\/+$/, '') + '/' : '';
+    for (const f of repoFiles) {
+      if (wikiPrefix && f.startsWith(wikiPrefix)) continue;
+      const ext = pathExtension(f);
+      if (!ext || PROSE_EXTS.has(ext)) continue;
+      counts.set(ext, (counts.get(ext) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([ext]) => ext);
+}

@@ -24,6 +24,8 @@ export const shell: Record<keyof typeof it, string> = {
   'shell.sections.aria': 'Sections',
   'shell.intro.subtitle': 'The human control panel over the knowledge written by your agents.',
   'shell.intro.skip': 'Click or wait a moment…',
+  'shell.error.title': 'Something went wrong in this view.',
+  'shell.error.retry': 'Try again',
   'shell.commands': 'Commands',
   'shell.noProject': 'No project',
   'shell.detachedHead': 'Detached HEAD',

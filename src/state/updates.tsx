@@ -42,7 +42,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
     }
     let plugins: PluginRow[] = [];
     try {
-      plugins = await pluginState();
+      plugins = await pluginState(manual);
     } catch {
       /* the plugin line is optional */
     }

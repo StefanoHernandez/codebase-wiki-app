@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { agentActivity, copyText } from '../api';
+import * as api from '../api';
+import { Dialog } from '../components/Dialog';
 import { Empty } from '../components/Empty';
 import { PageDrawer, type PageDrawerTarget } from '../components/PageDrawer';
 import { useToast } from '../components/Toast';
 import { locale, t } from '../i18n';
 import { relativeTime } from '../lib/overview';
-import { formatBytes, parseIndexStatus, type IndexStatus } from '../lib/rag-format';
+import {
+  availableExtensions,
+  formatBytes,
+  isMaskedPrivateQuery,
+  parseIndexStatus,
+  pathExtension,
+  type IndexStatus,
+} from '../lib/rag-format';
 import { useNav } from '../state/nav';
 import { useProject } from '../state/project';
 import { useRag } from '../state/rag';
@@ -14,22 +21,6 @@ import type { ActivityLine } from '../types/snapshot';
 import { SemanticRadar } from './SemanticRadar';
 import { searchWiki, type WikiHit } from '../lib/wiki-search';
 import './ricerca.css';
-
-type SearchHit = {
-  path: string;
-  startLine: number;
-  endLine: number;
-  snippet: string;
-  score: number;
-  bm25Rank: number | null;
-  vecRank: number | null;
-  fusedRank: number;
-  reranked: boolean;
-  stale: boolean;
-};
-
-type HarnessRow = { id: string; label: string; status: 'connected' | 'outdated' | 'absent' };
-type ExtFilter = 'all' | 'rs' | 'ts';
 
 const DEFAULT_MODEL = 'multilingual-e5-small';
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -51,7 +42,7 @@ function indexState(
 }
 
 /** Where a hit came from: keyword list, meaning (vector) list, or both. */
-function matchLabel(h: SearchHit): string {
+function matchLabel(h: api.RagSearchHit): string {
   if (h.bm25Rank && h.vecRank) {
     return t('esplora.ricerca.matchBoth', { text: h.bm25Rank, meaning: h.vecRank });
   }
@@ -101,7 +92,7 @@ function HitCard({
   onCopy,
   onOpen,
 }: {
-  hit: SearchHit;
+  hit: api.RagSearchHit;
   index: number;
   query: string;
   onCopy(refLabel: string): void;
@@ -188,18 +179,20 @@ export default function Ricerca() {
   const job = rag.indexJob(repo);
 
   const [status, setStatus] = useState<IndexStatus | null>(null);
-  const [harness, setHarness] = useState<HarnessRow[]>([]);
+  const [harness, setHarness] = useState<api.HarnessRow[]>([]);
   const [query, setQuery] = useState('');
   const [wikiHits, setWikiHits] = useState<WikiHit[]>([]);
-  const [hits, setHits] = useState<SearchHit[] | null>(null);
+  const [hits, setHits] = useState<api.RagSearchHit[] | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
 
-  const [extFilter, setExtFilter] = useState<ExtFilter>('all');
+  const [extFilter, setExtFilter] = useState<string>('all');
   const [noTest, setNoTest] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const [drawer, setDrawer] = useState<PageDrawerTarget | null>(null);
   const [activity, setActivity] = useState<ActivityLine[]>([]);
+  const [confirmAction, setConfirmAction] = useState<'rebuild' | 'delete' | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
 
   const pagesByPath = useMemo(
     () => new Map(project.pages.map((p) => [p.relPath, p])),
@@ -209,7 +202,7 @@ export default function Ricerca() {
   const refresh = useCallback(async () => {
     if (!repo) return;
     try {
-      setStatus(parseIndexStatus((await invoke('rag_status', { repo })) as Record<string, unknown>));
+      setStatus(parseIndexStatus(await api.ragStatus(repo)));
     } catch (e) {
       setStatus({ indexed: false, error: message(e) });
     }
@@ -220,8 +213,13 @@ export default function Ricerca() {
   }, [refresh, rag.tick]);
 
   useEffect(() => {
+    setExtFilter('all');
+  }, [repo]);
+
+  useEffect(() => {
     let cancelled = false;
-    agentActivity(1_000_000)
+    api
+      .agentActivity(1_000_000)
       .then((a) => {
         if (!cancelled) setActivity(a.filter((l) => l.repo === repo));
       })
@@ -234,7 +232,8 @@ export default function Ricerca() {
   }, [repo, rag.tick]);
 
   useEffect(() => {
-    invoke<HarnessRow[]>('rag_harness_state')
+    api
+      .ragHarnessState()
       .then(setHarness)
       .catch(() => setHarness([]));
   }, []);
@@ -248,7 +247,7 @@ export default function Ricerca() {
     for (const line of activity) {
       if (line.error || !line.query) continue;
       const q = line.query.trim();
-      if (!q || q === privateText || q === '[private]' || seen.has(q)) continue;
+      if (!q || isMaskedPrivateQuery(q) || q === privateText || seen.has(q)) continue;
       seen.add(q);
       out.push(q);
       if (out.length >= 5) break;
@@ -256,11 +255,21 @@ export default function Ricerca() {
     return out;
   }, [activity]);
 
+  const extOptions = useMemo(
+    () => availableExtensions(hits, project.snapshot?.repoFiles ?? [], project.snapshot?.wikiRoot),
+    [hits, project.snapshot?.repoFiles, project.snapshot?.wikiRoot],
+  );
+
+  useEffect(() => {
+    if (extFilter !== 'all' && !extOptions.includes(extFilter)) {
+      setExtFilter('all');
+    }
+  }, [extFilter, extOptions]);
+
   const filteredHits = useMemo(() => {
     if (!hits) return [];
     return hits.filter((h) => {
-      if (extFilter === 'rs' && !h.path.endsWith('.rs')) return false;
-      if (extFilter === 'ts' && !/\.(ts|tsx)$/i.test(h.path)) return false;
+      if (extFilter !== 'all' && pathExtension(h.path) !== extFilter) return false;
       if (noTest && isTestPath(h.path)) return false;
       return true;
     });
@@ -295,7 +304,7 @@ export default function Ricerca() {
       setSearching(true);
       setSearchError(null);
       try {
-        setHits((await invoke('rag_preview', { repo, query: target })) as SearchHit[]);
+        setHits(await api.ragPreview(repo, target));
       } catch (e) {
         setHits(null);
         setSearchError(message(e));
@@ -320,23 +329,24 @@ export default function Ricerca() {
   const code = status?.bySource?.code;
   const connected = harness.filter((h) => h.status !== 'absent');
 
-  const rebuild = async (andIndex: boolean) => {
-    const msg = andIndex
-      ? t('esplora.ricerca.confirmRebuild')
-      : t('esplora.ricerca.confirmDelete');
-    if (!window.confirm(msg)) return;
+  const executeRebuild = async (andIndex: boolean) => {
+    setActionBusy(true);
     try {
-      await invoke('rag_index_delete', { repo });
+      await api.ragIndexDelete(repo);
       if (andIndex) await rag.startIndex(repo);
       else toast(t('esplora.ricerca.deleted'));
     } catch (e) {
       toast(message(e), 'error');
+    } finally {
+      setActionBusy(false);
+      setConfirmAction(null);
     }
     void refresh();
   };
 
   const handleCopyRef = (refLabel: string) => {
-    void copyText(refLabel)
+    void api
+      .copyText(refLabel)
       .then(() => toast(t('esplora.ricerca.copiedRef', { ref: refLabel })))
       .catch((e) => toast(message(e), 'error'));
   };
@@ -397,22 +407,17 @@ export default function Ricerca() {
             >
               {t('esplora.ricerca.filterAll')}
             </button>
-            <button
-              type="button"
-              className="ricerca-filter-chip"
-              aria-pressed={extFilter === 'rs'}
-              onClick={() => setExtFilter((f) => (f === 'rs' ? 'all' : 'rs'))}
-            >
-              {t('esplora.ricerca.filterRust')}
-            </button>
-            <button
-              type="button"
-              className="ricerca-filter-chip"
-              aria-pressed={extFilter === 'ts'}
-              onClick={() => setExtFilter((f) => (f === 'ts' ? 'all' : 'ts'))}
-            >
-              {t('esplora.ricerca.filterTs')}
-            </button>
+            {extOptions.map((ext) => (
+              <button
+                key={ext}
+                type="button"
+                className="ricerca-filter-chip"
+                aria-pressed={extFilter === ext}
+                onClick={() => setExtFilter((f) => (f === ext ? 'all' : ext))}
+              >
+                .{ext}
+              </button>
+            ))}
             <button
               type="button"
               className="ricerca-filter-chip"
@@ -501,7 +506,7 @@ export default function Ricerca() {
                   type="button"
                   className="btn btn-sm"
                   disabled={busy}
-                  onClick={() => void rebuild(true)}
+                  onClick={() => setConfirmAction('rebuild')}
                 >
                   {t('esplora.ricerca.rebuild')}
                 </button>
@@ -509,7 +514,7 @@ export default function Ricerca() {
                   type="button"
                   className="btn btn-sm btn-quiet"
                   disabled={busy}
-                  onClick={() => void rebuild(false)}
+                  onClick={() => setConfirmAction('delete')}
                 >
                   {t('esplora.ricerca.deleteIndex')}
                 </button>
@@ -689,6 +694,19 @@ export default function Ricerca() {
           </div>
         </div>
       )}
+
+      <Dialog
+        open={confirmAction !== null}
+        title={confirmAction === 'rebuild' ? t('esplora.ricerca.rebuild') : t('esplora.ricerca.deleteIndex')}
+        confirmLabel={confirmAction === 'rebuild' ? t('esplora.ricerca.rebuild') : t('esplora.ricerca.deleteIndex')}
+        busy={actionBusy}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={() => confirmAction && void executeRebuild(confirmAction === 'rebuild')}
+      >
+        <p className="dialog-note">
+          {confirmAction === 'rebuild' ? t('esplora.ricerca.confirmRebuild') : t('esplora.ricerca.confirmDelete')}
+        </p>
+      </Dialog>
 
       <PageDrawer
         open={drawer !== null}

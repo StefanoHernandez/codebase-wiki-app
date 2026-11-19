@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { t, type Key } from '../i18n';
 import { countLaunch, markSeen, nextHint, readHints, type HintState, type Spotlight } from '../lib/hints';
-import { firstRunDone } from '../views/PrimiPassi';
+import { firstRunDone } from '../lib/first-run';
 
 export const HINTS_CHANGED = 'cw-hints-changed';
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';

@@ -60,7 +60,7 @@ struct RepoParams {
 
 fn active_spec() -> Result<&'static rag_core::ModelSpec, String> {
     let cfg = read_config().map_err(|e| e.to_string())?;
-    let spec = model_by_id(&cfg.model).ok_or_else(|| format!("Modello sconosciuto: {}", cfg.model))?;
+    let spec = model_by_id(&cfg.model).ok_or_else(|| format!("Unknown model: {}", cfg.model))?;
     if !rag_core::models::is_installed(spec) {
         return Err("No model installed: open Codebase Wiki → Search".into());
     }
@@ -132,7 +132,7 @@ impl WikiMcp {
 fn repo_names() -> String {
     let repos = indexed_repos(&data_dir().join("indexes"));
     if repos.is_empty() {
-        return "nessun progetto indicizzato: apri Codebase Wiki → Ricerca locale → Indicizza".into();
+        return "no indexed projects: open Codebase Wiki → Search → Index".into();
     }
     repos.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join(", ")
 }
@@ -173,7 +173,7 @@ fn status_header(root: &std::path::Path, store: &Store) -> Result<String, String
     let head = head_sha(root).unwrap_or_default();
     let changed = store.count_changed(root)?;
     Ok(format!(
-        "index @{} · HEAD @{} · {changed} file cambiati dall'indice",
+        "index @{} · HEAD @{} · {changed} files changed since index",
         short_sha(&ih),
         short_sha(&head)
     ))
@@ -364,7 +364,7 @@ pub fn run(repo: Option<&std::path::Path>) -> Result<(), String> {
     match resolve_repo(repo) {
         Ok(root) => REPO.set(root).map_err(|_| "repo already set")?,
         Err(e) if repo.is_some() => return Err(e),
-        Err(_) => eprintln!("codebase-wiki: avviato fuori da un repo, i tool chiedono `repo` (vedi list_repos)"),
+        Err(_) => eprintln!("codebase-wiki: started outside a repo, tools require `repo` (see list_repos)"),
     }
     std::thread::spawn(unload_when_idle);
     let server = WikiMcp::new();

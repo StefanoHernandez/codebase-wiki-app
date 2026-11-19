@@ -405,10 +405,356 @@ pub fn write_wiki_file_safe(
     )
 }
 
+fn clean_source_path(raw: &str) -> String {
+    let without_hash = raw.split('#').next().unwrap_or(raw).trim();
+    static LINE_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = LINE_RE.get_or_init(|| regex::Regex::new(r":\d+(?::\d+)?$").unwrap());
+    re.replace(without_hash, "").trim().to_string()
+}
+
+fn extract_frontmatter_sources_and_commit(content: &str) -> (Option<String>, Vec<String>) {
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.is_empty() || lines[0].trim() != "---" {
+        return (None, Vec::new());
+    }
+
+    let end_idx = match lines[1..].iter().position(|l| l.trim() == "---") {
+        Some(idx) => idx + 1,
+        None => return (None, Vec::new()),
+    };
+
+    let mut source_commit = None;
+    let mut sources = Vec::new();
+    let mut in_sources = false;
+
+    for line in &lines[1..end_idx] {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("source_commit:") {
+            let c = rest.trim().trim_matches('"').trim_matches('\'');
+            if !c.is_empty() {
+                source_commit = Some(c.to_string());
+            }
+            in_sources = false;
+        } else if trimmed.starts_with("sources:") {
+            in_sources = true;
+        } else if in_sources && line.starts_with("  - ") {
+            let item = line[4..].trim().trim_matches('"').trim_matches('\'');
+            let cleaned = clean_source_path(item);
+            if !cleaned.is_empty() {
+                sources.push(cleaned);
+            }
+        } else if !line.starts_with("  ") {
+            in_sources = false;
+        }
+    }
+
+    (source_commit, sources)
+}
+
+fn collect_wiki_pages_recursive(
+    dir: &Path,
+    base_dir: &Path,
+    pages: &mut Vec<WikiPageEntry>,
+) {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    let canon_base = base_dir.canonicalize().ok();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.file_name().map(|n| n == ".private-terms").unwrap_or(false) {
+            continue;
+        }
+        let is_symlink = fs::symlink_metadata(&path)
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false);
+        if is_symlink {
+            if fs::metadata(&path).map(|m| m.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            if !path.extension().map(|ext| ext == "md").unwrap_or(false) {
+                continue;
+            }
+        } else if path.is_dir() {
+            collect_wiki_pages_recursive(&path, base_dir, pages);
+            continue;
+        } else if !path.is_file() || !path.extension().map(|ext| ext == "md").unwrap_or(false) {
+            continue;
+        }
+
+        let keep = match (&canon_base, path.canonicalize()) {
+            (Some(base), Ok(canon_path)) => canon_path.starts_with(base),
+            _ => false,
+        };
+        if !keep {
+            continue;
+        }
+        if let Ok(canon_path) = path.canonicalize() {
+            if canon_path
+                .components()
+                .any(|c| is_private_terms_name(c.as_os_str()))
+            {
+                continue;
+            }
+        }
+        if let Ok(rel) = path.strip_prefix(base_dir) {
+            let wiki_rel_path = rel.to_string_lossy().replace('\\', "/");
+            let size_bytes = path.metadata().map(|m| m.len()).unwrap_or(0);
+            let (content, read_error) = match fs::read_to_string(&path) {
+                Ok(text) => (text, None),
+                Err(e) => (String::new(), Some(format!("Failed to read wiki page: {}", e))),
+            };
+            pages.push(WikiPageEntry {
+                wiki_rel_path,
+                content,
+                size_bytes,
+                read_error,
+            });
+        }
+    }
+}
+
+const FALLBACK_SKIP_DIRS: &[&str] = &[
+    "node_modules",
+    "target",
+    "dist",
+    "build",
+    "venv",
+    "__pycache__",
+    "vendor",
+];
+
+fn is_noise_repo_file(rel: &str) -> bool {
+    let lower = rel.to_lowercase();
+    if lower.ends_with(".lock")
+        || lower.ends_with("package-lock.json")
+        || lower.ends_with("pnpm-lock.yaml")
+        || lower.ends_with("yarn.lock")
+        || lower.ends_with("cargo.lock")
+        || lower.contains(".min.")
+        || lower.ends_with(".map")
+    {
+        return true;
+    }
+    const BINARY_EXTS: &[&str] = &[
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".icns",
+        ".woff", ".woff2", ".ttf", ".otf",
+        ".pdf", ".zip", ".tar", ".gz",
+        ".exe", ".dll", ".so", ".dylib",
+        ".dmg", ".appimage", ".deb", ".rpm",
+        ".sqlite", ".db",
+    ];
+    BINARY_EXTS.iter().any(|ext| lower.ends_with(ext))
+}
+
+fn collect_repo_files_recursive_inner(
+    dir: &Path,
+    repo_path: &Path,
+    canon_repo: Option<&Path>,
+    files: &mut Vec<String>,
+) {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if let Some(file_name) = path.file_name() {
+            let name_str = file_name.to_string_lossy();
+            if name_str.starts_with('.') || FALLBACK_SKIP_DIRS.contains(&name_str.as_ref()) {
+                continue;
+            }
+        }
+
+        let Ok(meta) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if meta.file_type().is_symlink() {
+            continue;
+        }
+        if meta.is_dir() {
+            collect_repo_files_recursive_inner(&path, repo_path, canon_repo, files);
+        } else if meta.is_file() {
+            if let Some(base) = canon_repo {
+                if let Ok(canon_path) = path.canonicalize() {
+                    if !canon_path.starts_with(base) {
+                        continue;
+                    }
+                    if canon_path
+                        .components()
+                        .any(|c| is_private_terms_name(c.as_os_str()))
+                    {
+                        continue;
+                    }
+                }
+            }
+            if let Ok(rel) = path.strip_prefix(repo_path) {
+                let rel_str = rel.to_string_lossy().replace('\\', "/");
+                if !is_noise_repo_file(&rel_str) {
+                    files.push(rel_str);
+                }
+            }
+        }
+    }
+}
+
+pub fn collect_repo_files_recursive(
+    dir: &Path,
+    repo_path: &Path,
+    files: &mut Vec<String>,
+) {
+    let canon_repo = repo_path.canonicalize().ok();
+    collect_repo_files_recursive_inner(dir, repo_path, canon_repo.as_deref(), files);
+}
+
+/// Lists repository files via `git ls-files` (respecting `.gitignore` and skipping lock/binary noise);
+/// falls back to a recursive directory walk outside git worktrees.
+pub fn collect_repo_files(repo_path: &Path) -> Vec<String> {
+    let canon_repo = repo_path.canonicalize().ok();
+    let mut files = Vec::new();
+    let out = git_ops::no_window_command("git")
+        .arg("-C")
+        .arg(repo_path)
+        .args(["ls-files", "-z", "--cached", "--others", "--exclude-standard"])
+        .output();
+
+    if let Ok(out) = out {
+        if out.status.success() {
+            for chunk in out.stdout.split(|&b| b == 0) {
+                if chunk.is_empty() {
+                    continue;
+                }
+                let rel_str = String::from_utf8_lossy(chunk).replace('\\', "/");
+                if !is_safe_relative_path(&rel_str) || is_noise_repo_file(&rel_str) {
+                    continue;
+                }
+                let full = repo_path.join(&rel_str);
+                let Ok(meta) = fs::symlink_metadata(&full) else {
+                    continue;
+                };
+                if !meta.is_file() || meta.file_type().is_symlink() {
+                    continue;
+                }
+                if let Some(ref base) = canon_repo {
+                    let Ok(canon_file) = full.canonicalize() else {
+                        continue;
+                    };
+                    if !canon_file.starts_with(base)
+                        || canon_file
+                            .components()
+                            .any(|c| is_private_terms_name(c.as_os_str()))
+                    {
+                        continue;
+                    }
+                }
+                files.push(rel_str);
+            }
+            files.sort();
+            files.dedup();
+            return files;
+        }
+    }
+
+    collect_repo_files_recursive_inner(repo_path, repo_path, canon_repo.as_deref(), &mut files);
+    files.sort();
+    files.dedup();
+    files
+}
+
+/// Reads every wiki page plus git/drift state. Lint is not run here; call
+/// `validator::run_structural_lint` separately.
+pub fn load_wiki_snapshot(repo_path: &Path, wiki_root: &str) -> Result<WikiSnapshot, String> {
+    load_wiki_snapshot_opts(repo_path, wiki_root, true)
+}
+
+/// Like [`load_wiki_snapshot`], optionally skipping the repository file listing when only wiki
+/// pages and git state are needed (e.g. the Projects summary view).
+pub fn load_wiki_snapshot_opts(
+    repo_path: &Path,
+    wiki_root: &str,
+    include_repo_files: bool,
+) -> Result<WikiSnapshot, String> {
+    wiki_resolver::ensure_wiki_inside_repo(repo_path, wiki_root)?;
+    let wiki_dir = repo_path.join(wiki_root);
+    if !wiki_dir.is_dir() {
+        return Err(format!("Wiki directory '{}' not found", wiki_root));
+    }
+
+    let mut pages = Vec::new();
+    collect_wiki_pages_recursive(&wiki_dir, &wiki_dir, &mut pages);
+    pages.sort_by(|a, b| a.wiki_rel_path.cmp(&b.wiki_rel_path));
+
+    let repo_files = if include_repo_files {
+        collect_repo_files(repo_path)
+    } else {
+        Vec::new()
+    };
+
+    let mut changed_files_by_page = BTreeMap::new();
+    // Pages share a few commits, and a git process can cost ~0.4 s on Windows: each commit is
+    // checked and diffed once, then filtered per page. Both maps live for this load only.
+    // Sources git would read as globs keep their own `git diff -- <sources>`.
+    let mut resolved: BTreeMap<String, Option<String>> = BTreeMap::new();
+    let mut changed_since: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for page in &pages {
+        let (source_commit, sources) = extract_frontmatter_sources_and_commit(&page.content);
+        if let Some(commit) = source_commit {
+            if !sources.is_empty() {
+                let base = resolved
+                    .entry(commit.clone())
+                    .or_insert_with(|| git_ops::resolve_source_commit(repo_path, &commit));
+                let changed = match base.as_deref() {
+                    None => Vec::new(),
+                    Some(b) if sources.iter().all(|s| git_ops::is_plain_pathspec(s)) => {
+                        let all = changed_since
+                            .entry(b.to_string())
+                            .or_insert_with(|| git_ops::changed_files_since_resolved(repo_path, b, &[]));
+                        git_ops::filter_changed(all, &sources)
+                    }
+                    Some(b) => git_ops::changed_files_since_resolved(repo_path, b, &sources),
+                };
+                changed_files_by_page.insert(page.wiki_rel_path.clone(), changed);
+            }
+        }
+    }
+
+    let schema_md = pages
+        .iter()
+        .find(|p| p.wiki_rel_path == "SCHEMA.md")
+        .map(|p| p.content.as_str())
+        .unwrap_or("");
+    let handoff_rel = crate::wiki_schema::parse_core_map_role(schema_md, "handoff")
+        .filter(|rel| is_safe_relative_path(rel))
+        .unwrap_or_else(|| "agent/handoff.md".to_string());
+    let handoff_path = format!("{}/{}", wiki_root, handoff_rel);
+    let git_state = git_ops::inspect_git_state(repo_path, Some(&handoff_path));
+    let resolution = wiki_resolver::resolve_wiki_root(repo_path);
+
+    Ok(WikiSnapshot {
+        repo_path: repo_path.to_string_lossy().into_owned(),
+        wiki_root: Some(wiki_root.to_string()),
+        is_initialized: resolution.is_initialized,
+        warning: resolution.warning,
+        git_state,
+        pages,
+        repo_files,
+        changed_files_by_page,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     // `=term` lines match a whole word ([A-Za-z0-9_] are word characters), as the plugin's
     // check-private-terms.sh does with `git grep -w`; other lines stay substrings.
@@ -462,8 +808,6 @@ mod tests {
         assert_eq!(is_safe_relative_path("notes/meeting 10:30.md"), !cfg!(windows));
         assert!(!is_safe_relative_path("wiki/.private-terms"));
     }
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU64, Ordering};
 
     struct TestDir {
         path: PathBuf,
@@ -741,8 +1085,8 @@ mod tests {
         std::os::unix::fs::symlink(wiki.join(".private-terms"), wiki.join("alias.md")).unwrap();
         let snapshot = load_wiki_snapshot(repo, "wiki").unwrap();
         let paths: Vec<_> = snapshot.pages.iter().map(|p| p.wiki_rel_path.as_str()).collect();
-        assert!(!paths.iter().any(|p| *p == "alias.md"));
-        assert!(!paths.iter().any(|p| *p == ".private-terms"));
+        assert!(!paths.contains(&"alias.md"));
+        assert!(!paths.contains(&".private-terms"));
     }
 
     #[test]
@@ -787,224 +1131,8 @@ mod tests {
             std::os::unix::fs::symlink(&outside, wiki.join("link")).unwrap();
             let snapshot = load_wiki_snapshot(repo, "wiki").unwrap();
             let paths: Vec<_> = snapshot.pages.iter().map(|p| p.wiki_rel_path.as_str()).collect();
-            assert!(paths.iter().any(|p| *p == "inside.md"));
+            assert!(paths.contains(&"inside.md"));
             assert!(!paths.iter().any(|p| p.contains("leaked")));
         }
     }
-}
-
-fn clean_source_path(raw: &str) -> String {
-    let without_hash = raw.split('#').next().unwrap_or(raw).trim();
-    static LINE_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    let re = LINE_RE.get_or_init(|| regex::Regex::new(r":\d+(?::\d+)?$").unwrap());
-    re.replace(without_hash, "").trim().to_string()
-}
-
-fn extract_frontmatter_sources_and_commit(content: &str) -> (Option<String>, Vec<String>) {
-    let lines: Vec<&str> = content.lines().collect();
-    if lines.is_empty() || lines[0].trim() != "---" {
-        return (None, Vec::new());
-    }
-
-    let end_idx = match lines[1..].iter().position(|l| l.trim() == "---") {
-        Some(idx) => idx + 1,
-        None => return (None, Vec::new()),
-    };
-
-    let mut source_commit = None;
-    let mut sources = Vec::new();
-    let mut in_sources = false;
-
-    for line in &lines[1..end_idx] {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if let Some(rest) = trimmed.strip_prefix("source_commit:") {
-            let c = rest.trim().trim_matches('"').trim_matches('\'');
-            if !c.is_empty() {
-                source_commit = Some(c.to_string());
-            }
-            in_sources = false;
-        } else if trimmed.starts_with("sources:") {
-            in_sources = true;
-        } else if in_sources && line.starts_with("  - ") {
-            let item = line[4..].trim().trim_matches('"').trim_matches('\'');
-            let cleaned = clean_source_path(item);
-            if !cleaned.is_empty() {
-                sources.push(cleaned);
-            }
-        } else if !line.starts_with("  ") {
-            in_sources = false;
-        }
-    }
-
-    (source_commit, sources)
-}
-
-fn collect_wiki_pages_recursive(
-    dir: &Path,
-    base_dir: &Path,
-    pages: &mut Vec<WikiPageEntry>,
-) {
-    let entries = match fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-
-    let canon_base = base_dir.canonicalize().ok();
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.file_name().map(|n| n == ".private-terms").unwrap_or(false) {
-            continue;
-        }
-        let is_symlink = fs::symlink_metadata(&path)
-            .map(|m| m.file_type().is_symlink())
-            .unwrap_or(false);
-        if is_symlink {
-            if fs::metadata(&path).map(|m| m.is_dir()).unwrap_or(false) {
-                continue;
-            }
-            if !path.extension().map(|ext| ext == "md").unwrap_or(false) {
-                continue;
-            }
-        } else if path.is_dir() {
-            collect_wiki_pages_recursive(&path, base_dir, pages);
-            continue;
-        } else if !path.is_file() || !path.extension().map(|ext| ext == "md").unwrap_or(false) {
-            continue;
-        }
-
-        let keep = match (&canon_base, path.canonicalize()) {
-            (Some(base), Ok(canon_path)) => canon_path.starts_with(base),
-            _ => false,
-        };
-        if !keep {
-            continue;
-        }
-        if let Ok(canon_path) = path.canonicalize() {
-            if canon_path
-                .components()
-                .any(|c| is_private_terms_name(c.as_os_str()))
-            {
-                continue;
-            }
-        }
-        if let Ok(rel) = path.strip_prefix(base_dir) {
-            let wiki_rel_path = rel.to_string_lossy().replace('\\', "/");
-            let size_bytes = path.metadata().map(|m| m.len()).unwrap_or(0);
-            let (content, read_error) = match fs::read_to_string(&path) {
-                Ok(text) => (text, None),
-                Err(e) => (String::new(), Some(format!("Failed to read wiki page: {}", e))),
-            };
-            pages.push(WikiPageEntry {
-                wiki_rel_path,
-                content,
-                size_bytes,
-                read_error,
-            });
-        }
-    }
-}
-
-pub fn collect_repo_files_recursive(
-    dir: &Path,
-    repo_path: &Path,
-    files: &mut Vec<String>,
-) {
-    let entries = match fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if let Some(file_name) = path.file_name() {
-            let name_str = file_name.to_string_lossy();
-            if name_str.starts_with('.')
-                || name_str == "node_modules"
-                || name_str == "target"
-            {
-                continue;
-            }
-        }
-
-        if path.is_dir() {
-            collect_repo_files_recursive(&path, repo_path, files);
-        } else if path.is_file() {
-            if let Ok(canon_repo) = repo_path.canonicalize() {
-                if let Ok(canon_path) = path.canonicalize() {
-                    if !canon_path.starts_with(&canon_repo) {
-                        continue;
-                    }
-                }
-            }
-            if let Ok(rel) = path.strip_prefix(repo_path) {
-                files.push(rel.to_string_lossy().replace('\\', "/"));
-            }
-        }
-    }
-}
-
-/// Reads every wiki page plus git/drift state. Lint is not run here; call
-/// `validator::run_structural_lint` separately.
-pub fn load_wiki_snapshot(repo_path: &Path, wiki_root: &str) -> Result<WikiSnapshot, String> {
-    wiki_resolver::ensure_wiki_inside_repo(repo_path, wiki_root)?;
-    let wiki_dir = repo_path.join(wiki_root);
-    if !wiki_dir.is_dir() {
-        return Err(format!("Wiki directory '{}' not found", wiki_root));
-    }
-
-    let mut pages = Vec::new();
-    collect_wiki_pages_recursive(&wiki_dir, &wiki_dir, &mut pages);
-    pages.sort_by(|a, b| a.wiki_rel_path.cmp(&b.wiki_rel_path));
-
-    let mut repo_files = Vec::new();
-    collect_repo_files_recursive(repo_path, repo_path, &mut repo_files);
-    repo_files.sort();
-    repo_files.dedup();
-
-    let mut changed_files_by_page = BTreeMap::new();
-    // Pages share a few commits, and a git process can cost ~0.4 s on Windows: each commit is
-    // checked and diffed once, then filtered per page. Both maps live for this load only.
-    // Sources git would read as globs keep their own `git diff -- <sources>`.
-    let mut resolved: BTreeMap<String, Option<String>> = BTreeMap::new();
-    let mut changed_since: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for page in &pages {
-        let (source_commit, sources) = extract_frontmatter_sources_and_commit(&page.content);
-        if let Some(commit) = source_commit {
-            if !sources.is_empty() {
-                let base = resolved
-                    .entry(commit.clone())
-                    .or_insert_with(|| git_ops::resolve_source_commit(repo_path, &commit));
-                let changed = match base.as_deref() {
-                    None => Vec::new(),
-                    Some(b) if sources.iter().all(|s| git_ops::is_plain_pathspec(s)) => {
-                        let all = changed_since
-                            .entry(b.to_string())
-                            .or_insert_with(|| git_ops::changed_files_since_resolved(repo_path, b, &[]));
-                        git_ops::filter_changed(all, &sources)
-                    }
-                    Some(b) => git_ops::changed_files_since_resolved(repo_path, b, &sources),
-                };
-                changed_files_by_page.insert(page.wiki_rel_path.clone(), changed);
-            }
-        }
-    }
-
-    let handoff_path = format!("{}/agent/handoff.md", wiki_root);
-    let git_state = git_ops::inspect_git_state(repo_path, Some(&handoff_path));
-    let resolution = wiki_resolver::resolve_wiki_root(repo_path);
-
-    Ok(WikiSnapshot {
-        repo_path: repo_path.to_string_lossy().into_owned(),
-        wiki_root: Some(wiki_root.to_string()),
-        is_initialized: resolution.is_initialized,
-        warning: resolution.warning,
-        git_state,
-        pages,
-        repo_files,
-        changed_files_by_page,
-    })
 }

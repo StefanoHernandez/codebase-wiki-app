@@ -52,8 +52,8 @@ export function graphHistory(repo: string): Promise<GraphHistory> {
   return invoke('graph_history', { repo });
 }
 
-export function loadSnapshot(repo: string): Promise<WikiSnapshot> {
-  return invoke('load_snapshot', { repo });
+export function loadSnapshot(repo: string, opts?: { includeRepoFiles?: boolean }): Promise<WikiSnapshot> {
+  return invoke('load_snapshot', { repo, includeRepoFiles: opts?.includeRepoFiles ?? true });
 }
 
 export function writeWikiFile(repo: string, relPath: string, content: string): Promise<void> {
@@ -136,8 +136,117 @@ export function openReleasePage(): Promise<void> {
   return invoke('open_release_page');
 }
 
-export function pluginState(): Promise<PluginRow[]> {
-  return invoke('plugin_state');
+export function pluginState(force = false): Promise<PluginRow[]> {
+  return invoke('plugin_state', { force });
+}
+
+export interface PluginPreview {
+  commands: string[];
+  folders: string[];
+}
+
+export function pluginPreview(agent: string): Promise<PluginPreview> {
+  return invoke('plugin_preview', { agent });
+}
+
+export function pluginApply(agent: string): Promise<void> {
+  return invoke('plugin_apply', { agent });
+}
+
+// ---- RAG & Agent harnesses ----
+
+export interface RagSearchHit {
+  path: string;
+  startLine: number;
+  endLine: number;
+  source: string;
+  score: number;
+  snippet: string;
+  bm25Rank: number | null;
+  vecRank: number | null;
+  fusedRank: number;
+  reranked: boolean;
+  stale: boolean;
+}
+
+export interface RagModelsResponse {
+  installed?: string[];
+  catalog?: Array<Record<string, unknown>>;
+  reranker?: Record<string, unknown>;
+}
+
+export interface HarnessRow {
+  id: string;
+  label: string;
+  status: 'connected' | 'outdated' | 'absent';
+  configPath: string;
+  hint?: string | null;
+}
+
+export interface HarnessPreview {
+  path: string;
+  before: string;
+  after: string;
+}
+
+export function ragStatus(repo: string): Promise<Record<string, unknown>> {
+  return invoke('rag_status', { repo });
+}
+
+export function ragModels(): Promise<RagModelsResponse> {
+  return invoke('rag_models');
+}
+
+export function ragSetModel(id: string): Promise<void> {
+  return invoke('rag_set_model', { id });
+}
+
+export function ragModelPull(id: string): Promise<void> {
+  return invoke('rag_model_pull', { id });
+}
+
+export function ragModelRemove(id: string): Promise<void> {
+  return invoke('rag_model_remove', { id });
+}
+
+export function ragModelsSearch(q: string): Promise<Array<{ id: string; downloads: number }>> {
+  return invoke('rag_models_search', { q });
+}
+
+export function ragModelsAdd(hfRepo: string): Promise<unknown> {
+  return invoke('rag_models_add', { hfRepo });
+}
+
+export function ragIndexStart(repo: string): Promise<void> {
+  return invoke('rag_index_start', { repo });
+}
+
+export function ragIndexCancel(repo: string): Promise<void> {
+  return invoke('rag_index_cancel', { repo });
+}
+
+export function ragIndexDelete(repo: string): Promise<void> {
+  return invoke('rag_index_delete', { repo });
+}
+
+export function ragPreview(repo: string, query: string): Promise<RagSearchHit[]> {
+  return invoke('rag_preview', { repo, query });
+}
+
+export function ragHarnessState(): Promise<HarnessRow[]> {
+  return invoke('rag_harness_state');
+}
+
+export function ragHarnessPreview(harness: string, action: string): Promise<HarnessPreview> {
+  return invoke('rag_harness_preview', { harness, action });
+}
+
+export function ragHarnessApply(harness: string, action: string): Promise<void> {
+  return invoke('rag_harness_apply', { harness, action });
+}
+
+export function onRagProgress(cb: (payload: string) => void): Promise<UnlistenFn> {
+  return listen<string>('rag://progress', (e) => cb(e.payload));
 }
 
 /** Downloads (progress 0–100, null when the size is unknown), installs, restarts. */

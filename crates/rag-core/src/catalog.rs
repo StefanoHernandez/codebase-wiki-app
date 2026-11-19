@@ -163,16 +163,7 @@ pub fn model_by_id(id: &str) -> Option<&'static ModelSpec> {
     catalog()
         .iter()
         .find(|m| m.id == id)
-        .or_else(|| {
-            #[cfg(feature = "download")]
-            {
-                crate::models::custom_model_spec(id)
-            }
-            #[cfg(not(feature = "download"))]
-            {
-                None
-            }
-        })
+        .or_else(|| crate::models::custom_model_spec(id))
 }
 
 pub fn default_model_id() -> &'static str {

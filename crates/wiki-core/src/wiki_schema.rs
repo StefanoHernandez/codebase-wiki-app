@@ -231,9 +231,57 @@ pub fn parse_excluded_globs(schema_md: &str) -> Vec<String> {
     globs
 }
 
+/// Reads one role path from `## Core map` (or `<!-- wiki:core-map -->`), e.g. `"handoff"`.
+pub fn parse_core_map_role(schema_md: &str, role: &str) -> Option<String> {
+    let lines = section_lines(schema_md, &["core map"]);
+    if lines.is_empty() {
+        return None;
+    }
+    let wanted = role.trim().to_lowercase();
+    for row in table_rows_outside_fences(&lines) {
+        if row.len() < 2 {
+            continue;
+        }
+        let key = row[0].trim().trim_matches('`').trim().to_lowercase();
+        if key != wanted {
+            continue;
+        }
+        let raw = backtick_token(&row[1])
+            .unwrap_or_else(|| row[1].trim().trim_matches('`').to_string());
+        let cleaned = raw
+            .trim()
+            .trim_start_matches("./")
+            .trim_start_matches('/')
+            .replace('\\', "/");
+        if !cleaned.is_empty() {
+            return Some(cleaned);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_core_map_role_reads_relocated_and_ignores_fences() {
+        let md = r#"## Mappa principale
+<!-- wiki:core-map -->
+
+```markdown
+| handoff | `fenced/handoff.md` |
+```
+
+| Role | Path |
+| --- | --- |
+| index | `index.md` |
+| handoff | `notes/next.md` |
+"#;
+        assert_eq!(parse_core_map_role(md, "handoff").as_deref(), Some("notes/next.md"));
+        assert_eq!(parse_core_map_role(md, "index").as_deref(), Some("index.md"));
+        assert_eq!(parse_core_map_role(md, "missing"), None);
+    }
 
     #[test]
     fn excluded_glob_inside_fence_is_ignored() {

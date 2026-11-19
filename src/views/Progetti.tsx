@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import * as api from '../api';
 import { Empty } from '../components/Empty';
 import { useToast } from '../components/Toast';
 import { buildRow, lastUseByAgent, lastUseOfHarness, relativeTime, type ProjectRow } from '../lib/overview';
-import { parseIndexStatus } from '../lib/rag-format';
+import { isMaskedPrivateQuery, parseIndexStatus } from '../lib/rag-format';
 import { locale, t } from '../i18n';
 import { DEFAULT_CORE_MAP } from '../lib/schema-parser';
 import { useNav } from '../state/nav';
@@ -12,9 +11,8 @@ import { deriveProject, useProject } from '../state/project';
 import type { ActivityLine, RecentProject } from '../types/snapshot';
 import './progetti.css';
 
-type HarnessRow = { id: string; label: string; status: 'connected' | 'outdated' | 'absent' };
-
 const PAGE = 20;
+const ROW_CONCURRENCY = 3;
 /** Every line kept on disk (each repo file holds at most 600): last use must not depend on a window. */
 const ACTIVITY_ALL = 1_000_000;
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -22,13 +20,14 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 /** One project row: snapshot → attention and log, plus index status and news. */
 async function loadRow(recent: RecentProject, activity: ActivityLine[]): Promise<ProjectRow> {
   try {
-    const snap = await api.loadSnapshot(recent.path);
+    const snap = await api.loadSnapshot(recent.path, { includeRepoFiles: false });
     const derived = deriveProject(snap, null);
     const logRel = derived.schema?.coreMap.log ?? DEFAULT_CORE_MAP.log;
     const logMd = snap.pages.find((p) => p.wikiRelPath === logRel)?.content;
     const [status, news] = await Promise.all([
-      invoke('rag_status', { repo: recent.path })
-        .then((raw) => parseIndexStatus(raw as Record<string, unknown>))
+      api
+        .ragStatus(recent.path)
+        .then((raw) => parseIndexStatus(raw))
         .catch((e) => ({ indexed: false, error: message(e) })),
       api.projectNews(recent.path).catch(() => null),
     ]);
@@ -59,7 +58,7 @@ export default function Progetti() {
   const toast = useToast();
   const [rows, setRows] = useState<Record<string, ProjectRow>>({});
   const [activity, setActivity] = useState<ActivityLine[]>([]);
-  const [harness, setHarness] = useState<HarnessRow[]>([]);
+  const [harness, setHarness] = useState<api.HarnessRow[]>([]);
   const [shown, setShown] = useState(PAGE);
   const [filter, setFilter] = useState('');
   const [openNews, setOpenNews] = useState<string | null>(null);
@@ -77,14 +76,22 @@ export default function Progetti() {
       const act = await api.agentActivity(ACTIVITY_ALL).catch(() => [] as ActivityLine[]);
       if (cancelled) return;
       setActivity(act);
-      // One repo at a time: each snapshot walks the repo.
-      for (const r of project.recent) {
-        const row = await loadRow(r, act);
-        if (cancelled) return;
-        setRows((prev) => ({ ...prev, [r.path]: row }));
-      }
+      const queue = [...project.recent];
+      const worker = async () => {
+        while (!cancelled) {
+          const next = queue.shift();
+          if (!next) return;
+          const row = await loadRow(next, act);
+          if (cancelled) return;
+          setRows((prev) => ({ ...prev, [next.path]: row }));
+        }
+      };
+      await Promise.all(
+        Array.from({ length: Math.min(ROW_CONCURRENCY, queue.length) }, () => worker()),
+      );
     })();
-    invoke<HarnessRow[]>('rag_harness_state')
+    api
+      .ragHarnessState()
       .then((h) => !cancelled && setHarness(h))
       .catch(() => {});
     return () => {
@@ -212,7 +219,7 @@ export default function Progetti() {
                   <p className="row-title">
                     {a.agent} <span className="muted">· {nameOf(a.repo)} · {a.tool}</span>
                   </p>
-                  {a.query && <p className="row-detail">{a.query === '[riservata]' ? t('esplora.progetti.privateQuery') : `"${a.query}"`}</p>}
+                  {a.query && <p className="row-detail">{isMaskedPrivateQuery(a.query) ? t('esplora.progetti.privateQuery') : `"${a.query}"`}</p>}
                   {a.error ? (
                     <p className="row-detail error-text">{a.error}</p>
                   ) : (

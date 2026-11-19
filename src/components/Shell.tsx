@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { t, tn } from "../i18n";
 import { copyText, pickFolder, workflowPrompt } from "../api";
 import { useProject } from "../state/project";
@@ -6,16 +6,19 @@ import { useNav } from "../state/nav";
 import type { RecentProject } from "../types/snapshot";
 import { useTheme } from "../state/theme";
 import { SECTIONS, type SectionId } from "../views";
-import Impostazioni from "../views/Impostazioni";
 import { CommandPalette, MOD } from "./CommandPalette";
 import { Empty } from "./Empty";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { IncompatibleWiki } from "./Compat";
 import { useToast } from "./Toast";
 import { UpdateBanner } from "./UpdateBanner";
 import { Guide } from "./Guide";
 import { sectionCounts } from "../lib/attention";
 import { verifiedShare } from "../lib/trust";
-import PrimiPassi, { firstRunDone } from "../views/PrimiPassi";
+import { firstRunDone } from "../lib/first-run";
+
+const Impostazioni = lazy(() => import("../views/Impostazioni"));
+const PrimiPassi = lazy(() => import("../views/PrimiPassi"));
 
 /** Two letters from a folder name: initials of its first two words, else its first two letters. */
 function monogram(name: string): string {
@@ -176,13 +179,19 @@ export function Shell() {
       return;
     }
     let activeSurface: HTMLElement | null = null;
+    let rafId = 0;
+    let pending: { target: EventTarget | null; x: number; y: number } | null = null;
+
     const resetSurface = (el: HTMLElement | null) => {
       if (!el) return;
       el.style.setProperty('--spot-o', '0');
     };
-    const onPointerMove = (e: PointerEvent) => {
-      if (e.pointerType !== 'mouse') return;
-      const el = (e.target as HTMLElement | null)?.closest<HTMLElement>(SPOT_SELECTOR) ?? null;
+    const flushSpotlight = () => {
+      rafId = 0;
+      const ev = pending;
+      pending = null;
+      if (!ev) return;
+      const el = (ev.target as HTMLElement | null)?.closest<HTMLElement>(SPOT_SELECTOR) ?? null;
       if (activeSurface && activeSurface !== el) {
         resetSurface(activeSurface);
       }
@@ -190,19 +199,30 @@ export function Shell() {
       if (!el) return;
       const rect = el.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
-      const px = (e.clientX - rect.left) / rect.width;
-      const py = (e.clientY - rect.top) / rect.height;
+      const px = (ev.x - rect.left) / rect.width;
+      const py = (ev.y - rect.top) / rect.height;
       el.style.setProperty('--mx', `${(px * 100).toFixed(1)}%`);
       el.style.setProperty('--my', `${(py * 100).toFixed(1)}%`);
       el.style.setProperty('--spot-o', '1');
     };
+    const onPointerMove = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse') return;
+      pending = { target: e.target, x: e.clientX, y: e.clientY };
+      if (!rafId) rafId = window.requestAnimationFrame(flushSpotlight);
+    };
     const onPointerLeave = () => {
+      pending = null;
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
       resetSurface(activeSurface);
       activeSurface = null;
     };
     document.addEventListener('pointermove', onPointerMove, { passive: true });
     document.addEventListener('pointerleave', onPointerLeave, { passive: true });
     return () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
       document.removeEventListener('pointermove', onPointerMove);
       document.removeEventListener('pointerleave', onPointerLeave);
       resetSurface(activeSurface);
@@ -296,6 +316,7 @@ export function Shell() {
 
   const counts = sectionCounts(project.attention);
   const hasWiki = !!project.snapshot?.wikiRoot;
+  const viewFallback = <p className="muted">{t('esplora.progetti.reading')}</p>;
 
   return (
     <div className="shell">
@@ -326,7 +347,7 @@ export function Shell() {
                 disabled={project.loading}
                 onClick={() => void project.reload()}
                 title={project.snapshot?.repoPath ?? project.current}
-                aria-label="Reload"
+                aria-label={t('shell.reload')}
               >
                 <svg
                   width="13"
@@ -366,15 +387,27 @@ export function Shell() {
         )}
         {nav.section === "primi-passi" ? (
           <div className="content-body">
-            <PrimiPassi />
+            <ErrorBoundary resetKey={nav.section}>
+              <Suspense fallback={viewFallback}>
+                <PrimiPassi />
+              </Suspense>
+            </ErrorBoundary>
           </div>
         ) : nav.section === "impostazioni" ? (
           <div className="content-body">
-            <Impostazioni theme={theme} setTheme={setTheme} />
+            <ErrorBoundary resetKey={nav.section}>
+              <Suspense fallback={viewFallback}>
+                <Impostazioni theme={theme} setTheme={setTheme} />
+              </Suspense>
+            </ErrorBoundary>
           </div>
         ) : nav.section === "progetti" ? (
           <div className="content-body">
-            <CurrentView section="progetti" />
+            <ErrorBoundary resetKey={nav.section}>
+              <Suspense fallback={viewFallback}>
+                <CurrentView section="progetti" />
+              </Suspense>
+            </ErrorBoundary>
           </div>
         ) : project.snapshot ? (
           <>
@@ -407,7 +440,11 @@ export function Shell() {
               {hasWiki && project.compat.incompatible ? (
                 <IncompatibleWiki />
               ) : hasWiki ? (
-                <CurrentView section={nav.section} />
+                <ErrorBoundary resetKey={nav.section}>
+                  <Suspense fallback={viewFallback}>
+                    <CurrentView section={nav.section} />
+                  </Suspense>
+                </ErrorBoundary>
               ) : (
                 <Empty
                   title={t('shell.empty.noWiki')}

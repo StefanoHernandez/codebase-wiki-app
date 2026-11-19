@@ -2,12 +2,12 @@
 type: Project
 title: Tracker dei lavori
 description: Unica fonte dello stato dei lavori dell'app Codebase Wiki.
-generated: { by: claude-code/claude-opus-5-5, at: 2026-11-11T18:45:00Z }
+generated: { by: antigravity/unknown, at: 2026-11-19T10:45:00Z }
 sources:
   - wiki/log.md
   - wiki/agent/handoff.md
   - .github/workflows/build.yml
-source_commit: 206cc3c
+source_commit: 0763ea1
 confidence: high
 ---
 
@@ -21,7 +21,7 @@ aperti sotto sono stati aperti da Stefano il 2026-11-11, nella sessione con Clau
 ## Prossimi passi
 <!-- wiki:next -->
 
-**In una riga:** 0.7.1 pubblicata il 2026-11-13 (interfaccia in inglese, aspetto "Notte", aggiornamento del plugin per Claude Code e Antigravity); l'aggiornamento automatico funziona (T13). Mancano le prove a mano su Windows e con un agente vero; due correzioni di stile non ancora rilasciate.
+**In una riga:** 0.8.0 pubblicata il 2026-11-18 (tema Carbon & Cobalt, mappa del codice, copertura, prompt per l'agente, Per te con novità, Salute a carte, Ricerca con pagine wiki); nel working tree applicate correzioni di sicurezza, prestazioni, qualità codice (0 avvisi clippy) e allineamento wiki. Restano aperte le prove a mano e sul campo (T1–T6).
 
 1. Provare l'app installata e un agente vero collegato via MCP (T1, T5) e lo scarico della memoria (T4)
 2. Adopt della copia della wiki di prova sul campo e azioni umane su una wiki 0.13 (T3)

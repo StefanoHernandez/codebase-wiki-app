@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { appVersion, copyText } from '../api';
+import * as api from '../api';
 import { Dialog } from '../components/Dialog';
 import { useToast } from '../components/Toast';
 import { parseIndexStatus, type IndexStatus } from '../lib/rag-format';
@@ -12,17 +11,16 @@ import { useLang } from '../state/lang';
 import { hasKey, locale, t } from '../i18n';
 import { resetHints } from '../lib/hints';
 import { HINTS_CHANGED } from '../components/Guide';
-import { markFirstRunDone } from './PrimiPassi';
+import { markFirstRunDone } from '../lib/first-run';
 import { AGENT_LABEL, pluginBlocked, pluginStateText, type PluginRow } from '../lib/plugin';
 import type { ThemeChoice } from '../state/theme';
 import './ricerca.css';
 
 type CatalogRow = { id: string; languages: string; sizeMb: number; note: string; tested: boolean; installed: boolean };
-type HarnessRow = { id: string; label: string; status: 'connected' | 'outdated' | 'absent'; configPath: string; hint?: string | null };
 type HarnessDlg = { id: string; label: string; action: string; path: string; before: string; after: string };
 
 const DEFAULT_MODEL = 'multilingual-e5-small';
-const linkLabel = (s: HarnessRow['status']) => t(`impostazioni.link.${s}`);
+const linkLabel = (s: api.HarnessRow['status']) => t(`impostazioni.link.${s}`);
 const THEMES: ThemeChoice[] = ['system', 'light', 'dark'];
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -159,17 +157,20 @@ function Modelli() {
   const [hfQuery, setHfQuery] = useState('');
   const [hfHits, setHfHits] = useState<Array<{ id: string; downloads: number }>>([]);
   const [hfError, setHfError] = useState<string | null>(null);
+  const [confirmSwitchModel, setConfirmSwitchModel] = useState<string | null>(null);
+  const [confirmRemoveModel, setConfirmRemoveModel] = useState<{ row: CatalogRow; what: string } | null>(null);
+  const [modelBusy, setModelBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     if (repo) {
       try {
-        setStatus(parseIndexStatus((await invoke('rag_status', { repo })) as Record<string, unknown>));
+        setStatus(parseIndexStatus(await api.ragStatus(repo)));
       } catch (e) {
         setStatus({ indexed: false, error: message(e) });
       }
     }
     try {
-      const m = (await invoke('rag_models')) as { catalog?: Array<Record<string, unknown>>; reranker?: Record<string, unknown> };
+      const m = await api.ragModels();
       setCatalog((m.catalog ?? []).map(toRow));
       setReranker(m.reranker ? toRow(m.reranker) : null);
     } catch {
@@ -185,23 +186,32 @@ function Modelli() {
   const activeModel = status?.model || DEFAULT_MODEL;
   const dl = rag.download;
 
-  const useModel = async (id: string) => {
-    if (status?.indexed && status.indexedModel && status.indexedModel !== id) {
-      if (!window.confirm(t('impostazioni.models.rebuildConfirm'))) return;
-    }
+  const applyUseModel = async (id: string) => {
+    setModelBusy(true);
     try {
-      await invoke('rag_set_model', { id });
+      await api.ragSetModel(id);
     } catch (e) {
       toast(message(e), 'error');
+    } finally {
+      setModelBusy(false);
+      setConfirmSwitchModel(null);
     }
     void refresh();
+  };
+
+  const useModel = (id: string) => {
+    if (status?.indexed && status.indexedModel && status.indexedModel !== id) {
+      setConfirmSwitchModel(id);
+      return;
+    }
+    void applyUseModel(id);
   };
 
   const searchHf = async () => {
     if (!hfQuery.trim()) return;
     setHfError(null);
     try {
-      setHfHits((await invoke('rag_models_search', { q: hfQuery })) as Array<{ id: string; downloads: number }>);
+      setHfHits(await api.ragModelsSearch(hfQuery));
     } catch (e) {
       setHfError(message(e));
     }
@@ -210,7 +220,7 @@ function Modelli() {
   const addHf = async (hfRepo: string) => {
     setHfError(null);
     try {
-      await invoke('rag_models_add', { hfRepo });
+      await api.ragModelsAdd(hfRepo);
       toast(t('impostazioni.models.added', { repo: hfRepo }));
       void refresh();
     } catch (e) {
@@ -218,15 +228,22 @@ function Modelli() {
     }
   };
 
-  const removeModel = async (row: CatalogRow, what: string) => {
-    if (!window.confirm(t('impostazioni.models.removeConfirm', { id: row.id, size: row.sizeMb, what }))) return;
+  const applyRemoveModel = async (row: CatalogRow) => {
+    setModelBusy(true);
     try {
-      await invoke('rag_model_remove', { id: row.id });
+      await api.ragModelRemove(row.id);
       toast(t('impostazioni.models.removed', { id: row.id }));
     } catch (e) {
       toast(message(e), 'error');
+    } finally {
+      setModelBusy(false);
+      setConfirmRemoveModel(null);
     }
     void refresh();
+  };
+
+  const removeModel = (row: CatalogRow, what: string) => {
+    setConfirmRemoveModel({ row, what });
   };
 
   const action = (row: CatalogRow, onUse: (() => void) | null, removeNote: string) =>
@@ -349,20 +366,50 @@ function Modelli() {
           </tbody>
         </table>
       )}
+
+      <Dialog
+        open={confirmSwitchModel !== null}
+        title={t('impostazioni.models.switchTitle')}
+        confirmLabel={t('impostazioni.models.use')}
+        busy={modelBusy}
+        onCancel={() => setConfirmSwitchModel(null)}
+        onConfirm={() => confirmSwitchModel && void applyUseModel(confirmSwitchModel)}
+      >
+        <p className="dialog-note">{t('impostazioni.models.rebuildConfirm')}</p>
+      </Dialog>
+
+      <Dialog
+        open={confirmRemoveModel !== null}
+        title={confirmRemoveModel ? t('impostazioni.models.removeTitle', { id: confirmRemoveModel.row.id }) : ''}
+        confirmLabel={t('impostazioni.models.remove')}
+        busy={modelBusy}
+        onCancel={() => setConfirmRemoveModel(null)}
+        onConfirm={() => confirmRemoveModel && void applyRemoveModel(confirmRemoveModel.row)}
+      >
+        {confirmRemoveModel && (
+          <p className="dialog-note">
+            {t('impostazioni.models.removeConfirm', {
+              id: confirmRemoveModel.row.id,
+              size: confirmRemoveModel.row.sizeMb,
+              what: confirmRemoveModel.what,
+            })}
+          </p>
+        )}
+      </Dialog>
     </section>
   );
 }
 
 function Agenti() {
   const toast = useToast();
-  const [harness, setHarness] = useState<HarnessRow[]>([]);
+  const [harness, setHarness] = useState<api.HarnessRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [dlg, setDlg] = useState<HarnessDlg | null>(null);
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      setHarness((await invoke('rag_harness_state')) as HarnessRow[]);
+      setHarness(await api.ragHarnessState());
     } catch (e) {
       setError(message(e));
     }
@@ -371,11 +418,11 @@ function Agenti() {
     void refresh();
   }, [refresh]);
 
-  const open = async (row: HarnessRow) => {
+  const open = async (row: api.HarnessRow) => {
     const action = row.status === 'connected' ? 'disconnect' : row.status === 'outdated' ? 'update' : 'connect';
     setError(null);
     try {
-      const preview = (await invoke('rag_harness_preview', { harness: row.id, action })) as Omit<HarnessDlg, 'id' | 'label' | 'action'>;
+      const preview = await api.ragHarnessPreview(row.id, action);
       setDlg({ id: row.id, label: row.label, action, ...preview });
     } catch (e) {
       setError(message(e));
@@ -386,7 +433,7 @@ function Agenti() {
     if (!dlg) return;
     setBusy(true);
     try {
-      await invoke('rag_harness_apply', { harness: dlg.id, action: dlg.action });
+      await api.ragHarnessApply(dlg.id, dlg.action);
       toast(t(dlg.action === 'disconnect' ? 'impostazioni.agents.disconnected' : 'impostazioni.agents.connected', { label: dlg.label }));
       setDlg(null);
       void refresh();
@@ -444,7 +491,7 @@ function Agenti() {
             {dlg.id === 'claude' ? (
               <>
                 <pre className="ricerca-snippet">{dlg.after}</pre>
-                <button type="button" className="btn btn-quiet" onClick={() => void copyText(dlg.after).then(() => toast(t('impostazioni.agents.commandCopied')))}>
+                <button type="button" className="btn btn-quiet" onClick={() => void api.copyText(dlg.after).then(() => toast(t('impostazioni.agents.commandCopied')))}>
                   {t('impostazioni.agents.copyCommand')}
                 </button>
               </>
@@ -478,7 +525,7 @@ function PluginAgenti() {
 
   const refresh = useCallback(async () => {
     try {
-      setRows(await invoke<PluginRow[]>('plugin_state'));
+      setRows(await api.pluginState());
     } catch (e) {
       setError(message(e));
       setRows([]);
@@ -493,7 +540,7 @@ function PluginAgenti() {
     setError(null);
     setBusy(true);
     try {
-      const p = await invoke<{ commands: string[]; folders: string[] }>('plugin_preview', { agent: row.id });
+      const p = await api.pluginPreview(row.id);
       setDlg({ id: row.id, label: AGENT_LABEL[row.id] ?? row.id, update: row.status === 'outdated', ...p });
     } catch (e) {
       setError(message(e));
@@ -506,7 +553,7 @@ function PluginAgenti() {
     if (!dlg) return;
     setBusy(true);
     try {
-      await invoke('plugin_apply', { agent: dlg.id });
+      await api.pluginApply(dlg.id);
       toast(t(dlg.update ? 'impostazioni.plugins.doneUpdated' : 'impostazioni.plugins.doneInstalled', { label: dlg.label }));
       setDlg(null);
       void refresh();
@@ -547,7 +594,7 @@ function PluginAgenti() {
                     <button
                       type="button"
                       className="btn"
-                      onClick={() => void copyText(row.manual.join('\n')).then(() => toast(t('impostazioni.plugins.commandsCopied')))}
+                      onClick={() => void api.copyText(row.manual.join('\n')).then(() => toast(t('impostazioni.plugins.commandsCopied')))}
                     >
                       {t('impostazioni.plugins.copyCommands')}
                     </button>
@@ -598,7 +645,7 @@ function Aggiornamenti() {
   const { checking, progress, checkNow } = useUpdates();
   const [version, setVersion] = useState('');
   useEffect(() => {
-    appVersion().then(setVersion, () => setVersion(''));
+    api.appVersion().then(setVersion, () => setVersion(''));
   }, []);
   return (
     <section className="group">
