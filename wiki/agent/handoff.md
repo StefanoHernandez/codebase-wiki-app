@@ -2,13 +2,13 @@
 type: AgentNote
 title: Passaggio di consegne
 description: Stato del lavoro e prossimo compito per l'agente che riprende l'app Codebase Wiki.
-generated: { by: antigravity/unknown, at: 2026-11-19T10:45:00Z }
+generated: { by: antigravity/unknown, at: 2026-11-19T10:56:00Z }
 sources:
   - wiki/SCHEMA.md
   - wiki/log.md
   - wiki/project/work-tracker.md
   - crates/wiki-mcp/src/serve.rs
-source_commit: 0763ea1
+source_commit: 0fd018d
 confidence: high
 ---
 
@@ -18,11 +18,11 @@ confidence: high
 <!-- wiki:state -->
 
 - Tracker IDs: T1, T2, T3, T4, T5, T6
-- Goal: nessun sottoprogetto aperto; 0.8.0 pubblicata, correzioni di hardening e qualità nel working tree pronte per la revisione di Stefano; restano le prove a mano e sul campo (T1–T6)
-- Last completed step: revisione e correzione completa di sicurezza, prestazioni, debito tecnico e 0 avvisi Clippy (`LaunchIntro` preservata come identità dell'app); allineamento wiki
+- Goal: nessun sottoprogetto aperto; 0.8.1 pronta per la pubblicazione (`v0.8.1`), restano le prove a mano e sul campo (T1–T6)
+- Last completed step: release 0.8.1 (correzioni IPC/RAG/UI, 0 avvisi Clippy, `LaunchIntro` preservata e provata in `tauri dev`)
 - Current branch: `main`
-- Last commit: `0763ea1` (`docs(wiki): release 0.8.0 recorded [skip ci]`)
-- Worktree: modifiche locali nel working tree non committate (in attesa di revisione di Stefano)
+- Last commit: `release: 0.8.1`
+- Worktree: clean dopo i commit
 
 ## Baton per il prossimo agente
 <!-- wiki:baton -->

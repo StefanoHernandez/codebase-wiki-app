@@ -2,7 +2,7 @@
 type: AgentNote
 title: Contesto per gli agenti
 description: Obiettivi, regole non negoziabili, comandi e fatti verificati dell'app Codebase Wiki.
-generated: { by: antigravity/unknown, at: 2026-11-19T10:45:00Z }
+generated: { by: antigravity/unknown, at: 2026-11-19T10:56:00Z }
 sources:
   - README.md
   - Cargo.toml
@@ -11,7 +11,7 @@ sources:
   - .github/workflows/build.yml
   - wiki/index.md
   - wiki/SCHEMA.md
-source_commit: 0763ea1
+source_commit: 0fd018d
 confidence: high
 ---
 
@@ -44,7 +44,7 @@ confidence: high
 | Test Rust | `cargo test --workspace` | 2026-11-19 @0763ea1+local → 140 pass (14 app + 67 rag-core + 58 wiki-core + 1 wiki-mcp) |
 | Clippy Rust | `cargo clippy --workspace --all-targets` | 2026-11-19 @0763ea1+local → 0 avvisi |
 | Build frontend | `./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vite build` (`npm run build`) | 2026-11-19 @0763ea1+local → ok (0 errori TS, max chunk 223.51 kB) |
-| App in sviluppo | `npm run tauri dev` | ⚠️ NOT VERIFIED - non lanciato in questa sessione |
+| App in sviluppo | `npm run tauri dev` | 2026-11-19 @0fd018d → finestra avviata, provata da Stefano |
 | Bundle macOS locale | `npm run build:app` (senza chiave di firma: `npx tauri build` da solo fallisce) | 2026-11-13 @224232f → `Codebase Wiki.app` 89 MB |
 | Eseguibile di ricerca | `cargo build -p wiki-mcp --release --features embed` | 2026-11-11 @fe7bba6 |
 
@@ -54,7 +54,7 @@ Non ricavarli di nuovo. Ricontrolla un fatto solo se la sua prova è cambiata o 
 
 | Fatto | Valore | Prova | Verificato |
 | --- | --- | --- | --- |
-| Versione | 0.8.0 | `package.json`, `Cargo.toml`, `src-tauri/tauri.conf.json` | 2026-11-18 @0763ea1 |
+| Versione | 0.8.1 | `package.json`, `Cargo.toml`, `src-tauri/tauri.conf.json` | 2026-11-19 @0fd018d+local |
 | Validatore incluso | plugin 0.16.0, formato 0.12.0 | `python3 resources/validate-wiki.py --version` | 2026-11-19 @0763ea1 |
 | Cartella dati RAG | `<data_local_dir>/com.codebasewiki.app/rag`, sovrascrivibile con `CODEBASE_WIKI_DATA_DIR` | `crates/rag-core/src/paths.rs` (`data_dir`) | 2026-11-11 @206cc3c |
 | L'indice contiene | solo codice e config: niente cartella wiki, Markdown, testo, dati e log | `crates/rag-core/src/files.rs` (`list_files`) | 2026-11-11 @206cc3c |
